@@ -18,9 +18,10 @@
   openCurtain();
 
   document.addEventListener('click', function (e) {
+    if (e.defaultPrevented) return; // already handled (e.g. lightbox trigger)
     var link = e.target.closest('a[href]');
     if (!link) return;
-    if (link.target === '_blank' || link.hasAttribute('download')) return;
+    if (link.target === '_blank' || link.hasAttribute('download') || link.hasAttribute('data-lightbox')) return;
     var url;
     try { url = new URL(link.href, window.location.href); } catch (err) { return; }
     if (url.origin !== window.location.origin) return;
