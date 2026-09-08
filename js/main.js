@@ -158,6 +158,43 @@
     });
   }
 
+  /* ---------- Contact form (FormSubmit AJAX) ---------- */
+  var contactForm = document.getElementById('contact-form');
+  if (contactForm) {
+    var statusEl = contactForm.querySelector('.form-status');
+    var submitBtn = contactForm.querySelector('.form-submit');
+
+    function setStatus(text, kind) {
+      statusEl.textContent = text;
+      statusEl.className = 'form-status is-visible is-' + kind;
+    }
+
+    contactForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (contactForm.querySelector('[name="_honey"]').value) return; // bot trap
+
+      submitBtn.setAttribute('disabled', 'disabled');
+      statusEl.className = 'form-status';
+
+      fetch(contactForm.action, {
+        method: 'POST',
+        headers: { Accept: 'application/json' },
+        body: new FormData(contactForm)
+      }).then(function (res) {
+        if (res.ok) {
+          setStatus('Message envoyé — merci, je reviens vers toi rapidement !', 'success');
+          contactForm.reset();
+        } else {
+          setStatus("L'envoi a échoué. Réessaie, ou écris-moi directement sur Instagram.", 'error');
+        }
+      }).catch(function () {
+        setStatus("L'envoi a échoué. Réessaie, ou écris-moi directement sur Instagram.", 'error');
+      }).finally(function () {
+        submitBtn.removeAttribute('disabled');
+      });
+    });
+  }
+
   /* ---------- Intime veil interaction ---------- */
   var veil = document.querySelector('.veil-panel__reveal');
   if (veil) {
