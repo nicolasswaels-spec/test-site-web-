@@ -2,6 +2,7 @@ extends Node3D
 ## Scène de jeu : construit la plaine, les arbres, la sphère, et gère les 10 vagues.
 
 const Mats = preload("res://scripts/mats.gd")
+const Forest = preload("res://scripts/forest.gd")
 const PlayerScript = preload("res://scripts/player.gd")
 const ZombieScript = preload("res://scripts/zombie.gd")
 const TreeScript = preload("res://scripts/tree.gd")
@@ -14,10 +15,11 @@ const SPAWN_RADIUS := 63.0
 const TOTAL_WAVES := 10
 const BREAK_TIME := 25.0
 const RESPAWN_TIME := 5.0
-const TREE_COUNT := 120
+const TREE_COUNT := 140
 
 const GROUND_SHADER := """
 shader_type spatial;
+render_mode diffuse_lambert_wrap, specular_disabled;
 varying vec3 wpos;
 void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -26,29 +28,53 @@ float noise(vec2 p) {
 	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
 }
 void fragment() {
-	float n = noise(wpos.xz * 0.06) * 0.55 + noise(wpos.xz * 0.35) * 0.3 + noise(wpos.xz * 2.5) * 0.15;
-	vec3 grass = mix(vec3(0.20, 0.48, 0.10), vec3(0.36, 0.66, 0.16), n);
+	float n = noise(wpos.xz * 0.05) * 0.55 + noise(wpos.xz * 0.3) * 0.3 + noise(wpos.xz * 2.0) * 0.15;
+	vec3 grass = mix(vec3(0.03, 0.10, 0.10), vec3(0.08, 0.22, 0.18), n);
 	float r = length(wpos.xz);
 	float dirt_n = noise(wpos.xz * 0.8) * 1.5;
-	vec3 dirt = mix(vec3(0.45, 0.33, 0.20), vec3(0.56, 0.42, 0.27), noise(wpos.xz * 3.0));
-	vec3 c = mix(dirt, grass, smoothstep(5.0, 7.5, r + dirt_n));
-	float edge = smoothstep(67.0, 70.0, r);
-	c = mix(c, c * vec3(0.75, 0.7, 1.0), edge);
-	ALBEDO = c;
-	ROUGHNESS = 0.95;
+	vec3 dirt = mix(vec3(0.14, 0.11, 0.15), vec3(0.22, 0.17, 0.20), noise(wpos.xz * 3.0));
+	ALBEDO = mix(dirt, grass, smoothstep(4.5, 7.0, r + dirt_n));
+	ROUGHNESS = 1.0;
+}
+"""
+
+const SKY_SHADER := """
+shader_type sky;
+uniform vec3 top_col : source_color = vec3(0.07, 0.07, 0.22);
+uniform vec3 mid_col : source_color = vec3(0.38, 0.26, 0.55);
+uniform vec3 hor_col : source_color = vec3(1.0, 0.60, 0.42);
+uniform vec3 glow_col : source_color = vec3(1.0, 0.72, 0.42);
+float hash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+void sky() {
+	vec3 d = EYEDIR;
+	float y = d.y;
+	vec3 c = mix(hor_col, mid_col, smoothstep(0.0, 0.22, y));
+	c = mix(c, top_col, smoothstep(0.18, 0.65, y));
+	if (y < 0.0) {
+		c = mix(hor_col * 0.7, vec3(0.06, 0.06, 0.16), smoothstep(0.0, -0.25, y));
+	}
+	float sd = max(dot(d, LIGHT0_DIRECTION), 0.0);
+	c += glow_col * (pow(sd, 6.0) * 0.5 + pow(sd, 60.0) * 0.8 + pow(sd, 900.0) * 6.0);
+	if (!AT_CUBEMAP_PASS) {
+		vec3 cell = floor(d * 260.0);
+		float h = hash(cell);
+		float star = step(0.9965, h) * smoothstep(0.12, 0.5, y);
+		c += vec3(0.9, 0.9, 1.0) * star * (0.5 + 0.5 * sin(TIME * 2.0 + h * 80.0));
+	}
+	COLOR = c;
 }
 """
 
 const STORM_SHADER := """
 shader_type spatial;
-render_mode unshaded, cull_disabled, blend_add, depth_draw_never, shadows_disabled;
-uniform vec4 color : source_color = vec4(0.55, 0.3, 1.0, 1.0);
+render_mode unshaded, cull_disabled, blend_add, depth_draw_never, shadows_disabled, fog_disabled;
+uniform vec4 color : source_color = vec4(0.25, 0.55, 1.0, 1.0);
 varying float h;
 void vertex() { h = VERTEX.y; }
 void fragment() {
-	float stripes = 0.5 + 0.5 * sin(UV.x * 500.0 + h * 1.5 - TIME * 3.0);
-	float fade = smoothstep(15.0, -15.0, h);
-	ALBEDO = color.rgb * (0.25 + 0.35 * stripes) * fade;
+	float stripes = 0.5 + 0.5 * sin(UV.x * 500.0 + h * 1.5 - TIME * 2.0);
+	float fade = smoothstep(6.0, -15.0, h);
+	ALBEDO = color.rgb * (0.08 + 0.12 * stripes) * fade;
 	ALPHA = fade;
 }
 """
@@ -61,7 +87,8 @@ var obstacle_pos: Array[Vector3] = []
 var obstacle_rad: Array[float] = []
 var zombie_cache: Array[Node] = []
 var rocks: Array[Node3D] = []
-var clouds: Node3D
+var fireflies: CPUParticles3D
+var high := true
 var tracer_mat: StandardMaterial3D
 
 var state := "idle"   # idle, break, wave, won, lost
@@ -81,6 +108,7 @@ var rng := RandomNumberGenerator.new()
 func _ready() -> void:
 	rng.randomize()
 	get_tree().paused = false
+	high = Settings.high_quality
 	tracer_mat = StandardMaterial3D.new()
 	tracer_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	tracer_mat.albedo_color = Color(1.0, 0.9, 0.5)
@@ -120,43 +148,69 @@ func _build_environment() -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
-	var sm := ProceduralSkyMaterial.new()
-	sm.sky_top_color = Color(0.18, 0.42, 0.92)
-	sm.sky_horizon_color = Color(0.62, 0.8, 1.0)
-	sm.ground_horizon_color = Color(0.62, 0.8, 1.0)
-	sm.ground_bottom_color = Color(0.25, 0.4, 0.25)
-	sm.sun_angle_max = 25.0
+	var sm := ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = SKY_SHADER
+	sm.shader = sh
 	sky.sky_material = sm
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_color = Color(0.75, 0.72, 0.68)
-	env.ambient_light_sky_contribution = 0.55
-	env.ambient_light_energy = 0.6
+	env.ambient_light_sky_contribution = 0.6
+	env.ambient_light_color = Color(0.35, 0.35, 0.6)
+	env.ambient_light_energy = 0.7
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 0.95
+	env.tonemap_exposure = 1.1
 	env.glow_enabled = true
-	env.glow_intensity = 0.7
-	env.glow_bloom = 0.05
-	env.ssao_enabled = true
-	env.ssao_intensity = 1.5
+	env.glow_intensity = 0.9
+	env.glow_bloom = 0.12
+	env.glow_hdr_threshold = 0.9
+	env.ssao_enabled = high
+	env.ssao_intensity = 1.2
+	# Brouillard coloré : bleu-violet dans l'ombre, orangé face au soleil
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.65, 0.78, 1.0)
-	env.fog_density = 0.0022
-	env.fog_sky_affect = 0.2
+	env.fog_light_color = Color(0.30, 0.30, 0.58)
+	env.fog_light_energy = 1.0
+	env.fog_sun_scatter = 0.55
+	env.fog_density = 0.016
+	env.fog_aerial_perspective = 0.35
+	env.fog_sky_affect = 0.25
+	env.fog_height = 1.5
+	env.fog_height_density = 0.12
+	# Brouillard volumétrique : rayons de lumière entre les arbres
+	if high:
+		env.volumetric_fog_enabled = true
+		env.volumetric_fog_density = 0.012
+		env.volumetric_fog_albedo = Color(0.85, 0.85, 1.0)
+		env.volumetric_fog_emission = Color(0.12, 0.10, 0.28)
+		env.volumetric_fog_emission_energy = 0.6
+		env.volumetric_fog_anisotropy = 0.7
+		env.volumetric_fog_length = 70.0
+		env.volumetric_fog_ambient_inject = 0.4
+		env.volumetric_fog_sky_affect = 0.0
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.2
-	env.adjustment_contrast = 1.05
+	env.adjustment_saturation = 1.25
+	env.adjustment_contrast = 1.08
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 
+	# Soleil couchant, bas sur l'horizon
 	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-48, -35, 0)
-	sun.light_energy = 1.1
-	sun.light_color = Color(1.0, 0.96, 0.86)
+	sun.rotation_degrees = Vector3(-14, 150, 0)
+	sun.light_energy = 1.6
+	sun.light_color = Color(1.0, 0.68, 0.42)
+	sun.light_volumetric_fog_energy = 2.5
 	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 90.0
+	sun.shadow_blur = 1.5
+	sun.directional_shadow_max_distance = 70.0 if high else 40.0
 	add_child(sun)
+	# Lumière de remplissage froide (ciel)
+	var fill := DirectionalLight3D.new()
+	fill.rotation_degrees = Vector3(-60, -30, 0)
+	fill.light_energy = 0.25
+	fill.light_color = Color(0.45, 0.5, 1.0)
+	fill.light_volumetric_fog_energy = 0.0
+	add_child(fill)
 
 
 func _build_ground() -> void:
@@ -166,7 +220,7 @@ func _build_ground() -> void:
 	add_child(ground)
 	var mi := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
-	pm.size = Vector2(420, 420)
+	pm.size = Vector2(500, 500)
 	mi.mesh = pm
 	var mat := ShaderMaterial.new()
 	var sh := Shader.new()
@@ -176,49 +230,67 @@ func _build_ground() -> void:
 	ground.add_child(mi)
 	var cs := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
-	bs.size = Vector3(420, 2, 420)
+	bs.size = Vector3(500, 2, 500)
 	cs.shape = bs
 	cs.position.y = -1.0
 	ground.add_child(cs)
 
-	# Touffes d'herbe et fleurs (MultiMesh = très peu coûteux)
-	var blade := PrismMesh.new()
-	blade.size = Vector3(0.14, 0.36, 0.04)
-	var bm := StandardMaterial3D.new()
-	bm.vertex_color_use_as_albedo = true
-	bm.roughness = 0.9
-	bm.cull_mode = BaseMaterial3D.CULL_DISABLED
-	blade.material = bm
-	_scatter(blade, 5000, 0.25, 0.6, 1.5, [Color(0.3, 0.62, 0.18), Color(0.42, 0.75, 0.22), Color(0.35, 0.68, 0.2)])
+	# Herbe haute (par morceaux de 16 m pour que le moteur n'affiche que ce qui est proche)
+	var grass_mat := Forest.grass_material(Color(0.02, 0.06, 0.08), Color(0.10, 0.40, 0.36), Color(0.22, 0.46, 0.28))
+	_scatter_chunks(Forest.grass_clump(), grass_mat, 1.1 if high else 0.45, MAP_RADIUS + 12.0, 5.0, 0.8, 1.5, 60.0 if high else 40.0)
+	# Plantes rouges, buissons bleu nuit, quelques fleurs blanches
+	var red_mat := Forest.grass_material(Color(0.18, 0.02, 0.06), Color(0.85, 0.12, 0.18), Color(0.95, 0.30, 0.25), 0.1)
+	_scatter_chunks(Forest.plant(), red_mat, 0.03, MAP_RADIUS + 12.0, 7.0, 0.7, 1.4, 80.0, true)
+	var bush_mat := Forest.grass_material(Color(0.02, 0.03, 0.10), Color(0.10, 0.16, 0.42), Color(0.16, 0.12, 0.40), 0.06)
+	_scatter_chunks(Forest.bush(), bush_mat, 0.025, MAP_RADIUS + 12.0, 7.0, 0.9, 1.8, 80.0, true)
 	var flower := SphereMesh.new()
-	flower.radius = 0.09
-	flower.height = 0.18
-	flower.radial_segments = 6
+	flower.radius = 0.05
+	flower.height = 0.1
+	flower.radial_segments = 5
 	flower.rings = 3
-	var fm := bm.duplicate() as StandardMaterial3D
-	flower.material = fm
-	_scatter(flower, 700, 0.18, 0.8, 1.3, [Color(1, 0.3, 0.35), Color(1, 0.9, 0.2), Color(1, 1, 1), Color(0.7, 0.4, 1.0)])
+	_scatter_chunks(flower, Mats.col(Color(0.9, 0.92, 1.0), 0.8, 0.6), 0.05, MAP_RADIUS, 6.0, 0.8, 1.4, 45.0, false, 0.55)
 
 
-func _scatter(mesh: Mesh, count: int, y: float, smin: float, smax: float, colors: Array) -> void:
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.mesh = mesh
-	mm.instance_count = count
-	for i in count:
-		var r := sqrt(rng.randf()) * (MAP_RADIUS + 20.0)
-		if r < 7.0:
-			r += 7.0
-		var a := rng.randf() * TAU
-		var s := rng.randf_range(smin, smax)
-		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s, s))
-		mm.set_instance_transform(i, Transform3D(b, Vector3(cos(a) * r, y * s, sin(a) * r)))
-		mm.set_instance_color(i, colors[rng.randi() % colors.size()])
-	var mmi := MultiMeshInstance3D.new()
-	mmi.multimesh = mm
-	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(mmi)
+func _scatter_chunks(mesh: Mesh, mat: Material, density: float, radius: float, clear_r: float, smin: float, smax: float, vis_end: float, clustered := false, y_off := 0.0) -> void:
+	var chunk := 16.0
+	var n := int(ceil(radius / chunk))
+	for cx in range(-n, n):
+		for cz in range(-n, n):
+			var origin := Vector3((cx + 0.5) * chunk, 0.0, (cz + 0.5) * chunk)
+			var xforms: Array[Transform3D] = []
+			var count := int(density * chunk * chunk)
+			var centers: Array[Vector3] = []
+			if clustered:
+				for k in 3:
+					centers.append(Vector3(rng.randf_range(-8, 8), 0, rng.randf_range(-8, 8)))
+			for i in count:
+				var local := Vector3(rng.randf_range(-8, 8), 0.0, rng.randf_range(-8, 8))
+				if clustered:
+					local = centers[i % 3] + Vector3(rng.randfn(0.0, 1.6), 0.0, rng.randfn(0.0, 1.6))
+				var world := origin + local
+				var r := Vector2(world.x, world.z).length()
+				if r > radius or r < clear_r:
+					continue
+				var s := rng.randf_range(smin, smax)
+				var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.8, 1.2), s))
+				xforms.append(Transform3D(b, local + Vector3(0, y_off * s, 0)))
+			if xforms.is_empty():
+				continue
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.mesh = mesh
+			mm.instance_count = xforms.size()
+			for i in xforms.size():
+				mm.set_instance_transform(i, xforms[i])
+			var mmi := MultiMeshInstance3D.new()
+			mmi.multimesh = mm
+			mmi.material_override = mat
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mmi.visibility_range_end = vis_end
+			mmi.visibility_range_end_margin = 8.0
+			mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+			mmi.position = origin
+			add_child(mmi)
 
 
 func _build_storm_wall() -> void:
@@ -242,51 +314,63 @@ func _build_storm_wall() -> void:
 
 
 func _build_scenery() -> void:
-	# Collines au loin
-	var hill_colors := [Color(0.3, 0.6, 0.25), Color(0.36, 0.66, 0.3), Color(0.28, 0.55, 0.3)]
-	for i in 46:
-		var a := TAU * i / 46.0 + rng.randf_range(-0.05, 0.05)
-		var r := rng.randf_range(100.0, 170.0)
-		var rad := rng.randf_range(18.0, 40.0)
-		var h := Mats.sphere(self, rad, Mats.col(hill_colors[i % 3], 0.95), Vector3(cos(a) * r, -rad * 0.45, sin(a) * r), 20)
-		h.scale = Vector3(1.0, rng.randf_range(0.5, 0.9), 1.0)
-		h.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	# Montagnes enneigées encore plus loin
-	for i in 10:
-		var a := TAU * i / 10.0 + rng.randf_range(-0.2, 0.2)
-		var r := rng.randf_range(210.0, 240.0)
-		var hgt := rng.randf_range(50.0, 85.0)
-		var m := Mats.cylinder(self, 0.0, hgt * 0.8, hgt, Mats.col(Color(0.45, 0.5, 0.62), 0.9), Vector3(cos(a) * r, hgt * 0.5 - 5.0, sin(a) * r), Vector3.ZERO, 7)
-		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var snow := Mats.cylinder(self, 0.0, hgt * 0.24, hgt * 0.3, Mats.col(Color(0.95, 0.97, 1.0), 0.8), Vector3(cos(a) * r, hgt * 0.85 - 5.0, sin(a) * r), Vector3.ZERO, 7)
-		snow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	# Nuages
-	clouds = Node3D.new()
-	add_child(clouds)
-	var cloud_mat := Mats.col(Color(1, 1, 1), 1.0, 0.25)
-	for i in 22:
-		var c := Node3D.new()
+	# Forêt dense autour de la zone (non interactive, une MultiMesh par variante)
+	var variants := Forest.pine_variants()
+	var lists: Array = []
+	for v in variants:
+		lists.append([])
+	for i in 520:
 		var a := rng.randf() * TAU
-		var r := rng.randf_range(30.0, 160.0)
-		c.position = Vector3(cos(a) * r, rng.randf_range(45.0, 70.0), sin(a) * r)
-		clouds.add_child(c)
-		for j in rng.randi_range(3, 5):
-			var s := Mats.sphere(c, rng.randf_range(4.0, 7.0), cloud_mat, Vector3(j * 4.5 - 9.0, rng.randf_range(-1, 1.5), rng.randf_range(-2, 2)), 12)
-			s.scale.y = 0.6
-			s.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var r := MAP_RADIUS + 3.0 + pow(rng.randf(), 0.8) * 95.0
+		var s := rng.randf_range(0.9, 1.7) * (1.0 + (r - MAP_RADIUS) / 120.0)
+		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s, s))
+		lists[rng.randi() % variants.size()].append(Transform3D(b, Vector3(cos(a) * r, 0, sin(a) * r)))
+	for vi in variants.size():
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = variants[vi]
+		var arr: Array = lists[vi]
+		mm.instance_count = arr.size()
+		for i in arr.size():
+			mm.set_instance_transform(i, arr[i])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mmi)
+
+	# Quelques arbres morts bleu pâle, comme dans les références
+	for i in 9:
+		var a := rng.randf() * TAU
+		var r := rng.randf_range(25.0, MAP_RADIUS + 15.0)
+		var mi := MeshInstance3D.new()
+		mi.mesh = Forest.dead_tree()
+		mi.position = Vector3(cos(a) * r, 0, sin(a) * r)
+		mi.rotation.y = rng.randf() * TAU
+		mi.scale = Vector3.ONE * rng.randf_range(0.8, 1.3)
+		add_child(mi)
+
+	# Pics rocheux lointains (silhouettes dans le brouillard)
+	var spire_mat := Mats.col(Color(0.20, 0.17, 0.30), 1.0)
+	for i in 14:
+		var a := TAU * i / 14.0 + rng.randf_range(-0.15, 0.15)
+		var r := rng.randf_range(190.0, 240.0)
+		var hgt := rng.randf_range(45.0, 110.0)
+		var m := Mats.cylinder(self, rng.randf_range(1.0, 6.0), hgt * 0.32, hgt, spire_mat, Vector3(cos(a) * r, hgt * 0.5 - 4.0, sin(a) * r), Vector3(rng.randf_range(-6, 6), 0, rng.randf_range(-6, 6)), 5)
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
 	# Rochers
-	var rock_mat := Mats.col(Color(0.58, 0.58, 0.62), 0.9)
-	for i in 28:
+	var rock_mat := Mats.col(Color(0.20, 0.21, 0.32), 0.95)
+	for i in 24:
 		var a := rng.randf() * TAU
 		var r := rng.randf_range(12.0, MAP_RADIUS - 4.0)
-		var rad := rng.randf_range(0.6, 1.4)
+		var rad := rng.randf_range(0.6, 1.6)
 		var body := StaticBody3D.new()
 		body.collision_layer = 16
 		body.collision_mask = 0
 		body.position = Vector3(cos(a) * r, 0, sin(a) * r)
 		add_child(body)
-		var m := Mats.sphere(body, rad, rock_mat, Vector3(0, rad * 0.3, 0), 7)
-		m.scale = Vector3(1.0, 0.7, rng.randf_range(0.8, 1.2))
+		var m := Mats.sphere(body, rad, rock_mat, Vector3(0, rad * 0.3, 0), 6)
+		m.scale = Vector3(1.0, 0.75, rng.randf_range(0.8, 1.2))
 		m.rotation.y = rng.randf() * TAU
 		var cs := CollisionShape3D.new()
 		var ss := SphereShape3D.new()
@@ -296,6 +380,37 @@ func _build_scenery() -> void:
 		body.add_child(cs)
 		rocks.append(body)
 		body.set_meta("radius", rad)
+
+	# Lucioles autour du joueur
+	fireflies = CPUParticles3D.new()
+	fireflies.amount = 140 if high else 60
+	fireflies.lifetime = 7.0
+	fireflies.preprocess = 7.0
+	fireflies.local_coords = false
+	fireflies.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	fireflies.emission_box_extents = Vector3(28, 3, 28)
+	fireflies.direction = Vector3.UP
+	fireflies.spread = 180.0
+	fireflies.gravity = Vector3(0, 0.05, 0)
+	fireflies.initial_velocity_min = 0.1
+	fireflies.initial_velocity_max = 0.4
+	var q := QuadMesh.new()
+	q.size = Vector2(0.07, 0.07)
+	var fm := StandardMaterial3D.new()
+	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fm.vertex_color_use_as_albedo = true
+	fm.albedo_color = Color(4.0, 3.4, 1.2)
+	q.material = fm
+	fireflies.mesh = q
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1, 1, 1, 0))
+	ramp.set_color(1, Color(1, 1, 1, 0))
+	ramp.add_point(0.3, Color(1, 1, 1, 1))
+	ramp.add_point(0.7, Color(1, 1, 1, 1))
+	fireflies.color_ramp = ramp
+	add_child(fireflies)
 
 
 func _spawn_trees() -> void:
@@ -317,8 +432,8 @@ func _spawn_trees() -> void:
 			continue
 		placed.append(p)
 		var t := TreeScript.new()
-		t.kind = 0 if rng.randf() < 0.6 else 1
-		t.tree_scale = rng.randf_range(0.85, 1.3)
+		t.kind = rng.randi() % 4
+		t.tree_scale = rng.randf_range(0.8, 1.25)
 		t.main = self
 		t.position = p
 		add_child(t)
@@ -422,7 +537,7 @@ func _physics_process(_delta: float) -> void:
 
 
 func _process(delta: float) -> void:
-	clouds.rotation.y += delta * 0.004
+	fireflies.global_position = player.global_position + Vector3(0, 1.5, 0)
 	hud.update_player(player)
 	hud.set_orb(orb.hp, orb.max_hp)
 

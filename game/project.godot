@@ -12,6 +12,7 @@ config/features=PackedStringArray("4.3", "Forward Plus")
 
 GameInput="*res://scripts/input_setup.gd"
 Sfx="*res://scripts/sfx.gd"
+Settings="*res://scripts/settings.gd"
 
 [display]
 

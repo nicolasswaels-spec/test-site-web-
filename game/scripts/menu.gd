@@ -7,11 +7,12 @@ const BG_SHADER := """
 shader_type canvas_item;
 void fragment() {
 	vec2 uv = UV;
-	vec3 top = vec3(0.16, 0.36, 0.95);
-	vec3 bottom = vec3(0.55, 0.18, 0.85);
+	vec3 top = vec3(0.07, 0.07, 0.22);
+	vec3 bottom = vec3(1.0, 0.55, 0.38);
 	vec3 c = mix(top, bottom, uv.y);
 	float r = length((uv - vec2(0.5, 0.42)) * vec2(1.6, 1.0));
-	c += vec3(1.0, 0.85, 0.3) * smoothstep(0.55, 0.0, r) * (0.35 + 0.1 * sin(TIME * 1.5));
+	c = mix(c, vec3(0.38, 0.26, 0.55), smoothstep(0.1, 0.55, uv.y) * smoothstep(1.0, 0.6, uv.y) * 0.6);
+	c += vec3(1.0, 0.75, 0.4) * smoothstep(0.55, 0.0, r) * (0.25 + 0.08 * sin(TIME * 1.5));
 	float rays = 0.5 + 0.5 * sin(atan(uv.y - 0.42, uv.x - 0.5) * 14.0 + TIME * 0.4);
 	c += vec3(0.08) * rays * smoothstep(0.9, 0.1, r);
 	COLOR = vec4(c, 1.0);
@@ -67,6 +68,17 @@ func _ready() -> void:
 	start.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	start.pressed.connect(_on_start)
 	vb.add_child(start)
+
+	var quality := Button.new()
+	quality.custom_minimum_size = Vector2(380, 50)
+	quality.add_theme_font_size_override("font_size", 18)
+	quality.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var refresh := func(): quality.text = "GRAPHISMES : " + ("ÉLEVÉS" if Settings.high_quality else "LÉGERS")
+	refresh.call()
+	quality.pressed.connect(func():
+		Settings.high_quality = not Settings.high_quality
+		refresh.call())
+	vb.add_child(quality)
 
 	var quit := Button.new()
 	quit.text = "QUITTER"
