@@ -288,7 +288,7 @@ func _scatter_chunks(mesh: Mesh, mat: Material, density: float, radius: float, c
 			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			mmi.visibility_range_end = vis_end
 			mmi.visibility_range_end_margin = 8.0
-			mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+			mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 			mmi.position = origin
 			add_child(mmi)
 
