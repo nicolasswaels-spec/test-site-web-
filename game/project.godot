@@ -1,0 +1,26 @@
+; Engine configuration file.
+config_version=5
+
+[application]
+
+config/name="Zone Zero"
+config/description="Défends la sphère contre 10 vagues de zombies."
+run/main_scene="res://scenes/menu.tscn"
+config/features=PackedStringArray("4.3", "Forward Plus")
+
+[autoload]
+
+GameInput="*res://scripts/input_setup.gd"
+Sfx="*res://scripts/sfx.gd"
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[rendering]
+
+anti_aliasing/quality/msaa_3d=2
+lights_and_shadows/directional_shadow/size=4096
