@@ -46,7 +46,6 @@ void fragment() {
 	vec3 tip = mix(tip_col, tip_col2, COLOR.g);
 	vec3 c = mix(base_col, tip, pow(COLOR.r, 1.2));
 	ALBEDO = c;
-	BACKLIGHT = c * 0.5;
 }
 """
 
@@ -309,7 +308,7 @@ static func _blade(st: SurfaceTool, base: Vector3, side: Vector3, lean: Vector3,
 	for k in segs + 1:
 		var f := float(k) / segs
 		pts.append(base + Vector3.UP * h * f + lean * h * f * f)
-		widths.append(w * (1.0 - f))
+		widths.append(w * maxf(1.0 - f, 0.12))
 	for k in segs:
 		var f0 := float(k) / segs
 		var f1 := float(k + 1) / segs

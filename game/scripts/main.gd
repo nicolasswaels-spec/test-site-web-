@@ -157,7 +157,7 @@ func _build_environment() -> void:
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_sky_contribution = 0.6
 	env.ambient_light_color = Color(0.22, 0.24, 0.5)
-	env.ambient_light_energy = 0.45
+	env.ambient_light_energy = 0.35
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.tonemap_exposure = 1.0
 	env.glow_enabled = true
@@ -171,15 +171,15 @@ func _build_environment() -> void:
 	env.fog_light_color = Color(0.17, 0.17, 0.38)
 	env.fog_light_energy = 1.0
 	env.fog_sun_scatter = 0.35
-	env.fog_density = 0.013
+	env.fog_density = 0.011
 	env.fog_aerial_perspective = 0.35
 	env.fog_sky_affect = 0.25
 	env.fog_height = 1.5
-	env.fog_height_density = 0.07
+	env.fog_height_density = 0.0
 	# Brouillard volumétrique : rayons de lumière entre les arbres
 	if high:
 		env.volumetric_fog_enabled = true
-		env.volumetric_fog_density = 0.007
+		env.volumetric_fog_density = 0.005
 		env.volumetric_fog_albedo = Color(0.85, 0.85, 1.0)
 		env.volumetric_fog_emission = Color(0.05, 0.04, 0.12)
 		env.volumetric_fog_emission_energy = 0.3
