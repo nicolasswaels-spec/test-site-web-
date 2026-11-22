@@ -25,7 +25,7 @@ const BUILD_COST := 10
 const MAX_HP := 100.0
 const MASK_SHOOT := 1 | 4 | 8 | 16 | 32
 
-const HIP_POS := Vector3(0.24, -0.24, -0.6)
+const HIP_POS := Vector3(0.2, -0.2, -0.72)
 const ADS_POS := Vector3(0.0, -0.105, -0.40)
 const AXE_POS := Vector3(0.34, -0.32, -0.55)
 
@@ -56,6 +56,7 @@ var swing_cd := 0.0
 var build_cd := 0.0
 var aiming := false
 var recoil := 0.0
+var rifle_rest_rot := Vector3.ZERO
 var flash_t := 0.0
 var bob_t := 0.0
 var equip_t := 0.0
@@ -123,6 +124,7 @@ func _build_rifle() -> void:
 	rifle.position = HIP_POS
 	rifle.scale = Vector3.ONE * 0.82
 	viewmodel.add_child(rifle)
+	rifle_rest_rot = Vector3(0.0, deg_to_rad(-5.0), 0.0)
 
 	var wood := ShaderMaterial.new()
 	var wsh := Shader.new()
@@ -130,14 +132,14 @@ func _build_rifle() -> void:
 	wood.shader = wsh
 	var steel := StandardMaterial3D.new()
 	steel.albedo_color = Color(0.10, 0.11, 0.15)
-	steel.metallic = 0.75
-	steel.roughness = 0.35
+	steel.metallic = 0.35
+	steel.roughness = 0.55
 	var steel_dark := steel.duplicate() as StandardMaterial3D
 	steel_dark.albedo_color = Color(0.05, 0.05, 0.07)
 	var brass := StandardMaterial3D.new()
 	brass.albedo_color = Color(0.80, 0.56, 0.26)
-	brass.metallic = 1.0
-	brass.roughness = 0.3
+	brass.metallic = 0.6
+	brass.roughness = 0.4
 	var leather := Mats.col(Color(0.20, 0.10, 0.07), 0.9)
 	var crystal := Mats.col(Color(0.30, 0.95, 0.90), 0.1, 4.0)
 
@@ -374,7 +376,7 @@ func _process(delta: float) -> void:
 	var equip_off := Vector3(0, -0.35 * equip_t * equip_t, 0)
 
 	var target_pos := ADS_POS if aiming else HIP_POS
-	var target_rot := Vector3.ZERO
+	var target_rot := Vector3.ZERO if aiming else rifle_rest_rot
 	if reloading:
 		target_pos = HIP_POS + Vector3(-0.05, -0.08, 0.05)
 		target_rot = Vector3(-0.5, 0.3, 0.5)

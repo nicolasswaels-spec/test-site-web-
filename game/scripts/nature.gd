@@ -149,7 +149,7 @@ static func red_plant(variant: int) -> ArrayMesh:
 	var k := "plant%d" % variant
 	if not _cache.has(k):
 		var m := _bake("Plant_%d" % variant, 0.0, 1.0)
-		m.surface_set_material(0, leaf_material("Flowers.png", Color(0.25, 0.02, 0.06), Color(0.95, 0.16, 0.22), 0.8, 0.05))
+		m.surface_set_material(0, leaf_material("Flowers.png", Color(0.16, 0.01, 0.05), Color(0.72, 0.10, 0.18), 0.8, 0.05))
 		_cache[k] = m
 	return _cache[k]
 

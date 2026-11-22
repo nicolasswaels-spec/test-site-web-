@@ -239,7 +239,7 @@ func _build_ground() -> void:
 	_scatter_chunks(Nature.grass(), null, 1.3 if high else 0.55, MAP_RADIUS + 12.0, 5.0, 0.8, 1.3, 60.0 if high else 40.0)
 	# Plantes rouges et buissons bleu nuit, en petits groupes
 	for v in [1, 2]:
-		_scatter_chunks(Nature.red_plant(v), null, 0.018, MAP_RADIUS + 12.0, 7.0, 1.0, 1.7, 80.0, true)
+		_scatter_chunks(Nature.red_plant(v), null, 0.018, MAP_RADIUS + 12.0, 7.0, 0.6, 1.1, 80.0, true)
 	_scatter_chunks(Nature.bush(false), null, 0.015, MAP_RADIUS + 12.0, 7.0, 1.0, 2.0, 80.0, true)
 	_scatter_chunks(Nature.bush(true), null, 0.01, MAP_RADIUS + 12.0, 7.0, 1.0, 1.8, 80.0, true)
 	var flower := SphereMesh.new()
