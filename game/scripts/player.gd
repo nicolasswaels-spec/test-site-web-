@@ -25,7 +25,7 @@ const BUILD_COST := 10
 const MAX_HP := 100.0
 const MASK_SHOOT := 1 | 4 | 8 | 16 | 32
 
-const HIP_POS := Vector3(0.2, -0.2, -0.72)
+const HIP_POS := Vector3(0.25, -0.22, -0.64)
 const ADS_POS := Vector3(0.0, -0.105, -0.40)
 const AXE_POS := Vector3(0.34, -0.32, -0.55)
 
@@ -124,7 +124,7 @@ func _build_rifle() -> void:
 	rifle.position = HIP_POS
 	rifle.scale = Vector3.ONE * 0.82
 	viewmodel.add_child(rifle)
-	rifle_rest_rot = Vector3(0.0, deg_to_rad(-5.0), 0.0)
+	rifle_rest_rot = Vector3(0.0, deg_to_rad(6.0), 0.0)
 
 	var wood := ShaderMaterial.new()
 	var wsh := Shader.new()
@@ -156,7 +156,7 @@ func _build_rifle() -> void:
 	Mats.box(rifle, Vector3(0.032, 0.032, 0.032), crystal, Vector3(0, 0.122, 0.03), Vector3(45, 45, 0))
 	var glow := OmniLight3D.new()
 	glow.light_color = Color(0.3, 0.95, 0.9)
-	glow.light_energy = 0.5
+	glow.light_energy = 0.2
 	glow.omni_range = 0.45
 	glow.position = Vector3(0, 0.12, 0.03)
 	rifle.add_child(glow)
