@@ -550,14 +550,14 @@ func _process(delta: float) -> void:
 		"idle":
 			hud.set_wave("PRÉPARATION", "Approche-toi de la sphère et appuie sur E pour lancer le combat")
 			if near_orb:
-				prompt = "[E] LANCER LE COMBAT"
+				prompt = "[E / X] LANCER LE COMBAT"
 				if Input.is_action_just_pressed("interact"):
 					_start_wave(1)
 		"break":
 			countdown -= delta
 			hud.set_wave("VAGUE %d/%d DANS %d s" % [wave + 1, TOTAL_WAVES, int(ceil(countdown))], "Coupe du bois et renforce tes défenses !")
 			if near_orb:
-				prompt = "[E] LANCER LA VAGUE SUIVANTE"
+				prompt = "[E / X] LANCER LA VAGUE SUIVANTE"
 				if Input.is_action_just_pressed("interact"):
 					countdown = 0.0
 			if countdown <= 0.0:

@@ -56,6 +56,8 @@ var swing_cd := 0.0
 var build_cd := 0.0
 var aiming := false
 var recoil := 0.0
+var sprint_toggle := false
+const STICK_LOOK_SPEED := 3.2
 var rifle_rest_rot := Vector3.ZERO
 var flash_t := 0.0
 var bob_t := 0.0
@@ -274,6 +276,20 @@ func _unhandled_input(event: InputEvent) -> void:
 		_pick_piece(2)
 	elif event.is_action_pressed("reload") and weapon == W.RIFLE:
 		_start_reload()
+	elif event.is_action_pressed("weapon_next"):
+		_select_weapon((weapon + 1) % 3)
+	elif event.is_action_pressed("weapon_prev"):
+		_select_weapon((weapon + 2) % 3)
+	elif event.is_action_pressed("weapon_swap"):
+		_select_weapon(W.AXE if weapon == W.RIFLE else W.RIFLE)
+	elif event.is_action_pressed("build_toggle"):
+		_select_weapon(W.RIFLE if weapon == W.BUILD else W.BUILD)
+	elif event.is_action_pressed("piece_next"):
+		_pick_piece((build_piece + 1) % 3)
+	elif event.is_action_pressed("piece_prev"):
+		_pick_piece((build_piece + 2) % 3)
+	elif event.is_action_pressed("sprint_toggle"):
+		sprint_toggle = true
 
 
 func _pick_piece(p: int) -> void:
@@ -309,7 +325,9 @@ func _physics_process(delta: float) -> void:
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var dir := (transform.basis * Vector3(input.x, 0.0, input.y)).normalized()
 	var spd := WALK_SPEED
-	if Input.is_action_pressed("sprint") and input.y < 0.0 and not aiming:
+	if input.length() < 0.3:
+		sprint_toggle = false
+	if (Input.is_action_pressed("sprint") or sprint_toggle) and input.y < 0.0 and not aiming:
 		spd = SPRINT_SPEED
 	if aiming:
 		spd *= 0.6
@@ -339,7 +357,11 @@ func _update_weapons(delta: float) -> void:
 	fire_cd -= delta
 	swing_cd -= delta
 	build_cd -= delta
-	aiming = Input.is_action_pressed("aim") and weapon == W.RIFLE and not reloading and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	# Souris : on n'agit que si elle est capturée (le clic qui la capture ne doit pas tirer).
+	# Manette : toujours actif.
+	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	aiming = Input.is_action_pressed("aim") and weapon == W.RIFLE and not reloading \
+		and (captured or not Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
 
 	if reloading:
 		reload_t -= delta
@@ -347,7 +369,7 @@ func _update_weapons(delta: float) -> void:
 			reloading = false
 			ammo = MAG_SIZE
 
-	var firing := Input.is_action_pressed("fire") and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	var firing := Input.is_action_pressed("fire") and (captured or not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT))
 	match weapon:
 		W.RIFLE:
 			if firing and fire_cd <= 0.0 and not reloading:
@@ -365,6 +387,14 @@ func _update_weapons(delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	# Visée au stick droit (courbe quadratique pour la précision)
+	if not dead and not get_tree().paused:
+		var look := Input.get_vector("look_left", "look_right", "look_up", "look_down")
+		if look.length() > 0.0:
+			look = look * look.length()
+			var spd := STICK_LOOK_SPEED * (0.45 if aiming else 1.0)
+			rotate_y(-look.x * spd * delta)
+			head.rotation.x = clampf(head.rotation.x - look.y * spd * 0.75 * delta, -1.5, 1.5)
 	# Animations de l'arme en main (balancement, recul, visée)
 	cam.fov = lerpf(cam.fov, 55.0 if aiming else 80.0, minf(14.0 * delta, 1.0))
 	var speed2 := Vector2(velocity.x, velocity.z).length()

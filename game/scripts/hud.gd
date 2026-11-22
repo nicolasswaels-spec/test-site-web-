@@ -257,6 +257,8 @@ func _overlay(title: String, sub: String, buttons: Array, callbacks: Array) -> C
 	var s := _label(vb, sub, 24)
 	for i in buttons.size():
 		var b := Button.new()
+		if i == 0:
+			dim.set_meta("first", b)
 		b.text = buttons[i]
 		b.custom_minimum_size = Vector2(360, 66)
 		b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -287,17 +289,17 @@ func update_player(p) -> void:
 	match p.weapon:
 		0:
 			ammo_label.text = "RECHARGE..." if p.reloading else "%d / ∞" % p.ammo
-			info_label.text = "Clic G : tirer · Clic D : viser · R : recharger"
+			info_label.text = "Clic G / RT : tirer · Clic D / LT : viser · R / X : recharger"
 			mode = 0
 			crosshair.visible = not p.aiming
 		1:
 			ammo_label.text = "HACHE"
-			info_label.text = "Clic G : couper un arbre (+10 bois)"
+			info_label.text = "Clic G / RT : couper un arbre (+10 bois)"
 			mode = 1
 			crosshair.visible = true
 		2:
 			ammo_label.text = p.PIECE_NAMES[p.build_piece]
-			info_label.text = "Clic G : construire (%d bois) · F : mur / sol / rampe" % p.BUILD_COST
+			info_label.text = "Clic G / RT : construire (%d bois) · F / croix : mur, sol, rampe" % p.BUILD_COST
 			mode = 2
 			crosshair.visible = true
 	if p.dead:
@@ -371,6 +373,8 @@ func _unhandled_input(event: InputEvent) -> void:
 func set_paused(p: bool) -> void:
 	get_tree().paused = p
 	pause_panel.visible = p
+	if p:
+		(pause_panel.get_meta("first") as Button).grab_focus()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if p else Input.MOUSE_MODE_CAPTURED
 
 
@@ -379,5 +383,6 @@ func show_end(title: String, sub: String) -> void:
 	end_title.text = title
 	end_sub.text = sub
 	end_panel.visible = true
+	(end_panel.get_meta("first") as Button).grab_focus()
 	pause_panel.visible = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

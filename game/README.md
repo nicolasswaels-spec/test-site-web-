@@ -28,6 +28,24 @@ Les touches sont **physiques** : ZQSD sur un clavier AZERTY, WASD sur un clavier
 | Lancer le combat (près de la sphère) | E |
 | Pause | Échap |
 
+### Manette (Xbox / PlayStation)
+
+| Action | Xbox | PlayStation |
+|---|---|---|
+| Se déplacer / viser | Stick gauche / stick droit | Stick gauche / stick droit |
+| Sprinter | Clic stick gauche | L3 |
+| Sauter | A | Croix |
+| Tirer, couper, construire | RT | R2 |
+| Viser (fusil) | LT | L2 |
+| Changer d'arme | LB / RB | L1 / R1 |
+| Fusil ↔ hache | Y | Triangle |
+| Mode construction (entrer / sortir) | B | Rond |
+| Changer de pièce | Croix directionnelle ← → | Croix directionnelle ← → |
+| Recharger / lancer le combat | X | Carré |
+| Pause | Start | Options |
+
+Dans les menus : croix directionnelle ou stick gauche pour se déplacer, A / Croix pour valider.
+
 ## Règles
 
 - **Fusil d'assaut** : chargeur de 30 balles, munitions illimitées, rechargement en 1,6 s. Les tirs à la tête font double dégât (marqueur jaune).
