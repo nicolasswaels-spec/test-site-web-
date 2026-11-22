@@ -10,7 +10,7 @@ lumineuse contre 10 vagues de zombies.
 2. Dans le gestionnaire de projets, faire **Importer** puis choisir `game/project.godot`.
 3. Appuyer sur **F5** (ou le bouton ▶).
 
-Aucun fichier externe : tous les modèles 3D, shaders et sons sont générés par le code.
+Les modèles de nature viennent du pack CC0 de Quaternius (voir Crédits) ; le reste est généré par le code.
 
 ## Commandes
 
@@ -60,3 +60,10 @@ game/
 
 Pour équilibrer le jeu, les valeurs se trouvent en tête de `player.gd` (dégâts, coût des pièces),
 dans `main.gd` (`_start_wave` et `_spawn_zombie` : nombre, PV et vitesse des zombies) et dans `orb.gd` (PV de la sphère).
+
+## Crédits
+
+- Modèles 3D de nature (sapins, herbe, plantes, buissons, rochers, arbres morts) et leurs textures :
+  pack **Ultimate Stylized Nature** de [Quaternius](https://quaternius.com), licence **CC0** (domaine public).
+  Fichiers dans `assets/nature/`, textures réduites à 1024 px, recolorées en code (`scripts/nature.gd`).
+- Tout le reste (fusil, hache, zombies, sphère, constructions, sons, shaders) est généré par le code du jeu.

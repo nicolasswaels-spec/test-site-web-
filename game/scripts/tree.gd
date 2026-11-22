@@ -1,7 +1,7 @@
 extends StaticBody3D
 ## Grand sapin stylisé que l'on peut couper à la hache pour récolter du bois.
 
-const Forest = preload("res://scripts/forest.gd")
+const Nature = preload("res://scripts/nature.gd")
 
 const WOOD_PER_HIT := 10
 const WOOD_BONUS_FELL := 20
@@ -23,7 +23,7 @@ func _ready() -> void:
 	add_child(visual)
 	visual.scale = Vector3.ONE * tree_scale
 	visual.rotation.y = randf() * TAU
-	var variants := Forest.pine_variants()
+	var variants := Nature.pines()
 	var mi := MeshInstance3D.new()
 	mi.mesh = variants[kind % variants.size()]
 	visual.add_child(mi)

@@ -26,7 +26,7 @@ const MAX_HP := 100.0
 const MASK_SHOOT := 1 | 4 | 8 | 16 | 32
 
 const HIP_POS := Vector3(0.24, -0.24, -0.6)
-const ADS_POS := Vector3(0.0, -0.1, -0.42)
+const ADS_POS := Vector3(0.0, -0.105, -0.40)
 const AXE_POS := Vector3(0.34, -0.32, -0.55)
 
 var main
@@ -100,32 +100,97 @@ func _ready() -> void:
 
 # ------------------------------------------------------------------ modèles
 
+const WOOD_SHADER := """
+shader_type spatial;
+uniform vec3 light_wood : source_color = vec3(0.55, 0.30, 0.16);
+uniform vec3 dark_wood : source_color = vec3(0.26, 0.12, 0.07);
+varying vec3 lp;
+void vertex() { lp = VERTEX; }
+void fragment() {
+	float grain = sin(lp.z * 9.0 + sin(lp.y * 60.0 + lp.x * 40.0) * 1.6) * 0.5 + 0.5;
+	float rings = smoothstep(0.55, 1.0, sin((lp.y * 80.0 + lp.x * 50.0) + lp.z * 6.0) * 0.5 + 0.5);
+	ALBEDO = mix(dark_wood, light_wood, grain * 0.7 + 0.15) * (1.0 - rings * 0.25);
+	ROUGHNESS = 0.55;
+	SPECULAR = 0.4;
+}
+"""
+
+
+## Fusil d'assaut dans l'esprit « forêt au crépuscule » : bois sculpté, acier bleui,
+## laiton, cuir, et un cristal turquoise lumineux qui rappelle la sphère.
 func _build_rifle() -> void:
 	rifle = Node3D.new()
 	rifle.position = HIP_POS
 	rifle.scale = Vector3.ONE * 0.82
 	viewmodel.add_child(rifle)
-	var body := Mats.col(Color(0.18, 0.19, 0.22), 0.5)
-	var dark := Mats.col(Color(0.09, 0.09, 0.1), 0.6)
-	var accent := Mats.col(Color(0.2, 0.55, 1.0), 0.4)   # "rare" bleu
-	Mats.box(rifle, Vector3(0.09, 0.12, 0.5), body, Vector3(0, 0, 0))
-	Mats.box(rifle, Vector3(0.05, 0.03, 0.36), dark, Vector3(0, 0.075, -0.02))
-	Mats.box(rifle, Vector3(0.105, 0.095, 0.24), accent, Vector3(0, -0.005, -0.3))
-	Mats.cylinder(rifle, 0.018, 0.018, 0.28, dark, Vector3(0, 0.01, -0.52), Vector3(90, 0, 0), 8)
-	Mats.box(rifle, Vector3(0.065, 0.2, 0.095), dark, Vector3(0, -0.15, -0.08), Vector3(14, 0, 0))
-	Mats.box(rifle, Vector3(0.055, 0.15, 0.07), body, Vector3(0, -0.12, 0.13), Vector3(-18, 0, 0))
-	Mats.box(rifle, Vector3(0.075, 0.11, 0.2), accent, Vector3(0, -0.02, 0.33))
-	# viseur point rouge
-	Mats.box(rifle, Vector3(0.06, 0.06, 0.08), dark, Vector3(0, 0.12, 0.02))
-	Mats.box(rifle, Vector3(0.012, 0.012, 0.01), Mats.col(Color(1, 0.1, 0.1), 0.2, 6.0), Vector3(0, 0.122, -0.021))
+
+	var wood := ShaderMaterial.new()
+	var wsh := Shader.new()
+	wsh.code = WOOD_SHADER
+	wood.shader = wsh
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color(0.10, 0.11, 0.15)
+	steel.metallic = 0.75
+	steel.roughness = 0.35
+	var steel_dark := steel.duplicate() as StandardMaterial3D
+	steel_dark.albedo_color = Color(0.05, 0.05, 0.07)
+	var brass := StandardMaterial3D.new()
+	brass.albedo_color = Color(0.80, 0.56, 0.26)
+	brass.metallic = 1.0
+	brass.roughness = 0.3
+	var leather := Mats.col(Color(0.20, 0.10, 0.07), 0.9)
+	var crystal := Mats.col(Color(0.30, 0.95, 0.90), 0.1, 4.0)
+
+	# boîtier et capot
+	Mats.box(rifle, Vector3(0.08, 0.10, 0.34), steel, Vector3(0, 0, 0))
+	Mats.cylinder(rifle, 0.041, 0.041, 0.30, steel, Vector3(0, 0.045, 0.0), Vector3(90, 0, 0), 10)
+	Mats.box(rifle, Vector3(0.084, 0.02, 0.34), brass, Vector3(0, -0.04, 0))
+	# runes lumineuses sur les flancs
+	Mats.box(rifle, Vector3(0.004, 0.012, 0.18), crystal, Vector3(0.041, 0.005, 0.02))
+	Mats.box(rifle, Vector3(0.004, 0.012, 0.18), crystal, Vector3(-0.041, 0.005, 0.02))
+	# cristal-viseur en losange sur le dessus
+	var holder := Mats.box(rifle, Vector3(0.05, 0.03, 0.07), steel_dark, Vector3(0, 0.09, 0.03))
+	holder.name = "SightHolder"
+	Mats.box(rifle, Vector3(0.032, 0.032, 0.032), crystal, Vector3(0, 0.122, 0.03), Vector3(45, 45, 0))
+	var glow := OmniLight3D.new()
+	glow.light_color = Color(0.3, 0.95, 0.9)
+	glow.light_energy = 0.5
+	glow.omni_range = 0.45
+	glow.position = Vector3(0, 0.12, 0.03)
+	rifle.add_child(glow)
+
+	# garde-main en bois avec bandes de cuir
+	Mats.box(rifle, Vector3(0.092, 0.082, 0.27), wood, Vector3(0, -0.005, -0.31))
+	for z in [-0.22, -0.40]:
+		Mats.box(rifle, Vector3(0.098, 0.088, 0.025), leather, Vector3(0, -0.005, z))
+	# canon, tube de gaz, bagues en laiton, frein de bouche
+	Mats.cylinder(rifle, 0.017, 0.017, 0.36, steel, Vector3(0, 0.0, -0.56), Vector3(90, 0, 0), 10)
+	Mats.cylinder(rifle, 0.011, 0.011, 0.22, steel_dark, Vector3(0, 0.038, -0.48), Vector3(90, 0, 0), 8)
+	Mats.cylinder(rifle, 0.026, 0.026, 0.022, brass, Vector3(0, 0.012, -0.47), Vector3(90, 0, 0), 10)
+	Mats.cylinder(rifle, 0.027, 0.024, 0.08, steel_dark, Vector3(0, 0.0, -0.76), Vector3(90, 0, 0), 8)
+	Mats.cylinder(rifle, 0.029, 0.029, 0.014, brass, Vector3(0, 0.0, -0.725), Vector3(90, 0, 0), 10)
+	Mats.box(rifle, Vector3(0.008, 0.035, 0.012), steel_dark, Vector3(0, 0.045, -0.66))
+	# chargeur incurvé (deux segments) avec semelle en laiton
+	Mats.box(rifle, Vector3(0.05, 0.12, 0.08), steel_dark, Vector3(0, -0.105, -0.08), Vector3(10, 0, 0))
+	Mats.box(rifle, Vector3(0.05, 0.10, 0.075), steel_dark, Vector3(0, -0.205, -0.055), Vector3(24, 0, 0))
+	Mats.box(rifle, Vector3(0.056, 0.014, 0.082), brass, Vector3(0, -0.255, -0.035), Vector3(24, 0, 0))
+	# poignée-pistolet en bois, pontet
+	Mats.box(rifle, Vector3(0.048, 0.14, 0.062), wood, Vector3(0, -0.11, 0.13), Vector3(-18, 0, 0))
+	Mats.box(rifle, Vector3(0.012, 0.012, 0.09), steel_dark, Vector3(0, -0.085, 0.06))
+	# crosse en bois : corps, busc, plaque de couche
+	Mats.box(rifle, Vector3(0.062, 0.10, 0.26), wood, Vector3(0, -0.03, 0.31), Vector3(6, 0, 0))
+	Mats.box(rifle, Vector3(0.058, 0.03, 0.16), wood, Vector3(0, 0.03, 0.30))
+	Mats.box(rifle, Vector3(0.068, 0.125, 0.022), leather, Vector3(0, -0.045, 0.445), Vector3(6, 0, 0))
+	Mats.box(rifle, Vector3(0.066, 0.016, 0.03), brass, Vector3(0, -0.01, 0.2))
+
 	muzzle = Marker3D.new()
-	muzzle.position = Vector3(0, 0.01, -0.68)
+	muzzle.position = Vector3(0, 0.0, -0.82)
 	rifle.add_child(muzzle)
-	muzzle_flash = Mats.sphere(muzzle, 0.07, Mats.col(Color(1.0, 0.8, 0.3), 0.2, 8.0), Vector3.ZERO, 6)
+	muzzle_flash = Mats.sphere(muzzle, 0.07, Mats.col(Color(1.0, 0.75, 0.35), 0.2, 8.0), Vector3.ZERO, 6)
 	muzzle_flash.visible = false
 	muzzle_light = OmniLight3D.new()
-	muzzle_light.light_color = Color(1.0, 0.75, 0.4)
-	muzzle_light.omni_range = 6.0
+	muzzle_light.light_color = Color(1.0, 0.7, 0.4)
+	muzzle_light.omni_range = 7.0
 	muzzle_light.light_energy = 0.0
 	muzzle.add_child(muzzle_light)
 

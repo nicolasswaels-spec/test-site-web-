@@ -2,7 +2,7 @@ extends Node3D
 ## Scène de jeu : construit la plaine, les arbres, la sphère, et gère les 10 vagues.
 
 const Mats = preload("res://scripts/mats.gd")
-const Forest = preload("res://scripts/forest.gd")
+const Nature = preload("res://scripts/nature.gd")
 const PlayerScript = preload("res://scripts/player.gd")
 const ZombieScript = preload("res://scripts/zombie.gd")
 const TreeScript = preload("res://scripts/tree.gd")
@@ -236,13 +236,12 @@ func _build_ground() -> void:
 	ground.add_child(cs)
 
 	# Herbe haute (par morceaux de 16 m pour que le moteur n'affiche que ce qui est proche)
-	var grass_mat := Forest.grass_material(Color(0.01, 0.03, 0.06), Color(0.07, 0.30, 0.30), Color(0.16, 0.36, 0.24))
-	_scatter_chunks(Forest.grass_clump(), grass_mat, 1.2 if high else 0.5, MAP_RADIUS + 12.0, 5.0, 0.55, 1.0, 60.0 if high else 40.0)
-	# Plantes rouges, buissons bleu nuit, quelques fleurs blanches
-	var red_mat := Forest.grass_material(Color(0.18, 0.02, 0.06), Color(0.85, 0.12, 0.18), Color(0.95, 0.30, 0.25), 0.1)
-	_scatter_chunks(Forest.plant(), red_mat, 0.03, MAP_RADIUS + 12.0, 7.0, 0.7, 1.4, 80.0, true)
-	var bush_mat := Forest.grass_material(Color(0.02, 0.03, 0.10), Color(0.10, 0.16, 0.42), Color(0.16, 0.12, 0.40), 0.06)
-	_scatter_chunks(Forest.bush(), bush_mat, 0.025, MAP_RADIUS + 12.0, 7.0, 0.9, 1.8, 80.0, true)
+	_scatter_chunks(Nature.grass(), null, 1.3 if high else 0.55, MAP_RADIUS + 12.0, 5.0, 0.8, 1.3, 60.0 if high else 40.0)
+	# Plantes rouges et buissons bleu nuit, en petits groupes
+	for v in [1, 2]:
+		_scatter_chunks(Nature.red_plant(v), null, 0.018, MAP_RADIUS + 12.0, 7.0, 1.0, 1.7, 80.0, true)
+	_scatter_chunks(Nature.bush(false), null, 0.015, MAP_RADIUS + 12.0, 7.0, 1.0, 2.0, 80.0, true)
+	_scatter_chunks(Nature.bush(true), null, 0.01, MAP_RADIUS + 12.0, 7.0, 1.0, 1.8, 80.0, true)
 	var flower := SphereMesh.new()
 	flower.radius = 0.05
 	flower.height = 0.1
@@ -284,7 +283,8 @@ func _scatter_chunks(mesh: Mesh, mat: Material, density: float, radius: float, c
 				mm.set_instance_transform(i, xforms[i])
 			var mmi := MultiMeshInstance3D.new()
 			mmi.multimesh = mm
-			mmi.material_override = mat
+			if mat:
+				mmi.material_override = mat
 			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			mmi.visibility_range_end = vis_end
 			mmi.visibility_range_end_margin = 8.0
@@ -315,7 +315,7 @@ func _build_storm_wall() -> void:
 
 func _build_scenery() -> void:
 	# Forêt dense autour de la zone (non interactive, une MultiMesh par variante)
-	var variants := Forest.pine_variants()
+	var variants := Nature.pines()
 	var lists: Array = []
 	for v in variants:
 		lists.append([])
@@ -343,7 +343,7 @@ func _build_scenery() -> void:
 		var a := rng.randf() * TAU
 		var r := rng.randf_range(25.0, MAP_RADIUS + 15.0)
 		var mi := MeshInstance3D.new()
-		mi.mesh = Forest.dead_tree()
+		mi.mesh = Nature.dead_tree(1 + i % 3)
 		mi.position = Vector3(cos(a) * r, 0, sin(a) * r)
 		mi.rotation.y = rng.randf() * TAU
 		mi.scale = Vector3.ONE * rng.randf_range(0.8, 1.3)
@@ -359,24 +359,27 @@ func _build_scenery() -> void:
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 	# Rochers
-	var rock_mat := Mats.col(Color(0.20, 0.21, 0.32), 0.95)
 	for i in 24:
 		var a := rng.randf() * TAU
 		var r := rng.randf_range(12.0, MAP_RADIUS - 4.0)
-		var rad := rng.randf_range(0.6, 1.6)
+		var sc := rng.randf_range(1.4, 3.0)
 		var body := StaticBody3D.new()
 		body.collision_layer = 16
 		body.collision_mask = 0
 		body.position = Vector3(cos(a) * r, 0, sin(a) * r)
+		body.rotation.y = rng.randf() * TAU
 		add_child(body)
-		var m := Mats.sphere(body, rad, rock_mat, Vector3(0, rad * 0.3, 0), 6)
-		m.scale = Vector3(1.0, 0.75, rng.randf_range(0.8, 1.2))
-		m.rotation.y = rng.randf() * TAU
+		var m := MeshInstance3D.new()
+		m.mesh = Nature.rock(1 + i % 5)
+		m.scale = Vector3.ONE * sc
+		body.add_child(m)
+		var ab: AABB = m.mesh.get_aabb()
+		var rad := maxf(ab.size.x, ab.size.z) * 0.5 * sc
 		var cs := CollisionShape3D.new()
 		var ss := SphereShape3D.new()
-		ss.radius = rad * 0.85
+		ss.radius = rad * 0.8
 		cs.shape = ss
-		cs.position.y = rad * 0.3
+		cs.position.y = ab.size.y * sc * 0.3
 		body.add_child(cs)
 		rocks.append(body)
 		body.set_meta("radius", rad)
@@ -432,7 +435,7 @@ func _spawn_trees() -> void:
 			continue
 		placed.append(p)
 		var t := TreeScript.new()
-		t.kind = rng.randi() % 4
+		t.kind = rng.randi() % 5
 		t.tree_scale = rng.randf_range(0.8, 1.25)
 		t.main = self
 		t.position = p
