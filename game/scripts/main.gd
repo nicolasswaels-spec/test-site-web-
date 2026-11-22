@@ -156,40 +156,40 @@ func _build_environment() -> void:
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_sky_contribution = 0.6
-	env.ambient_light_color = Color(0.35, 0.35, 0.6)
-	env.ambient_light_energy = 0.7
+	env.ambient_light_color = Color(0.22, 0.24, 0.5)
+	env.ambient_light_energy = 0.45
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 1.1
+	env.tonemap_exposure = 1.0
 	env.glow_enabled = true
 	env.glow_intensity = 0.9
 	env.glow_bloom = 0.12
 	env.glow_hdr_threshold = 0.9
-	env.ssao_enabled = high
+	env.ssao_enabled = false
 	env.ssao_intensity = 1.2
 	# Brouillard coloré : bleu-violet dans l'ombre, orangé face au soleil
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.30, 0.30, 0.58)
+	env.fog_light_color = Color(0.17, 0.17, 0.38)
 	env.fog_light_energy = 1.0
-	env.fog_sun_scatter = 0.55
-	env.fog_density = 0.016
+	env.fog_sun_scatter = 0.35
+	env.fog_density = 0.013
 	env.fog_aerial_perspective = 0.35
 	env.fog_sky_affect = 0.25
 	env.fog_height = 1.5
-	env.fog_height_density = 0.12
+	env.fog_height_density = 0.07
 	# Brouillard volumétrique : rayons de lumière entre les arbres
 	if high:
 		env.volumetric_fog_enabled = true
-		env.volumetric_fog_density = 0.012
+		env.volumetric_fog_density = 0.007
 		env.volumetric_fog_albedo = Color(0.85, 0.85, 1.0)
-		env.volumetric_fog_emission = Color(0.12, 0.10, 0.28)
-		env.volumetric_fog_emission_energy = 0.6
+		env.volumetric_fog_emission = Color(0.05, 0.04, 0.12)
+		env.volumetric_fog_emission_energy = 0.3
 		env.volumetric_fog_anisotropy = 0.7
 		env.volumetric_fog_length = 70.0
-		env.volumetric_fog_ambient_inject = 0.4
+		env.volumetric_fog_ambient_inject = 0.1
 		env.volumetric_fog_sky_affect = 0.0
 	env.adjustment_enabled = true
 	env.adjustment_saturation = 1.25
-	env.adjustment_contrast = 1.08
+	env.adjustment_contrast = 1.15
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -236,8 +236,8 @@ func _build_ground() -> void:
 	ground.add_child(cs)
 
 	# Herbe haute (par morceaux de 16 m pour que le moteur n'affiche que ce qui est proche)
-	var grass_mat := Forest.grass_material(Color(0.02, 0.06, 0.08), Color(0.10, 0.40, 0.36), Color(0.22, 0.46, 0.28))
-	_scatter_chunks(Forest.grass_clump(), grass_mat, 1.1 if high else 0.45, MAP_RADIUS + 12.0, 5.0, 0.8, 1.5, 60.0 if high else 40.0)
+	var grass_mat := Forest.grass_material(Color(0.01, 0.03, 0.06), Color(0.07, 0.30, 0.30), Color(0.16, 0.36, 0.24))
+	_scatter_chunks(Forest.grass_clump(), grass_mat, 1.2 if high else 0.5, MAP_RADIUS + 12.0, 5.0, 0.55, 1.0, 60.0 if high else 40.0)
 	# Plantes rouges, buissons bleu nuit, quelques fleurs blanches
 	var red_mat := Forest.grass_material(Color(0.18, 0.02, 0.06), Color(0.85, 0.12, 0.18), Color(0.95, 0.30, 0.25), 0.1)
 	_scatter_chunks(Forest.plant(), red_mat, 0.03, MAP_RADIUS + 12.0, 7.0, 0.7, 1.4, 80.0, true)
@@ -388,20 +388,20 @@ func _build_scenery() -> void:
 	fireflies.preprocess = 7.0
 	fireflies.local_coords = false
 	fireflies.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	fireflies.emission_box_extents = Vector3(28, 3, 28)
+	fireflies.emission_box_extents = Vector3(26, 2.5, 26)
 	fireflies.direction = Vector3.UP
 	fireflies.spread = 180.0
 	fireflies.gravity = Vector3(0, 0.05, 0)
 	fireflies.initial_velocity_min = 0.1
 	fireflies.initial_velocity_max = 0.4
 	var q := QuadMesh.new()
-	q.size = Vector2(0.07, 0.07)
+	q.size = Vector2(0.045, 0.045)
 	var fm := StandardMaterial3D.new()
 	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	fm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 	fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	fm.vertex_color_use_as_albedo = true
-	fm.albedo_color = Color(4.0, 3.4, 1.2)
+	fm.albedo_color = Color(1.0, 0.9, 0.45)
 	q.material = fm
 	fireflies.mesh = q
 	var ramp := Gradient.new()

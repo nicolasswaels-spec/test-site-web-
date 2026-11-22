@@ -6,8 +6,8 @@ const FOLIAGE_SHADER := """
 shader_type spatial;
 render_mode cull_disabled, specular_disabled, diffuse_lambert_wrap;
 uniform sampler2D tex : source_color, filter_linear_mipmap, repeat_disable;
-uniform vec3 col_dark : source_color = vec3(0.04, 0.10, 0.16);
-uniform vec3 col_light : source_color = vec3(0.10, 0.30, 0.32);
+uniform vec3 col_dark : source_color = vec3(0.02, 0.05, 0.10);
+uniform vec3 col_light : source_color = vec3(0.06, 0.22, 0.25);
 uniform vec3 col_warm : source_color = vec3(0.30, 0.32, 0.22);
 void vertex() {
 	vec3 origin = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
@@ -66,7 +66,7 @@ static var _bush: ArrayMesh
 static func trunk_material() -> StandardMaterial3D:
 	if _trunk_mat == null:
 		_trunk_mat = StandardMaterial3D.new()
-		_trunk_mat.albedo_color = Color(0.11, 0.09, 0.14)
+		_trunk_mat.albedo_color = Color(0.07, 0.06, 0.11)
 		_trunk_mat.roughness = 1.0
 		_trunk_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP
 	return _trunk_mat
