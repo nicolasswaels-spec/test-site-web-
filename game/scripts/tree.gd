@@ -7,6 +7,7 @@ const WOOD_PER_HIT := 10
 const WOOD_BONUS_FELL := 20
 
 var kind := 0
+var species := 0   # 0 sapin, 1 érable, 2 bouleau
 var tree_scale := 1.0
 var trunk_radius := 0.4
 var main
@@ -24,7 +25,11 @@ func _ready() -> void:
 	add_child(visual)
 	visual.scale = Vector3.ONE * tree_scale
 	visual.rotation.y = randf() * TAU
-	var variants := Nature.pines()
+	var variants: Array[ArrayMesh] = Nature.pines()
+	if species == 1:
+		variants = Nature.maples()
+	elif species == 2:
+		variants = Nature.birches()
 	var mi := MeshInstance3D.new()
 	mi.mesh = variants[kind % variants.size()]
 	visual.add_child(mi)

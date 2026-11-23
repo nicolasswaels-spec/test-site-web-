@@ -29,6 +29,7 @@ Les touches sont **physiques** : ZQSD sur un clavier AZERTY, WASD sur un clavier
 | Améliorer la construction visée (×3 PV) | T |
 | Modifier la construction visée (porte, fenêtre, trappe, rampe retournée) | X |
 | Escalader une construction | Avancer contre elle |
+| Poser des barbelés sur le sol visé (2 pièces) | B |
 | Recharger | R |
 | Lancer le combat (près de la sphère) | E |
 | Pause | Échap |
@@ -49,6 +50,7 @@ Les touches sont **physiques** : ZQSD sur un clavier AZERTY, WASD sur un clavier
 | En construction : bois ↔ pierre | Y | Triangle |
 | Réparer / améliorer la construction visée | Croix ↓ / ↑ | Croix ↓ / ↑ |
 | Modifier la construction visée | Croix → | Croix → |
+| Poser des barbelés sur le sol visé | Clic stick droit | R3 |
 | Recharger / lancer le combat | X | Carré |
 | Pause | Start | Options |
 
@@ -61,6 +63,8 @@ Dans les menus : croix directionnelle ou stick gauche pour se déplacer, A / Cro
 - **Construction** : grille de 4 m comme dans Fortnite, 10 bois (ou 10 pierres) par pièce. La pierre se débloque à la vague 5 et a 2× plus de PV que le bois. Les PV s'affichent au-dessus de chaque pièce. On peut l'escalader en avançant contre elle, la modifier (mur → porte → fenêtre, sol → trappe, rampe retournée ; les portes laissent passer le joueur mais pas les squelettes), la démolir à la hache, réparer la pièce visée (coût proportionnel aux dégâts) et l'améliorer une fois pour 50 du même matériau (PV ×3, renforts en fer). Une pièce apparaît à 30 % de sa solidité et se renforce en 1,5 s. Fantôme bleu : placement possible, rouge : impossible.
 - **Ennemis** (squelettes animés) : trois types. Les squelettes de base foncent sur la sphère et ne s'en prennent au joueur que de très près (6,5 m, moins encore loin de la sphère). Ceux à capuche traquent le joueur (13 m). Les boss ignorent le joueur et ne visent que la sphère. ils sortent de terre au bord de la zone (repérés par des colonnes rouges) et marchent vers la sphère. Si tu passes à moins de 13 m, ils te prennent en chasse. Une construction qui leur barre la route est frappée jusqu'à ce qu'elle casse.
 - **Vagues** : 10 vagues de plus en plus nombreuses, rapides et résistantes. Un boss arrive à la vague 5, deux à la vague 10. Entre deux vagues, tu as 60 s (E pour passer), +50 bois, ta vie est restaurée et la sphère est réparée de 150 PV.
+- **Après la 10ᵉ vague**, la partie continue : la forêt s'ouvre au nord par un couloir vers un **nouveau biome** (érables pourpres, bouleaux dorés, sol mauve) où se trouve une **2ᵉ sphère** (colonne de lumière). On y construit, puis on lance ses 10 vagues avec E / X. Les squelettes n'attaquent plus que cette sphère. Sa vague 1 est aussi dure que la vague 8 de la 1re sphère, et la difficulté continue de monter.
+- **Pièces** : petites pièces métalliques (engrenages, boulons) éparpillées dans les deux zones ; on les ramasse en passant dessus, elles réapparaissent ailleurs. 2 pièces = des **barbelés** à poser sur un sol plein : les squelettes qui les traversent sont ralentis à 30 % de leur vitesse et perdent 6 PV/s.
 - **Mort** : tu réapparais près de la sphère après 5 s, avec 3 s d'invulnérabilité.
 - **Défaite** si la sphère est détruite. **Victoire** après la 10ᵉ vague.
 

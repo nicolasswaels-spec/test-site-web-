@@ -156,6 +156,49 @@ static func pines() -> Array[ArrayMesh]:
 	return _cache["pines"]
 
 
+static func _tree_species(key: String, models: Array, heights: Array, bark_tex: String, bark_tint: Color, leaf_tex: String, dark: Color, light: Color) -> Array[ArrayMesh]:
+	if not _cache.has(key):
+		var arr: Array[ArrayMesh] = []
+		var bark := StandardMaterial3D.new()
+		bark.albedo_texture = _texture(bark_tex)
+		bark.albedo_color = bark_tint
+		bark.roughness = 1.0
+		bark.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP
+		var href: float = heights.max()
+		var leaves := leaf_material(leaf_tex, dark, light, href, 0.08)
+		for i in models.size():
+			var m := _recenter_on_trunk(_bake(models[i], heights[i]))
+			m.surface_set_material(0, bark)
+			m.surface_set_material(1, leaves)
+			arr.append(m)
+		_cache[key] = arr
+	return _cache[key]
+
+
+## Biome 2 : érables pourpres.
+static func maples() -> Array[ArrayMesh]:
+	return _tree_species("maples", ["MapleTree_1", "MapleTree_2", "MapleTree_3", "MapleTree_5"], [11.0, 10.0, 12.0, 11.5],
+		"MapleTree_Bark.png", Color(0.30, 0.20, 0.28), "MapleTree_Leaves.png", Color(0.20, 0.02, 0.07), Color(0.92, 0.22, 0.30))
+
+
+## Biome 2 : bouleaux dorés.
+static func birches() -> Array[ArrayMesh]:
+	return _tree_species("birches", ["BirchTree_1", "BirchTree_2"], [10.0, 12.0],
+		"BirchTree_Bark.png", Color(0.80, 0.74, 0.86), "BirchTree_Leaves.png", Color(0.30, 0.12, 0.03), Color(1.0, 0.72, 0.25))
+
+
+## Matériau d'herbe recoloré (pour le biome 2).
+static func grass_material(base: Color, tip: Color, tip2: Color) -> ShaderMaterial:
+	grass()
+	var mat := ShaderMaterial.new()
+	mat.shader = _grass_shader
+	mat.set_shader_parameter("tex", _texture("Grass.png"))
+	mat.set_shader_parameter("base_col", base)
+	mat.set_shader_parameter("tip_col", tip)
+	mat.set_shader_parameter("tip_col2", tip2)
+	return mat
+
+
 static func grass() -> ArrayMesh:
 	if not _cache.has("grass"):
 		var m := _bake("Grass_Large", 0.0, 1.5)

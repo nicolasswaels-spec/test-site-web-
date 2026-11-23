@@ -66,6 +66,8 @@ var level := 0
 var variant := 0
 var shapes: Array[CollisionShape3D] = []
 var door_blocker: StaticBody3D
+var trap: Area3D   # barbelés posés sur un sol
+const TRAP_COST := 2
 var key := ""
 var main
 var max_hp := 150.0
@@ -290,6 +292,9 @@ func cycle_edit() -> String:
 		variant = (variant + 1) % 3
 	elif piece == FLOOR:
 		variant = (variant + 1) % 2
+		if variant == 1 and trap:   # une trappe ne peut pas porter de barbelés
+			trap.queue_free()
+			trap = null
 	else:
 		var p := global_position
 		global_transform = Transform3D(Basis(Vector3.UP, PI) * global_transform.basis, p)
@@ -313,6 +318,58 @@ func next_edit_label() -> String:
 	if piece == FLOOR:
 		return ["trappe", "sol plein"][variant]
 	return "retourner"
+
+
+func can_have_trap() -> bool:
+	return piece == FLOOR and variant == 0 and trap == null
+
+
+## Barbelés : ralentissent fortement les squelettes (30 % de leur vitesse) et les blessent un peu.
+func add_trap() -> void:
+	if not can_have_trap():
+		return
+	trap = Area3D.new()
+	trap.collision_layer = 0
+	trap.collision_mask = 4   # squelettes
+	trap.monitorable = false
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(3.9, 1.6, 3.9)
+	cs.shape = bs
+	cs.position = Vector3(0, 0.9, 0)
+	trap.add_child(cs)
+	add_child(trap)
+	trap.body_entered.connect(func(b): if b.has_method("trap_enter"): b.trap_enter())
+	trap.body_exited.connect(func(b): if b.has_method("trap_exit"): b.trap_exit())
+	# visuel : trois rouleaux de fil barbelé et des piquets en bois
+	var wire := StandardMaterial3D.new()
+	wire.albedo_color = Color(0.42, 0.42, 0.46)
+	wire.metallic = 0.8
+	wire.roughness = 0.4
+	var stake := Mats.col(Color(0.30, 0.18, 0.10))
+	var deco := Node3D.new()
+	trap.add_child(deco)
+	for z in [-1.25, 0.0, 1.25]:
+		for i in 9:
+			var x := -1.6 + i * 0.4
+			var ring := MeshInstance3D.new()
+			var tm := TorusMesh.new()
+			tm.inner_radius = 0.26
+			tm.outer_radius = 0.285
+			tm.rings = 12
+			tm.ring_segments = 4
+			ring.mesh = tm
+			ring.material_override = wire
+			ring.position = Vector3(x, 0.38, z + sin(i * 1.7) * 0.05)
+			ring.rotation = Vector3(randf_range(-0.25, 0.25), 0.0, PI * 0.5 + randf_range(-0.2, 0.2))
+			deco.add_child(ring)
+			# pointes
+			Mats.box(deco, Vector3(0.02, 0.12, 0.02), wire, Vector3(x + 0.1, 0.66, z), Vector3(0, 0, 35))
+		Mats.cylinder(deco, 0.04, 0.05, 0.9, stake, Vector3(-1.85, 0.45, z), Vector3.ZERO, 6)
+		Mats.cylinder(deco, 0.04, 0.05, 0.9, stake, Vector3(1.85, 0.45, z), Vector3.ZERO, 6)
+	deco.scale = Vector3(1, 0.1, 1)
+	create_tween().tween_property(deco, "scale", Vector3.ONE, 0.25).set_trans(Tween.TRANS_BACK)
+	Sfx.play_3d("reload", global_position, 0.0, 0.8)
 
 
 func can_upgrade() -> bool:

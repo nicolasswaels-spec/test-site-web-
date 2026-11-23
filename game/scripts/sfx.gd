@@ -24,6 +24,7 @@ func _ready() -> void:
 	streams["zdie"] = _groan(0.55, 60.0)
 	streams["orb_hit"] = _tone(210.0, 0.2, 0.5)
 	streams["horn"] = _horn()
+	streams["coin"] = _arpeggio([1320.0, 1760.0])
 	streams["win"] = _arpeggio([523.0, 659.0, 784.0, 1046.0])
 	streams["lose"] = _arpeggio([392.0, 330.0, 262.0, 196.0])
 	for i in 18:

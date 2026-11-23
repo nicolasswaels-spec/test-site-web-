@@ -9,6 +9,7 @@ const TreeScript = preload("res://scripts/tree.gd")
 const OrbScript = preload("res://scripts/orb.gd")
 const StructureScript = preload("res://scripts/structure.gd")
 const RockScript = preload("res://scripts/rock.gd")
+const PickupScript = preload("res://scripts/pickup.gd")
 const HudScript = preload("res://scripts/hud.gd")
 
 const MAP_RADIUS := 70.0
@@ -18,6 +19,14 @@ const BREAK_TIME := 60.0
 const STONE_WAVE := 5
 const RESPAWN_TIME := 5.0
 const TREE_COUNT := 140
+# Zone 2 (biome des érables), débloquée après les 10 vagues de la 1re sphère
+const ZONE2_CENTER := Vector3(0, 0, -160)
+const ZONE2_RADIUS := 58.0
+const CORRIDOR_HALF := 7.0
+const CORRIDOR_Z := Vector2(-104.0, -66.0)   # z min / z max du couloir
+const ZONE2_DIFFICULTY_OFFSET := 7           # vague 1 de la sphère 2 = vague 8 de la sphère 1
+const ZONE2_TREE_COUNT := 95
+const PICKUPS_PER_ZONE := 30
 
 const GROUND_SHADER := """
 shader_type spatial;
@@ -35,6 +44,13 @@ void fragment() {
 	float r = length(wpos.xz);
 	float dirt_n = noise(wpos.xz * 0.8) * 1.5;
 	vec3 dirt = mix(vec3(0.14, 0.11, 0.15), vec3(0.22, 0.17, 0.20), noise(wpos.xz * 3.0));
+	// biome 2 (érables) : sol mauve autour de la 2e sphère
+	vec2 c2 = vec2(0.0, -160.0);
+	float r2 = length(wpos.xz - c2);
+	float b2 = smoothstep(72.0, 58.0, r2 + noise(wpos.xz * 0.1) * 8.0);
+	vec3 grass2 = mix(vec3(0.12, 0.04, 0.10), vec3(0.26, 0.10, 0.20), n);
+	grass = mix(grass, grass2, b2);
+	r = min(r, r2);
 	ALBEDO = mix(dirt, grass, smoothstep(4.5, 7.0, r + dirt_n));
 	ROUGHNESS = 1.0;
 }
@@ -71,9 +87,12 @@ const STORM_SHADER := """
 shader_type spatial;
 render_mode unshaded, cull_disabled, blend_add, depth_draw_never, shadows_disabled, fog_disabled;
 uniform vec4 color : source_color = vec4(0.25, 0.55, 1.0, 1.0);
+uniform float gap = 0.0;   // ouverture du couloir vers la zone 2
 varying float h;
-void vertex() { h = VERTEX.y; }
+varying vec3 wp;
+void vertex() { h = VERTEX.y; wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
+	if (gap > 0.0 && abs(wp.x) < gap && wp.z < -60.0 && wp.z > -108.0) { discard; }
 	float stripes = 0.5 + 0.5 * sin(UV.x * 500.0 + h * 1.5 - TIME * 2.0);
 	float fade = smoothstep(6.0, -15.0, h);
 	ALBEDO = color.rgb * (0.08 + 0.12 * stripes) * fade;
@@ -89,12 +108,20 @@ var obstacle_pos: Array[Vector3] = []
 var obstacle_rad: Array[float] = []
 var zombie_cache: Array[Node] = []
 var rocks: Array[Node3D] = []
+var zone := 1                 # sphère défendue : 1 puis 2
+var zone2_unlocked := false
+var orb1
+var orb2
+var orb2_beacon: Node3D
+var storm_mats: Array[ShaderMaterial] = []
+var zone2_blockers: Array[Node] = []   # forêt et pics qui occupent la zone 2 avant son ouverture
+var spires: Array[Node3D] = []
 var stone_unlocked := false
 var fireflies: CPUParticles3D
 var high := true
 var tracer_mat: StandardMaterial3D
 
-var state := "idle"   # idle, break, wave, won, lost
+var state := "idle"   # idle, break, wave, explore (zone 2 ouverte), free (tout fini), lost
 var wave := 0
 var to_spawn := 0
 var bosses_left := 0
@@ -132,6 +159,7 @@ func _ready() -> void:
 	add_child(orb)
 	orb.damaged.connect(_on_orb_damaged)
 	orb.destroyed.connect(_on_orb_destroyed)
+	orb1 = orb
 
 	hud = HudScript.new()
 	add_child(hud)
@@ -144,6 +172,9 @@ func _ready() -> void:
 	player.position = Vector3(0, 0.2, 8)
 	add_child(player)
 	player.died.connect(_on_player_died)
+
+	for i in PICKUPS_PER_ZONE:
+		spawn_pickup(1)
 
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	hud.show_center("ZONE ZÉRO", "Coupe du bois (2), construis (3), puis active la sphère (E)", 4.0)
@@ -257,12 +288,12 @@ func _build_ground() -> void:
 	_scatter_chunks(flower, Mats.col(Color(0.9, 0.92, 1.0), 0.8, 0.6), 0.05, MAP_RADIUS, 6.0, 0.8, 1.4, 45.0, false, 0.55)
 
 
-func _scatter_chunks(mesh: Mesh, mat: Material, density: float, radius: float, clear_r: float, smin: float, smax: float, vis_end: float, clustered := false, y_off := 0.0) -> void:
+func _scatter_chunks(mesh: Mesh, mat: Material, density: float, radius: float, clear_r: float, smin: float, smax: float, vis_end: float, clustered := false, y_off := 0.0, center := Vector3.ZERO, filter := Callable()) -> void:
 	var chunk := 16.0
 	var n := int(ceil(radius / chunk))
 	for cx in range(-n, n):
 		for cz in range(-n, n):
-			var origin := Vector3((cx + 0.5) * chunk, 0.0, (cz + 0.5) * chunk)
+			var origin := center + Vector3((cx + 0.5) * chunk, 0.0, (cz + 0.5) * chunk)
 			var xforms: Array[Transform3D] = []
 			var count := int(density * chunk * chunk)
 			var centers: Array[Vector3] = []
@@ -274,8 +305,10 @@ func _scatter_chunks(mesh: Mesh, mat: Material, density: float, radius: float, c
 				if clustered:
 					local = centers[i % 3] + Vector3(rng.randfn(0.0, 1.6), 0.0, rng.randfn(0.0, 1.6))
 				var world := origin + local
-				var r := Vector2(world.x, world.z).length()
+				var r := Vector2(world.x - center.x, world.z - center.z).length()
 				if r > radius or r < clear_r:
+					continue
+				if filter.is_valid() and not filter.call(world):
 					continue
 				var s := rng.randf_range(smin, smax)
 				var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.8, 1.2), s))
@@ -318,32 +351,29 @@ func _build_storm_wall() -> void:
 	mi.position.y = 15.0
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
+	storm_mats.append(mat)
 
 
 func _build_scenery() -> void:
 	# Forêt dense autour de la zone (non interactive, une MultiMesh par variante)
+	# Les arbres qui se trouvent sur la future zone 2 / le couloir vont dans des MultiMesh
+	# à part, supprimées à l'ouverture de la zone 2.
 	var variants := Nature.pines()
-	var lists: Array = []
-	for v in variants:
-		lists.append([])
-	for i in 520:
+	var keep: Array = []
+	var block: Array = []
+	for i in 620:
 		var a := rng.randf() * TAU
 		var r := MAP_RADIUS + 3.0 + pow(rng.randf(), 0.8) * 95.0
 		var s := rng.randf_range(0.9, 1.7) * (1.0 + (r - MAP_RADIUS) / 120.0)
 		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s, s))
-		lists[rng.randi() % variants.size()].append(Transform3D(b, Vector3(cos(a) * r, 0, sin(a) * r)))
-	for vi in variants.size():
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.mesh = variants[vi]
-		var arr: Array = lists[vi]
-		mm.instance_count = arr.size()
-		for i in arr.size():
-			mm.set_instance_transform(i, arr[i])
-		var mmi := MultiMeshInstance3D.new()
-		mmi.multimesh = mm
-		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(mmi)
+		var pos := Vector3(cos(a) * r, 0, sin(a) * r)
+		var entry := [rng.randi() % variants.size(), Transform3D(b, pos)]
+		if _in_zone2_footprint(pos, 6.0):
+			block.append(entry)
+		else:
+			keep.append(entry)
+	_add_forest(variants, keep)
+	zone2_blockers.append_array(_add_forest(variants, block))
 
 	# Quelques arbres morts bleu pâle, comme dans les références
 	for i in 9:
@@ -364,6 +394,8 @@ func _build_scenery() -> void:
 		var hgt := rng.randf_range(45.0, 110.0)
 		var m := Mats.cylinder(self, rng.randf_range(1.0, 6.0), hgt * 0.32, hgt, spire_mat, Vector3(cos(a) * r, hgt * 0.5 - 4.0, sin(a) * r), Vector3(rng.randf_range(-6, 6), 0, rng.randf_range(-6, 6)), 5)
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if Vector2(m.position.x - ZONE2_CENTER.x, m.position.z - ZONE2_CENTER.z).length() < ZONE2_RADIUS + 40.0:
+			zone2_blockers.append(m)
 
 	# Lucioles autour du joueur
 	fireflies = CPUParticles3D.new()
@@ -423,11 +455,79 @@ func _spawn_trees() -> void:
 		add_child(t)
 
 
-func _random_free_spot(min_r: float) -> Vector3:
+func _add_forest(variants: Array, entries: Array) -> Array[Node]:
+	var created: Array[Node] = []
+	for vi in variants.size():
+		var arr: Array = []
+		for e in entries:
+			if e[0] == vi:
+				arr.append(e[1])
+		if arr.is_empty():
+			continue
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = variants[vi]
+		mm.instance_count = arr.size()
+		for i in arr.size():
+			mm.set_instance_transform(i, arr[i])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mmi)
+		created.append(mmi)
+	return created
+
+
+## Vrai si la position est sur la zone 2 ou le couloir (marge en mètres).
+func _in_zone2_footprint(p: Vector3, margin: float) -> bool:
+	if Vector2(p.x - ZONE2_CENTER.x, p.z - ZONE2_CENTER.z).length() < ZONE2_RADIUS + margin:
+		return true
+	return absf(p.x) < CORRIDOR_HALF + margin and p.z > CORRIDOR_Z.x - margin and p.z < CORRIDOR_Z.y + margin
+
+
+## Ramène une position dans la zone jouable (zone 1, et si débloqués le couloir et la zone 2).
+func clamp_to_area(p: Vector3) -> Vector3:
+	var lim1 := MAP_RADIUS - 1.5
+	var f1 := Vector2(p.x, p.z)
+	if f1.length() <= lim1:
+		return p
+	var best := f1.normalized() * lim1
+	if zone2_unlocked:
+		var cor_x := clampf(p.x, -CORRIDOR_HALF + 0.5, CORRIDOR_HALF - 0.5)
+		var cor_z := clampf(p.z, CORRIDOR_Z.x, CORRIDOR_Z.y + 6.0)
+		if cor_x == p.x and cor_z == p.z:
+			return p
+		var c2 := Vector2(ZONE2_CENTER.x, ZONE2_CENTER.z)
+		var d2 := f1 - c2
+		if d2.length() <= ZONE2_RADIUS - 1.5:
+			return p
+		var cands := [best, Vector2(cor_x, cor_z), c2 + d2.normalized() * (ZONE2_RADIUS - 1.5)]
+		for c in cands:
+			if c.distance_to(f1) < best.distance_to(f1):
+				best = c
+	return Vector3(best.x, p.y, best.y)
+
+
+func spawn_pickup(z: int) -> void:
+	var pk := PickupScript.new()
+	pk.main = self
+	pk.zone = z
+	var center := Vector3.ZERO if z == 1 else ZONE2_CENTER
+	var radius := MAP_RADIUS if z == 1 else ZONE2_RADIUS
+	pk.position = _random_free_spot(6.0, center, radius)
+	add_child(pk)
+
+
+func on_pickup_collected(pk: Node) -> void:
+	var z: int = pk.zone
+	get_tree().create_timer(45.0, false).timeout.connect(func(): spawn_pickup(z))
+
+
+func _random_free_spot(min_r: float, center := Vector3.ZERO, radius := MAP_RADIUS) -> Vector3:
 	for attempt in 30:
 		var a := rng.randf() * TAU
-		var r := rng.randf_range(min_r, MAP_RADIUS - 5.0)
-		var p := Vector3(cos(a) * r, 0, sin(a) * r)
+		var r := rng.randf_range(min_r, radius - 5.0)
+		var p := center + Vector3(cos(a) * r, 0, sin(a) * r)
 		var ok := true
 		for i in obstacle_pos.size():
 			if p.distance_to(obstacle_pos[i]) < obstacle_rad[i] + 1.5:
@@ -436,11 +536,12 @@ func _random_free_spot(min_r: float) -> Vector3:
 		if ok:
 			return p
 	var a2 := rng.randf() * TAU
-	return Vector3(cos(a2), 0, sin(a2)) * rng.randf_range(min_r, MAP_RADIUS - 5.0)
+	return center + Vector3(cos(a2), 0, sin(a2)) * rng.randf_range(min_r, radius - 5.0)
 
 
-func spawn_rock(pos: Vector3) -> void:
+func spawn_rock(pos: Vector3, z := 1) -> void:
 	var rk := RockScript.new()
+	rk.set_meta("zone", z)
 	rk.variant = 1 + rng.randi() % 5
 	rk.rock_scale = rng.randf_range(1.5, 3.0)
 	rk.main = self
@@ -455,7 +556,12 @@ func on_rock_broken(rk: Node3D) -> void:
 	rocks.erase(rk)
 	rebuild_obstacles()
 	# un nouveau rocher apparaît ailleurs un peu plus tard
-	get_tree().create_timer(40.0, false).timeout.connect(func(): spawn_rock(_random_free_spot(12.0)))
+	var z: int = rk.get_meta("zone", 1)
+	get_tree().create_timer(40.0, false).timeout.connect(func():
+		if z == 1:
+			spawn_rock(_random_free_spot(12.0), 1)
+		else:
+			spawn_rock(_random_free_spot(12.0, ZONE2_CENTER, ZONE2_RADIUS), 2))
 
 
 func rebuild_obstacles() -> void:
@@ -573,7 +679,7 @@ func _process(delta: float) -> void:
 					_start_wave(1)
 		"break":
 			countdown -= delta
-			hud.set_wave("VAGUE %d/%d DANS %d s" % [wave + 1, TOTAL_WAVES, int(ceil(countdown))], "Coupe du bois et renforce tes défenses !")
+			hud.set_wave("%sVAGUE %d/%d DANS %d s" % ["" if zone == 1 else "SPHÈRE 2 · ", wave + 1, TOTAL_WAVES, int(ceil(countdown))], "Coupe du bois et renforce tes défenses !")
 			if near_orb:
 				prompt = "[E / X] LANCER LA VAGUE SUIVANTE"
 				if Input.is_action_just_pressed("interact"):
@@ -584,38 +690,69 @@ func _process(delta: float) -> void:
 			_update_spawning(delta)
 			var alive := get_tree().get_nodes_in_group("zombie").size()
 			var remaining := alive + to_spawn + bosses_left
-			hud.set_wave("VAGUE %d/%d" % [wave, TOTAL_WAVES], "Zombies restants : %d" % remaining)
+			hud.set_wave("%sVAGUE %d/%d" % ["" if zone == 1 else "SPHÈRE 2 · ", wave, TOTAL_WAVES], "Squelettes restants : %d" % remaining)
 			if remaining == 0:
 				_end_wave()
+		"explore":
+			hud.set_wave("EXPLORATION", "La forêt s'est ouverte au nord : rejoins la 2e sphère (suis la lumière)")
+			if near_orb:
+				prompt = "[E / X] LANCER LE COMBAT (2e SPHÈRE)"
+				if Input.is_action_just_pressed("interact"):
+					if orb2_beacon:
+						orb2_beacon.queue_free()
+						orb2_beacon = null
+					_start_wave(1)
+		"free":
+			hud.set_wave("FORÊT LIBÉRÉE", "Les deux sphères sont sauves. Explore librement !")
 
-	if player.dead and state != "won" and state != "lost":
+	if player.dead and state != "lost":
 		respawn_t -= delta
 		prompt = "Réapparition dans %d..." % int(ceil(respawn_t))
 		if respawn_t <= 0.0:
-			player.respawn(Vector3(rng.randf_range(-2, 2), 0.5, 6.0))
+			player.respawn(orb.global_position + Vector3(rng.randf_range(-2, 2), 0.5, 6.0))
 	hud.set_prompt(prompt)
 
 	orb_alert_t -= delta
 	hud.set_alert("⚠ LA SPHÈRE EST ATTAQUÉE !" if orb_alert_t > 0.0 and fmod(orb_alert_t, 0.5) > 0.2 else "")
 
 
+## Niveau de difficulté : vague 1 de la sphère 2 = vague 8 de la sphère 1, et ça continue de monter.
+func difficulty() -> int:
+	return wave + (ZONE2_DIFFICULTY_OFFSET if zone == 2 else 0)
+
+
+func _spawn_center() -> Vector3:
+	return Vector3.ZERO if zone == 1 else ZONE2_CENTER
+
+
+func _spawn_radius() -> float:
+	return SPAWN_RADIUS if zone == 1 else ZONE2_RADIUS - 5.0
+
+
 func _start_wave(n: int) -> void:
 	wave = n
 	state = "wave"
-	to_spawn = 6 + (n - 1) * 4
+	var d := difficulty()
+	to_spawn = 6 + (d - 1) * 4
 	bosses_left = n / 5   # mini-boss à la vague 5, deux boss à la vague 10
-	spawn_interval = maxf(0.35, 1.3 - n * 0.09)
+	spawn_interval = maxf(0.3, 1.3 - d * 0.09)
 	spawn_timer = 1.5
 
-	# Directions d'arrivée (1 à 3 selon la vague), bien espacées
+	# Directions d'arrivée (1 à 3 selon la difficulté), bien espacées
 	spawn_angles.clear()
-	var dirs := 1 if n <= 2 else (2 if n <= 6 else 3)
+	var dirs := 1 if d <= 2 else (2 if d <= 6 else 3)
 	var base := rng.randf() * TAU
 	for i in dirs:
-		spawn_angles.append(base + TAU * i / dirs + rng.randf_range(-0.3, 0.3))
+		var a := base + TAU * i / dirs + rng.randf_range(-0.3, 0.3)
+		if zone == 2:
+			# pas d'apparition côté couloir (vers +Z depuis la 2e sphère)
+			var diff := wrapf(a - PI * 0.5, -PI, PI)
+			if absf(diff) < 0.6:
+				a += 1.2 * (1.0 if diff >= 0.0 else -1.0)
+		spawn_angles.append(a)
 	for a in spawn_angles:
 		var marker := _make_spawn_marker()
-		marker.position = Vector3(cos(a) * SPAWN_RADIUS, 0, sin(a) * SPAWN_RADIUS)
+		marker.position = _spawn_center() + Vector3(cos(a), 0, sin(a)) * _spawn_radius()
 		add_child(marker)
 		spawn_markers.append(marker)
 
@@ -667,7 +804,7 @@ func _update_spawning(delta: float) -> void:
 
 func _spawn_zombie(boss: bool) -> void:
 	var z := ZombieScript.new()
-	var n := wave
+	var n := difficulty()
 	z.max_hp = 60.0 + (n - 1) * 14.0
 	z.speed = minf(2.3 + n * 0.17, 4.1)
 	z.damage = 8.0 + n
@@ -682,8 +819,8 @@ func _spawn_zombie(boss: bool) -> void:
 	z.orb = orb
 	z.player = player
 	var a: float = spawn_angles[rng.randi() % spawn_angles.size()] + rng.randf_range(-0.18, 0.18)
-	var r := SPAWN_RADIUS + rng.randf_range(-2.5, 2.5)
-	z.position = Vector3(cos(a) * r, 0.05, sin(a) * r)
+	var r := _spawn_radius() + rng.randf_range(-2.5, 2.5)
+	z.position = _spawn_center() + Vector3(cos(a) * r, 0.05, sin(a) * r)
 	add_child(z)
 	if boss:
 		hud.flash_message("UN BOSS EST APPARU !")
@@ -694,7 +831,12 @@ func _end_wave() -> void:
 		m.queue_free()
 	spawn_markers.clear()
 	if wave >= TOTAL_WAVES:
-		_finish(true)
+		if zone == 1:
+			_complete_zone1()
+		else:
+			state = "free"
+			Sfx.play("win")
+			hud.show_center("VICTOIRE !", "La 2e sphère est sauve. La forêt t'appartient.", 5.0)
 		return
 	state = "break"
 	countdown = BREAK_TIME
@@ -703,6 +845,169 @@ func _end_wave() -> void:
 		player.hp = player.MAX_HP
 	orb.repair(150.0)
 	hud.show_center("VAGUE %d TERMINÉE" % wave, "+50 bois · vie restaurée · sphère réparée (+150)", 3.0)
+
+
+# ------------------------------------------------------------------ zone 2
+
+func _complete_zone1() -> void:
+	state = "explore"
+	Sfx.play("win")
+	player.wood = mini(player.wood + 100, 999)
+	if not player.dead:
+		player.hp = player.MAX_HP
+	hud.show_center("VICTOIRE !", "La 1re sphère est sauve... mais la forêt s'ouvre au nord !", 5.0)
+	get_tree().create_timer(1.0, false).timeout.connect(_unlock_zone2)
+
+
+func _unlock_zone2() -> void:
+	if zone2_unlocked:
+		return
+	zone2_unlocked = true
+	stone_unlocked = true
+	for n in zone2_blockers:
+		if is_instance_valid(n):
+			n.queue_free()
+	zone2_blockers.clear()
+	for m in storm_mats:
+		m.set_shader_parameter("gap", CORRIDOR_HALF)
+	_build_zone2()
+	# la 2e sphère devient la seule cible des squelettes
+	orb2 = OrbScript.new()
+	orb2.position = ZONE2_CENTER
+	add_child(orb2)
+	orb2.damaged.connect(_on_orb_damaged)
+	orb2.destroyed.connect(_on_orb_destroyed)
+	orb1.damaged.disconnect(_on_orb_damaged)
+	orb1.destroyed.disconnect(_on_orb_destroyed)
+	orb = orb2
+	zone = 2
+	wave = 0
+	orb2_beacon = _make_beacon()
+	orb2_beacon.position = ZONE2_CENTER
+	add_child(orb2_beacon)
+	rebuild_obstacles()
+	hud.show_notice("NOUVELLE ZONE : la forêt d'érables pourpres.\nUne 2e sphère t'attend au nord (suis la colonne de lumière).\nConstruis autour d'elle, puis lance ses vagues avec E / X.\nLes squelettes n'attaqueront plus que cette sphère.", 10.0)
+
+
+func _make_beacon() -> Node3D:
+	var n := Node3D.new()
+	var beam := Mats.cylinder(n, 1.2, 1.2, 120.0, null, Vector3(0, 60, 0), Vector3.ZERO, 16)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.albedo_color = Color(0.3, 0.9, 1.0, 0.45)
+	beam.material_override = m
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return n
+
+
+func _build_zone2() -> void:
+	var c := ZONE2_CENTER
+	# Mur de tempête autour de la zone 2 et le long du couloir
+	var sh := Shader.new()
+	sh.code = STORM_SHADER
+	var mat := ShaderMaterial.new()
+	mat.shader = sh
+	mat.set_shader_parameter("gap", CORRIDOR_HALF)
+	storm_mats.append(mat)
+	var wall := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = ZONE2_RADIUS
+	cm.bottom_radius = ZONE2_RADIUS
+	cm.height = 30.0
+	cm.radial_segments = 128
+	cm.cap_top = false
+	cm.cap_bottom = false
+	wall.mesh = cm
+	wall.material_override = mat
+	wall.position = c + Vector3(0, 15, 0)
+	wall.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(wall)
+	var side_mat := ShaderMaterial.new()
+	side_mat.shader = sh
+	for x in [-CORRIDOR_HALF, CORRIDOR_HALF]:
+		var sw := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.05, 30.0, CORRIDOR_Z.y - CORRIDOR_Z.x + 4.0)
+		sw.mesh = bm
+		sw.material_override = side_mat
+		sw.position = Vector3(x, 15.0, (CORRIDOR_Z.x + CORRIDOR_Z.y) * 0.5)
+		sw.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(sw)
+
+	# Forêt de fond autour de la zone 2 (érables et bouleaux)
+	var all: Array = []
+	all.append_array(Nature.maples())
+	all.append_array(Nature.birches())
+	var entries: Array = []
+	for i in 420:
+		var a := rng.randf() * TAU
+		var r := ZONE2_RADIUS + 3.0 + pow(rng.randf(), 0.8) * 70.0
+		var pos := c + Vector3(cos(a) * r, 0, sin(a) * r)
+		if Vector2(pos.x, pos.z).length() < MAP_RADIUS + 25.0:
+			continue
+		if absf(pos.x) < CORRIDOR_HALF + 3.0 and pos.z > CORRIDOR_Z.x - 4.0:
+			continue
+		var sc := rng.randf_range(0.9, 1.5)
+		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc))
+		entries.append([rng.randi() % all.size(), Transform3D(b, pos)])
+	_add_forest(all, entries)
+	# Haies de sapins le long du couloir
+	var pines := Nature.pines()
+	var cor: Array = []
+	for i in 70:
+		var side := -1.0 if i % 2 == 0 else 1.0
+		var pos := Vector3(side * (CORRIDOR_HALF + rng.randf_range(2.5, 14.0)), 0, rng.randf_range(CORRIDOR_Z.x - 2.0, CORRIDOR_Z.y + 2.0))
+		var sc := rng.randf_range(0.9, 1.4)
+		cor.append([rng.randi() % pines.size(), Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc)), pos)])
+	_add_forest(pines, cor)
+
+	# Arbres coupables
+	var placed: Array[Vector3] = []
+	var tries := 0
+	while placed.size() < ZONE2_TREE_COUNT and tries < 4000:
+		tries += 1
+		var r := sqrt(rng.randf_range(0.02, 1.0)) * (ZONE2_RADIUS - 5.0)
+		if r < 11.0:
+			continue
+		var a := rng.randf() * TAU
+		var p := c + Vector3(cos(a) * r, 0, sin(a) * r)
+		if absf(p.x) < CORRIDOR_HALF + 2.0 and p.z > c.z + ZONE2_RADIUS - 14.0:
+			continue   # garder l'entrée du couloir dégagée
+		var ok := true
+		for q in placed:
+			if q.distance_to(p) < 5.0:
+				ok = false
+				break
+		if not ok:
+			continue
+		placed.append(p)
+		var t := TreeScript.new()
+		t.species = 1 if rng.randf() < 0.65 else 2
+		t.kind = rng.randi() % 4
+		t.tree_scale = rng.randf_range(0.8, 1.2)
+		t.main = self
+		t.position = p
+		add_child(t)
+	rebuild_obstacles()
+	for i in 22:
+		spawn_rock(_random_free_spot(12.0, c, ZONE2_RADIUS), 2)
+		rebuild_obstacles()
+	for i in PICKUPS_PER_ZONE:
+		spawn_pickup(2)
+
+	# Végétation : herbe mauve, plantes dorées, buissons violets (zone 2) + herbe du couloir
+	var grass2 := Nature.grass_material(Color(0.04, 0.01, 0.05), Color(0.40, 0.14, 0.34), Color(0.55, 0.22, 0.30))
+	var not_zone1 := func(w: Vector3) -> bool: return Vector2(w.x, w.z).length() > MAP_RADIUS + 2.0
+	_scatter_chunks(Nature.grass(), grass2, 1.3 if high else 0.55, ZONE2_RADIUS + 12.0, 5.0, 0.8, 1.3, 60.0 if high else 40.0, false, 0.0, c, not_zone1)
+	var in_corridor := func(w: Vector3) -> bool: return absf(w.x) < CORRIDOR_HALF + 10.0 and Vector2(w.x, w.z).length() > MAP_RADIUS + 10.0
+	_scatter_chunks(Nature.grass(), null, 1.3 if high else 0.55, 24.0, 0.0, 0.8, 1.3, 60.0 if high else 40.0, false, 0.0, Vector3(0, 0, (CORRIDOR_Z.x + CORRIDOR_Z.y) * 0.5), in_corridor)
+	var gold := Nature.leaf_material("Flowers.png", Color(0.30, 0.14, 0.02), Color(1.0, 0.70, 0.20), 0.8, 0.05)
+	var violet := Nature.leaf_material("Bush_Leaves.png", Color(0.06, 0.01, 0.08), Color(0.45, 0.18, 0.55), 1.2, 0.04)
+	for v in [1, 2]:
+		_scatter_chunks(Nature.red_plant(v), gold, 0.02, ZONE2_RADIUS + 12.0, 7.0, 0.6, 1.1, 80.0, true, 0.0, c, not_zone1)
+	_scatter_chunks(Nature.bush(false), violet, 0.02, ZONE2_RADIUS + 12.0, 7.0, 1.0, 2.0, 80.0, true, 0.0, c, not_zone1)
 
 
 func _on_orb_damaged(_amount: float) -> void:

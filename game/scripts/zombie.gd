@@ -45,6 +45,9 @@ var anim: AnimationPlayer
 var meshes: Array[MeshInstance3D] = []
 var attack_anim_name := "Unarmed_Melee_Attack_Punch_A"
 var hit_t := 0.0
+var traps := 0          # nombre de barbelés traversés en ce moment
+const TRAP_SLOW := 0.3
+const TRAP_DPS := 6.0
 var flash_t := 0.0
 var groan_t := 0.0
 var blocked_by = null
@@ -172,8 +175,14 @@ func _physics_process(delta: float) -> void:
 			# la sphère encaisse un peu moins que le joueur ou les murs
 			attack_target.take_damage(damage * (0.6 if attack_target == orb else 1.0))
 	else:
-		velocity.x = dir.x * speed
-		velocity.z = dir.z * speed
+		var spd := speed * (TRAP_SLOW if traps > 0 else 1.0)
+		velocity.x = dir.x * spd
+		velocity.z = dir.z * spd
+	if traps > 0:
+		hp -= TRAP_DPS * delta
+		if hp <= 0.0:
+			_die()
+			return
 
 	rotation.y = lerp_angle(rotation.y, atan2(-face.x, -face.z), 8.0 * delta)
 	move_and_slide()
@@ -225,7 +234,7 @@ func _animate(delta: float) -> void:
 	if moving:
 		if anim.current_animation != ANIM_WALK:
 			anim.play(ANIM_WALK, 0.2)
-		anim.speed_scale = speed / 2.2
+		anim.speed_scale = speed * (TRAP_SLOW if traps > 0 else 1.0) / 2.2
 	elif attack_anim <= 0.0 and anim.current_animation == ANIM_WALK:
 		anim.play("Idle_Combat" if anim.has_animation("Idle_Combat") else "Idle", 0.2)
 
@@ -243,6 +252,14 @@ func take_damage(amount: float, headshot := false) -> void:
 		hit_t = 0.35
 		anim.speed_scale = 1.0
 		anim.play(ANIM_HIT, 0.05, 1.8)
+
+
+func trap_enter() -> void:
+	traps += 1
+
+
+func trap_exit() -> void:
+	traps = maxi(traps - 1, 0)
 
 
 func _die() -> void:

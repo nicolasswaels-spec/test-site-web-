@@ -74,6 +74,8 @@ var wood_label: Label
 var wood_pop: Label
 var stone_label: Label
 var stone_pop: Label
+var coin_label: Label
+var coin_pop: Label
 var build_prompt: Label
 var notice_label: Label
 var notice_t := 0.0
@@ -164,6 +166,8 @@ func _ready() -> void:
 	wood_label = _label(wood_row, "BOIS 0", 26, Color(0.95, 0.75, 0.5))
 	stone_pop = _label(wood_row, "", 22, Color(0.6, 1.0, 0.5))
 	stone_label = _label(wood_row, "", 26, Color(0.78, 0.78, 0.92))
+	coin_pop = _label(wood_row, "", 22, Color(0.6, 1.0, 0.5))
+	coin_label = _label(wood_row, "", 26, Color(0.75, 0.9, 1.0))
 	ammo_label = _label(br, "30 / ∞", 36)
 	ammo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	info_label = _label(br, "", 15, Color(0.85, 0.9, 1.0))
@@ -310,6 +314,7 @@ func update_player(p) -> void:
 	hp_label.text = "%d PV" % int(ceil(p.hp))
 	wood_label.text = "BOIS %d" % p.wood
 	stone_label.text = ("   PIERRE %d" % p.stone) if (p.main and p.main.stone_unlocked) else ""
+	coin_label.text = ("   PIÈCES %d" % p.coins) if (p.coins > 0 or not p.first_coin) else ""
 	# Construction visée : réparer / améliorer
 	var bt = p.build_target
 	if bt and is_instance_valid(bt) and not p.dead:
@@ -321,6 +326,10 @@ func update_player(p) -> void:
 		if bt.can_upgrade():
 			parts.append("[T / ↑] Améliorer ×3 PV (%d %s)" % [bt.UPGRADE_COST, mname])
 		parts.append("[X / →] Modifier : %s" % bt.next_edit_label())
+		if bt.can_have_trap():
+			parts.append("[B / clic stick droit] Poser des barbelés (%d pièces)" % bt.TRAP_COST)
+		elif bt.trap:
+			parts.append("Barbelés posés")
 		build_prompt.text = "\n".join(parts)
 	else:
 		build_prompt.text = ""
@@ -405,6 +414,14 @@ func stone_gain(amount: int) -> void:
 	var tw := create_tween()
 	tw.tween_interval(0.6)
 	tw.tween_property(stone_pop, "modulate:a", 0.0, 0.5)
+
+
+func coin_gain(amount: int) -> void:
+	coin_pop.text = "   +%d" % amount
+	coin_pop.modulate.a = 1.0
+	var tw := create_tween()
+	tw.tween_interval(0.6)
+	tw.tween_property(coin_pop, "modulate:a", 0.0, 0.5)
 
 
 func show_notice(text: String, duration := 6.0) -> void:

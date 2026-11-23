@@ -68,6 +68,8 @@ var equip_t := 0.0
 var hp := MAX_HP
 var wood := 60
 var stone := 0
+var coins := 0
+var first_coin := true
 var build_mat := 0   # 0 bois, 1 pierre
 var build_target = null
 var crystal_mat: StandardMaterial3D
@@ -326,6 +328,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_try_upgrade()
 	elif event.is_action_pressed("edit"):
 		_try_edit()
+	elif event.is_action_pressed("trap"):
+		_try_trap()
 	elif event.is_action_pressed("build_material"):
 		_toggle_material()
 	elif event.is_action_pressed("weapon_next") and weapon != W.BUILD:
@@ -409,12 +413,7 @@ func _physics_process(delta: float) -> void:
 
 	# limites de la zone
 	if main:
-		var flat := Vector2(position.x, position.z)
-		var lim: float = main.MAP_RADIUS - 1.5
-		if flat.length() > lim:
-			flat = flat.normalized() * lim
-			position.x = flat.x
-			position.z = flat.y
+		position = main.clamp_to_area(position)
 	if position.y < -30.0:
 		position = Vector3(0, 2, 7)
 		velocity = Vector3.ZERO
@@ -776,6 +775,30 @@ func _try_repair() -> void:
 		return
 	_spend(m, cost)
 	build_target.repair()
+
+
+func collect_coin() -> void:
+	coins = mini(coins + 1, 999)
+	Sfx.play("coin", -4.0)
+	if hud:
+		hud.coin_gain(1)
+		if first_coin:
+			first_coin = false
+			hud.show_notice("PIÈCE ramassée !\n2 pièces = des barbelés à poser sur un SOL (B / clic stick droit).\nLes squelettes y sont ralentis à 30 % et blessés.", 7.0)
+
+
+func _try_trap() -> void:
+	if build_target == null or not is_instance_valid(build_target):
+		hud.flash_message("Vise un sol pour y poser des barbelés")
+		return
+	if not build_target.can_have_trap():
+		hud.flash_message("Les barbelés se posent sur un sol plein (sans barbelés)")
+		return
+	if coins < build_target.TRAP_COST:
+		hud.flash_message("Il faut %d pièces pour des barbelés" % build_target.TRAP_COST)
+		return
+	coins -= build_target.TRAP_COST
+	build_target.add_trap()
 
 
 func _try_edit() -> void:
