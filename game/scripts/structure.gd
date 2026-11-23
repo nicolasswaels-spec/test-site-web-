@@ -21,8 +21,9 @@ uniform float damage = 0.0;
 uniform float flash = 0.0;
 uniform int axis = 0;
 uniform int stone = 0;
+uniform mat4 to_local = mat4(1.0);
 varying vec3 lp;
-void vertex() { lp = VERTEX; }
+void vertex() { lp = (to_local * MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 float hash(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
 float hash2(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 void fragment() {
@@ -61,6 +62,10 @@ static var _shader: Shader
 var piece := WALL
 var material_type := WOOD
 var level := 0
+## Modification façon Fortnite : mur 0 plein / 1 porte / 2 fenêtre ; sol 0 plein / 1 trappe.
+var variant := 0
+var shapes: Array[CollisionShape3D] = []
+var door_blocker: StaticBody3D
 var key := ""
 var main
 var max_hp := 150.0
@@ -90,12 +95,7 @@ func _ready() -> void:
 	visual = Node3D.new()
 	add_child(visual)
 	_rebuild_visual()
-
-	var cs := CollisionShape3D.new()
-	var bs := BoxShape3D.new()
-	bs.size = SIZES[piece]
-	cs.shape = bs
-	add_child(cs)
+	_rebuild_collision()
 
 	label = Label3D.new()
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -113,6 +113,7 @@ func _ready() -> void:
 	label.global_position = global_position + Vector3.UP * (2.6 if piece == WALL else 1.0)
 	label.visible = false
 
+	mat.set_shader_parameter("to_local", Projection(global_transform.affine_inverse()))
 	visual.scale = Vector3(0.3, 0.3, 0.3)
 	create_tween().tween_property(visual, "scale", Vector3.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
@@ -126,21 +127,85 @@ func _compute_max_hp() -> float:
 	return v
 
 
+## Les blocs pleins de la pièce selon sa modification : liste de [centre, taille] en local.
+func _blocks() -> Array:
+	var size: Vector3 = SIZES[piece]
+	var t := size.z if piece == WALL else size.y
+	if piece == WALL and variant == 1:   # porte 1,6 × 2,8 m
+		return [_blk(-2.0, -0.8, -2.0, 2.0, t), _blk(0.8, 2.0, -2.0, 2.0, t), _blk(-0.8, 0.8, 0.8, 2.0, t)]
+	if piece == WALL and variant == 2:   # fenêtre 1,8 × 2,4 m, à 0,8 m du sol : on saute au travers
+		return [_blk(-2.0, -0.9, -2.0, 2.0, t), _blk(0.9, 2.0, -2.0, 2.0, t),
+			_blk(-0.9, 0.9, 1.2, 2.0, t), _blk(-0.9, 0.9, -2.0, -1.2, t)]
+	if piece == FLOOR and variant == 1:  # trappe 1,6 × 1,6 m
+		return [_flr(-2.0, -0.8, -2.0, 2.0, t), _flr(0.8, 2.0, -2.0, 2.0, t),
+			_flr(-0.8, 0.8, 0.8, 2.0, t), _flr(-0.8, 0.8, -2.0, -0.8, t)]
+	return [[Vector3.ZERO, size]]
+
+
+func _blk(x0: float, x1: float, y0: float, y1: float, t: float) -> Array:
+	return [Vector3((x0 + x1) * 0.5, (y0 + y1) * 0.5, 0.0), Vector3(x1 - x0, y1 - y0, t)]
+
+
+func _flr(x0: float, x1: float, z0: float, z1: float, t: float) -> Array:
+	return [Vector3((x0 + x1) * 0.5, 0.0, (z0 + z1) * 0.5), Vector3(x1 - x0, t, z1 - z0)]
+
+
+func _rebuild_collision() -> void:
+	for cs in shapes:
+		cs.queue_free()
+	shapes.clear()
+	for b in _blocks():
+		var cs := CollisionShape3D.new()
+		var bs := BoxShape3D.new()
+		bs.size = b[1]
+		cs.shape = bs
+		cs.position = b[0]
+		add_child(cs)
+		shapes.append(cs)
+	# La porte laisse passer le joueur mais pas les squelettes (couche 7)
+	if door_blocker:
+		door_blocker.queue_free()
+		door_blocker = null
+	if piece == WALL and variant == 1:
+		door_blocker = StaticBody3D.new()
+		door_blocker.collision_layer = 64
+		door_blocker.collision_mask = 0
+		door_blocker.set_meta("structure", self)
+		var cs := CollisionShape3D.new()
+		var bs := BoxShape3D.new()
+		bs.size = Vector3(1.6, 2.8, 0.22)
+		cs.shape = bs
+		cs.position = Vector3(0, -0.6, 0)
+		door_blocker.add_child(cs)
+		add_child(door_blocker)
+
+
 func _rebuild_visual() -> void:
 	for c in visual.get_children():
 		c.queue_free()
 	mat.set_shader_parameter("stone", material_type)
+	if is_inside_tree():
+		mat.set_shader_parameter("to_local", Projection(global_transform.affine_inverse()))
 	var size: Vector3 = SIZES[piece]
-	Mats.box(visual, size, mat)
+	for b in _blocks():
+		Mats.box(visual, b[1], mat, b[0])
 	var frame := Mats.col(Color(0.30, 0.18, 0.10)) if material_type == WOOD else Mats.col(Color(0.22, 0.22, 0.28))
 	var hx := size.x * 0.5
 	if piece == WALL:
 		var hy := size.y * 0.5
 		Mats.box(visual, Vector3(size.x, 0.22, 0.3), frame, Vector3(0, hy - 0.11, 0))
-		Mats.box(visual, Vector3(size.x, 0.22, 0.3), frame, Vector3(0, -hy + 0.11, 0))
+		if variant != 1:
+			Mats.box(visual, Vector3(size.x, 0.22, 0.3), frame, Vector3(0, -hy + 0.11, 0))
 		Mats.box(visual, Vector3(0.22, size.y, 0.3), frame, Vector3(hx - 0.11, 0, 0))
 		Mats.box(visual, Vector3(0.22, size.y, 0.3), frame, Vector3(-hx + 0.11, 0, 0))
-		if material_type == WOOD:
+		if variant == 1:  # encadrement de porte
+			Mats.box(visual, Vector3(0.16, 2.8, 0.3), frame, Vector3(-0.88, -0.6, 0))
+			Mats.box(visual, Vector3(0.16, 2.8, 0.3), frame, Vector3(0.88, -0.6, 0))
+			Mats.box(visual, Vector3(1.9, 0.16, 0.3), frame, Vector3(0, 0.88, 0))
+		elif variant == 2:  # encadrement de fenêtre
+			Mats.box(visual, Vector3(2.0, 0.14, 0.3), frame, Vector3(0, 1.27, 0))
+			Mats.box(visual, Vector3(2.0, 0.14, 0.3), frame, Vector3(0, -1.27, 0))
+		if material_type == WOOD and variant == 0:
 			Mats.box(visual, Vector3(0.18, size.y * 1.3, 0.26), frame, Vector3.ZERO, Vector3(0, 0, 45))
 	else:
 		var hz := size.z * 0.5
@@ -153,12 +218,16 @@ func _rebuild_visual() -> void:
 		var iron := Mats.col(Color(0.16, 0.17, 0.20), 0.4)
 		var rivet := Mats.col(Color(0.75, 0.6, 0.35), 0.3)
 		if piece == WALL:
-			for y in [-1.0, 1.0]:
-				Mats.box(visual, Vector3(size.x - 0.3, 0.26, 0.36), iron, Vector3(0, y, 0))
-				for x in [-1.4, -0.47, 0.47, 1.4]:
+			for y in [-1.5, 1.5]:
+				var segs := [[-1.85, 1.85]]
+				if variant == 1 and y < 0.0:
+					segs = [[-1.85, -0.8], [0.8, 1.85]]
+				for sg in segs:
+					Mats.box(visual, Vector3(sg[1] - sg[0], 0.26, 0.36), iron, Vector3((sg[0] + sg[1]) * 0.5, y, 0))
+				for x in [-1.4, 1.4]:
 					Mats.box(visual, Vector3(0.08, 0.08, 0.42), rivet, Vector3(x, y, 0))
 		else:
-			for x in [-1.0, 1.0]:
+			for x in [-1.3, 1.3]:
 				Mats.box(visual, Vector3(0.26, 0.34, size.z - 0.3), iron, Vector3(x, 0, 0))
 				for z in [-1.6, -0.5, 0.5, 1.6]:
 					Mats.box(visual, Vector3(0.08, 0.4, 0.08), rivet, Vector3(x, 0, z * size.z / 4.0))
@@ -212,6 +281,38 @@ func repair() -> void:
 	building = false
 	flash = 0.6
 	Sfx.play_3d("build", global_position, 0.0, 0.8)
+
+
+## Modifie la forme de la pièce (cycle) : mur plein → porte → fenêtre ; sol plein → trappe ;
+## rampe : retournée de 180°.
+func cycle_edit() -> String:
+	if piece == WALL:
+		variant = (variant + 1) % 3
+	elif piece == FLOOR:
+		variant = (variant + 1) % 2
+	else:
+		var p := global_position
+		global_transform = Transform3D(Basis(Vector3.UP, PI) * global_transform.basis, p)
+	_rebuild_visual()
+	_rebuild_collision()
+	Sfx.play_3d("build", global_position, 0.0, 1.2)
+	return edit_name()
+
+
+func edit_name() -> String:
+	if piece == WALL:
+		return ["MUR PLEIN", "PORTE", "FENÊTRE"][variant]
+	if piece == FLOOR:
+		return ["SOL PLEIN", "TRAPPE"][variant]
+	return "RAMPE RETOURNÉE"
+
+
+func next_edit_label() -> String:
+	if piece == WALL:
+		return ["porte", "fenêtre", "mur plein"][variant]
+	if piece == FLOOR:
+		return ["trappe", "sol plein"][variant]
+	return "retourner"
 
 
 func can_upgrade() -> bool:

@@ -20,6 +20,8 @@ const RELOAD_TIME := 1.6
 const RIFLE_DAMAGE := 24.0
 const AXE_TREE_DAMAGE := 25.0
 const AXE_ZOMBIE_DAMAGE := 45.0
+const AXE_STRUCTURE_DAMAGE := 80.0
+const CLIMB_SPEED := 5.0
 const CELL := 4.0
 const BUILD_COST := 10
 const MAT_NAMES := ["BOIS", "PIERRE"]
@@ -74,6 +76,7 @@ var ads_t := 0.0
 var shake_t := 0.0
 var shake_amp := 0.0
 var swinging := false
+var climbing := false
 var swing_tween: Tween
 var dead := false
 var invuln_t := 0.0
@@ -321,6 +324,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_try_repair()
 	elif event.is_action_pressed("upgrade"):
 		_try_upgrade()
+	elif event.is_action_pressed("edit"):
+		_try_edit()
 	elif event.is_action_pressed("build_material"):
 		_toggle_material()
 	elif event.is_action_pressed("weapon_next") and weapon != W.BUILD:
@@ -386,7 +391,21 @@ func _physics_process(delta: float) -> void:
 	var accel := 14.0 if is_on_floor() else 4.0
 	velocity.x = lerpf(velocity.x, dir.x * spd, minf(accel * delta, 1.0))
 	velocity.z = lerpf(velocity.z, dir.z * spd, minf(accel * delta, 1.0))
+	if climbing:
+		velocity.y = CLIMB_SPEED
 	move_and_slide()
+
+	# Escalade : on avance contre une de nos constructions → on grimpe dessus
+	climbing = false
+	if input.y < -0.3:
+		var fwd := -global_transform.basis.z
+		for i in get_slide_collision_count():
+			var col := get_slide_collision(i)
+			var c := col.get_collider()
+			var n := col.get_normal()
+			if c and c is Node and (c as Node).is_in_group("structure") and absf(n.y) < 0.4 and fwd.dot(-n) > 0.5:
+				climbing = true
+				break
 
 	# limites de la zone
 	if main:
@@ -615,6 +634,10 @@ func _axe_impact() -> void:
 			hud.wood_gain(gained)
 		_shake(0.018)
 		main.spawn_impact(r.position, r.normal, Color(0.65, 0.45, 0.25), 10, 1.0)
+	elif c and c.is_in_group("structure"):
+		# on peut démolir ses propres constructions à la hache (pour ne jamais rester coincé)
+		c.take_damage(AXE_STRUCTURE_DAMAGE)
+		_shake(0.015)
 	elif c and c.is_in_group("zombie"):
 		c.take_damage(AXE_ZOMBIE_DAMAGE, false)
 		if hud:
@@ -753,6 +776,14 @@ func _try_repair() -> void:
 		return
 	_spend(m, cost)
 	build_target.repair()
+
+
+func _try_edit() -> void:
+	if build_target == null or not is_instance_valid(build_target):
+		return
+	var nm: String = build_target.cycle_edit()
+	if hud:
+		hud.flash_message(nm)
 
 
 func _try_upgrade() -> void:

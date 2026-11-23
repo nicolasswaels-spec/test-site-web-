@@ -89,6 +89,32 @@ static func _bake(model: String, target_height := 0.0, scale := 1.0) -> ArrayMes
 	return out
 
 
+## Certains modèles ont leur tronc décalé de l'origine (jusqu'à ~1 m) : on recentre le
+## maillage sur le pied du tronc pour que la collision et la hache tombent pile dessus.
+## Le rayon du tronc est mémorisé dans la méta "trunk_radius".
+static func _recenter_on_trunk(m: ArrayMesh) -> ArrayMesh:
+	var verts: PackedVector3Array = m.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var sum := Vector2.ZERO
+	var n := 0
+	for v in verts:
+		if v.y < 1.0:
+			sum += Vector2(v.x, v.z)
+			n += 1
+	var c := sum / maxf(n, 1)
+	var radius := 0.0
+	for v in verts:
+		if v.y > 0.8 and v.y < 1.6:
+			radius = maxf(radius, Vector2(v.x, v.z).distance_to(c))
+	var out := ArrayMesh.new()
+	for i in m.get_surface_count():
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		st.append_from(m, i, Transform3D(Basis(), Vector3(-c.x, 0.0, -c.y)))
+		st.commit(out)
+	out.set_meta("trunk_radius", clampf(radius, 0.2, 0.6))
+	return out
+
+
 static func leaf_material(tex_file: String, dark: Color, light: Color, height_ref: float, sway := 0.12) -> ShaderMaterial:
 	if _leaf_shader == null:
 		_leaf_shader = Shader.new()
@@ -122,7 +148,7 @@ static func pines() -> Array[ArrayMesh]:
 		var leaves := leaf_material("PineTree_Leaves.png", Color(0.015, 0.04, 0.09), Color(0.07, 0.24, 0.27), 14.0)
 		var heights := [13.0, 16.0, 11.0, 14.5, 12.5]
 		for i in 5:
-			var m := _bake("PineTree_%d" % (i + 1), heights[i])
+			var m := _recenter_on_trunk(_bake("PineTree_%d" % (i + 1), heights[i]))
 			m.surface_set_material(0, bark_material())
 			m.surface_set_material(1, leaves)
 			arr.append(m)

@@ -26,6 +26,7 @@ func _ready() -> void:
 	_key("repair", KEY_G)
 	_key("upgrade", KEY_T)
 	_key("build_material", KEY_V)
+	_key("edit", KEY_X)
 	_mouse("fire", MOUSE_BUTTON_LEFT)
 	_mouse("aim", MOUSE_BUTTON_RIGHT)
 
@@ -48,8 +49,8 @@ func _ready() -> void:
 	_button("weapon_prev", JOY_BUTTON_LEFT_SHOULDER)
 	_button("weapon_next", JOY_BUTTON_RIGHT_SHOULDER)
 	_button("sprint_toggle", JOY_BUTTON_LEFT_STICK)   # clic stick gauche
-	_button("piece_prev", JOY_BUTTON_DPAD_LEFT)
-	_button("piece_next", JOY_BUTTON_DPAD_RIGHT)
+	_button("piece_next", JOY_BUTTON_DPAD_LEFT)
+	_button("edit", JOY_BUTTON_DPAD_RIGHT)
 	_button("upgrade", JOY_BUTTON_DPAD_UP)
 	_button("repair", JOY_BUTTON_DPAD_DOWN)
 	# En mode construction : RT = mur, LT = sol, RB = rampe

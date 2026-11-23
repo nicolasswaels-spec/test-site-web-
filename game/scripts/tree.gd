@@ -8,6 +8,7 @@ const WOOD_BONUS_FELL := 20
 
 var kind := 0
 var tree_scale := 1.0
+var trunk_radius := 0.4
 var main
 var max_hp := 100.0
 var hp := 100.0
@@ -27,10 +28,11 @@ func _ready() -> void:
 	var mi := MeshInstance3D.new()
 	mi.mesh = variants[kind % variants.size()]
 	visual.add_child(mi)
+	trunk_radius = float(mi.mesh.get_meta("trunk_radius", 0.35)) * tree_scale
 
 	var shape := CollisionShape3D.new()
 	var cyl := CylinderShape3D.new()
-	cyl.radius = 0.45 * tree_scale
+	cyl.radius = trunk_radius + 0.05
 	cyl.height = 8.0
 	shape.shape = cyl
 	shape.position.y = 4.0

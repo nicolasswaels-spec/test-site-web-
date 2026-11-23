@@ -152,7 +152,9 @@ func _ready() -> void:
 	var br := VBoxContainer.new()
 	br.alignment = BoxContainer.ALIGNMENT_END
 	br.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_place(br, 1.0, 1.0, 1.0, 1.0, -460, -240, -20, -20)
+	_place(br, 1.0, 1.0, 1.0, 1.0, -480, -250, -20, -20)
+	br.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	br.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	root.add_child(br)
 	var wood_row := HBoxContainer.new()
 	wood_row.alignment = BoxContainer.ALIGNMENT_END
@@ -162,10 +164,12 @@ func _ready() -> void:
 	wood_label = _label(wood_row, "BOIS 0", 26, Color(0.95, 0.75, 0.5))
 	stone_pop = _label(wood_row, "", 22, Color(0.6, 1.0, 0.5))
 	stone_label = _label(wood_row, "", 26, Color(0.78, 0.78, 0.92))
-	ammo_label = _label(br, "30 / ∞", 40)
+	ammo_label = _label(br, "30 / ∞", 36)
 	ammo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	info_label = _label(br, "", 16, Color(0.85, 0.9, 1.0))
+	info_label = _label(br, "", 15, Color(0.85, 0.9, 1.0))
 	info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info_label.custom_minimum_size = Vector2(440, 0)
 	var slot_row := HBoxContainer.new()
 	slot_row.alignment = BoxContainer.ALIGNMENT_END
 	slot_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -175,7 +179,7 @@ func _ready() -> void:
 	slot_on.border_color = Color.WHITE
 	slot_on.set_border_width_all(3)
 	slot_off = UI.box(Color(0.05, 0.05, 0.15, 0.65), 8, 14.0, 8.0)
-	for txt in ["1\nFUSIL", "2\nHACHE", "3\nCONSTRUIRE"]:
+	for txt in ["1\nFUSIL", "2\nHACHE", "3\nBÂTIR"]:
 		var p := PanelContainer.new()
 		p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		p.custom_minimum_size = Vector2(110, 70)
@@ -316,6 +320,7 @@ func update_player(p) -> void:
 			parts.append("[G / ↓] Réparer (%d %s)" % [rc, mname])
 		if bt.can_upgrade():
 			parts.append("[T / ↑] Améliorer ×3 PV (%d %s)" % [bt.UPGRADE_COST, mname])
+		parts.append("[X / →] Modifier : %s" % bt.next_edit_label())
 		build_prompt.text = "\n".join(parts)
 	else:
 		build_prompt.text = ""
@@ -324,6 +329,7 @@ func update_player(p) -> void:
 	var mode := 0
 	match p.weapon:
 		0:
+			ammo_label.add_theme_color_override("font_color", Color.WHITE)
 			ammo_label.text = "RECHARGE..." if p.reloading else "%d / ∞" % p.ammo
 			info_label.text = "Clic G / RT : tirer · Clic D / LT : viser · R / X : recharger"
 			mode = 0
@@ -331,13 +337,16 @@ func update_player(p) -> void:
 				mode = 3
 			crosshair.visible = true
 		1:
+			ammo_label.add_theme_color_override("font_color", Color.WHITE)
 			ammo_label.text = "HACHE"
 			info_label.text = "Clic G / RT : couper un arbre (bois) ou un rocher (pierre)"
 			mode = 1
 			crosshair.visible = true
 		2:
-			ammo_label.text = "%s · %s" % [p.PIECE_NAMES[p.build_piece], p.MAT_NAMES[p.build_mat]]
-			info_label.text = "Souris : clic G construire · F pièce · V matériau\nManette : RT mur · LT sol · RB rampe · Y matériau  (%d par pièce)" % p.BUILD_COST
+			var have: int = p.wood if p.build_mat == 0 else p.stone
+			ammo_label.text = "%s · %s %d" % [p.PIECE_NAMES[p.build_piece], p.MAT_NAMES[p.build_mat], have]
+			ammo_label.add_theme_color_override("font_color", Color.WHITE if have >= p.BUILD_COST else Color(1, 0.4, 0.35))
+			info_label.text = "Clic G construire · F pièce · V matériau · X modifier\nManette : RT mur · LT sol · RB rampe · Y matériau · → modifier"
 			mode = 2
 			crosshair.visible = true
 	if p.dead:

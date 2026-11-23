@@ -463,7 +463,7 @@ func rebuild_obstacles() -> void:
 	obstacle_rad.clear()
 	for t in get_tree().get_nodes_in_group("tree"):
 		obstacle_pos.append(t.global_position)
-		obstacle_rad.append(0.45 * t.tree_scale + 1.4)
+		obstacle_rad.append(t.trunk_radius + 1.4)
 	for r in rocks:
 		if is_instance_valid(r) and r.is_inside_tree():
 			obstacle_pos.append(r.global_position)

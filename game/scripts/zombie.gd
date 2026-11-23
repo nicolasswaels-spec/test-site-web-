@@ -20,7 +20,8 @@ static var _eye_mats := {}
 
 signal died(zombie)
 
-const CHASE_RANGE := 13.0
+const CHASE_RANGE_ROGUE := 13.0      # squelettes à capuche : chasseurs
+const CHASE_RANGE_MINION := 6.5      # squelettes de base : foncent sur la base
 const GRAVITY := 20.0
 
 var max_hp := 80.0
@@ -29,6 +30,7 @@ var speed := 2.5
 var damage := 10.0
 var size_mult := 1.0
 var is_boss := false
+var kind := "minion"   # minion, rogue, boss
 var main
 var orb
 var player
@@ -54,7 +56,7 @@ var visual: Node3D
 func _ready() -> void:
 	add_to_group("zombie")
 	collision_layer = 4
-	collision_mask = 1 | 2 | 8 | 16 | 32
+	collision_mask = 1 | 2 | 8 | 16 | 32 | 64   # 64 : portes (bloquent les squelettes)
 	var s := size_mult
 	var shape := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
@@ -73,7 +75,9 @@ func _ready() -> void:
 func _build_model(s: float) -> void:
 	visual = Node3D.new()
 	add_child(visual)
-	var scene: PackedScene = BOSS_MODEL if is_boss else MODELS[randi() % MODELS.size()]
+	var idx := randi() % MODELS.size()
+	var scene: PackedScene = BOSS_MODEL if is_boss else MODELS[idx]
+	kind = "boss" if is_boss else ("rogue" if idx == 1 else "minion")
 	var model := scene.instantiate() as Node3D
 	model.rotation.y = PI   # le modèle regarde vers +Z, le jeu vers -Z
 	model.scale = Vector3.ONE * (1.8 / MODEL_HEIGHT) * s
@@ -130,9 +134,9 @@ func _physics_process(delta: float) -> void:
 	var target = orb
 	var target_pos: Vector3 = orb.global_position
 	var reach := 2.4 + 0.4 * size_mult
-	if player and not player.dead:
+	if player and not player.dead and kind != "boss":
 		var dp: float = player.global_position.distance_to(global_position)
-		if dp < CHASE_RANGE:
+		if dp < _chase_range():
 			target = player
 			target_pos = player.global_position
 			reach = 1.3 + 0.4 * size_mult
@@ -178,7 +182,9 @@ func _physics_process(delta: float) -> void:
 	for i in get_slide_collision_count():
 		var col := get_slide_collision(i)
 		var c := col.get_collider()
-		if c and c is Node and (c as Node).is_in_group("structure") and col.get_normal().y < 0.6:
+		if c and c is Node and (c as Node).has_meta("structure"):
+			c = (c as Node).get_meta("structure")   # porte : on frappe le mur qui la porte
+		if c and c is Node and is_instance_valid(c) and (c as Node).is_in_group("structure") and col.get_normal().y < 0.6:
 			blocked_by = c
 			blocked_t = 0.6
 			break
@@ -189,6 +195,19 @@ func _physics_process(delta: float) -> void:
 	if groan_t <= 0.0:
 		groan_t = randf_range(5.0, 12.0)
 		Sfx.play_3d("groan", global_position + Vector3.UP * 1.5, -2.0, 0.7 if is_boss else 1.0)
+
+
+## Distance à laquelle le squelette délaisse la sphère pour attaquer le joueur.
+## Base : courte, et encore réduite quand le joueur s'éloigne de la sphère.
+## Capuche : longue (ils traquent le joueur). Boss : jamais (seule la sphère compte).
+func _chase_range() -> float:
+	match kind:
+		"rogue":
+			return CHASE_RANGE_ROGUE
+		"minion":
+			var from_orb: float = player.global_position.distance_to(orb.global_position)
+			return CHASE_RANGE_MINION * clampf(1.0 - (from_orb - 12.0) / 30.0, 0.4, 1.0)
+	return 0.0
 
 
 func _animate(delta: float) -> void:
