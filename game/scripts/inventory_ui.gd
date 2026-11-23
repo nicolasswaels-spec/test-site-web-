@@ -12,6 +12,8 @@ var selected_item := "pistol"
 var tab_buttons: Array[Button] = []
 var body: VBoxContainer
 var title: Label
+const DROP_STEPS := [10, 50, 100, 500, -1]   # -1 = tout
+var drop_idx := {"wood": 1, "stone": 1, "coins": 0}
 
 
 func _ready() -> void:
@@ -130,6 +132,21 @@ func _build_summary() -> Control:
 	axe_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	body.add_child(axe_row)
 	_label(axe_row, "EMPLACEMENT 3   HACHE (toujours équipée)", 18, Color(0.8, 0.8, 0.85))
+	# dépôt de ressources au sol (pour les donner à l'autre joueur)
+	_label(body, "DÉPOSER AU SOL  (A sur la quantité pour la changer)", 18, Color(0.75, 0.8, 1.0))
+	for kind in ["wood", "stone", "coins"]:
+		var row := HBoxContainer.new()
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		row.add_theme_constant_override("separation", 12)
+		body.add_child(row)
+		var k: String = kind
+		var nm := _label(row, {"wood": "BOIS", "stone": "PIERRE", "coins": "PIÈCES"}[k], 18)
+		nm.custom_minimum_size = Vector2(110, 0)
+		var qty := _button(row, _drop_text(k), 170, 42, 17, func(): _cycle_amount(k))
+		qty.set_meta("drop_qty", k)
+		_button(row, "DÉPOSER", 160, 42, 17, func():
+			p.drop_resource(k, _drop_value(k))
+			show_page(0))
 	_label(body, "ARMES POSSÉDÉES", 18, Color(0.75, 0.8, 1.0))
 	for w in [p.W.PISTOL, p.W.RIFLE]:
 		var owned: bool = p.owned_guns().has(w)
@@ -140,6 +157,24 @@ func _build_summary() -> Control:
 			txt += "verrouillé (se fabrique à la fin de la 1re sphère)"
 		_label(body, txt, 17, Color.WHITE if owned else Color(0.55, 0.55, 0.6))
 	return first
+
+
+func _drop_value(kind: String) -> int:
+	var v: int = DROP_STEPS[drop_idx[kind]]
+	var have: int = {"wood": p.wood, "stone": p.stone, "coins": p.coins}[kind]
+	return have if v < 0 else mini(v, have)
+
+
+func _drop_text(kind: String) -> String:
+	var v: int = DROP_STEPS[drop_idx[kind]]
+	return "QUANTITÉ : TOUT" if v < 0 else "QUANTITÉ : %d" % v
+
+
+func _cycle_amount(kind: String) -> void:
+	drop_idx[kind] = (drop_idx[kind] + 1) % DROP_STEPS.size()
+	for b in body.find_children("*", "Button", true, false):
+		if b.get_meta("drop_qty", "") == kind:
+			b.text = _drop_text(kind)
 
 
 func _cycle_slot(slot: int) -> void:

@@ -346,10 +346,10 @@ func _process(delta: float) -> void:
 
 
 func _update_label() -> void:
-	var p = main.player if main else null
 	var d := 999.0
-	if p:
-		d = p.global_position.distance_to(global_position)
+	if main:
+		for p in main.players:
+			d = minf(d, p.global_position.distance_to(global_position))
 	var damaged := hp < max_hp - 0.5
 	var show := d < 12.0 or (damaged and d < 35.0) or repair_t > 0.0
 	bar.visible = show

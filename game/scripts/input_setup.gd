@@ -80,6 +80,88 @@ func _ready() -> void:
 	for a in ["fire", "aim", "pad_build_wall", "pad_build_floor"]:
 		InputMap.action_set_deadzone(a, 0.35)
 
+	# Navigation manuelle des menus en jeu (par joueur : voir setup_player)
+	_key("nav_up", KEY_UP)
+	_key("nav_down", KEY_DOWN)
+	_key("nav_left", KEY_LEFT)
+	_key("nav_right", KEY_RIGHT)
+	_key("nav_accept", KEY_ENTER)
+	_key("nav_accept", KEY_KP_ENTER)
+	_key("nav_back", KEY_ESCAPE)
+	_button("nav_up", JOY_BUTTON_DPAD_UP)
+	_button("nav_down", JOY_BUTTON_DPAD_DOWN)
+	_button("nav_left", JOY_BUTTON_DPAD_LEFT)
+	_button("nav_right", JOY_BUTTON_DPAD_RIGHT)
+	_axis("nav_up", JOY_AXIS_LEFT_Y, -1.0)
+	_axis("nav_down", JOY_AXIS_LEFT_Y, 1.0)
+	_button("nav_accept", JOY_BUTTON_A)
+	_button("nav_back", JOY_BUTTON_B)
+	for a in ["nav_up", "nav_down"]:
+		InputMap.action_set_deadzone(a, 0.6)
+
+	# Copie de référence de toutes les actions du jeu (pour les dupliquer par joueur)
+	for action in InputMap.get_actions():
+		var name := String(action)
+		if name.begins_with("ui_"):
+			continue
+		base_actions[name] = [InputMap.action_get_deadzone(action), InputMap.action_get_events(action).duplicate()]
+	for action in ["ui_up", "ui_down", "ui_left", "ui_right", "ui_accept", "ui_cancel", "ui_select", "ui_focus_next", "ui_focus_prev"]:
+		ui_backup[action] = InputMap.action_get_events(action).duplicate()
+	setup_player(0, true, -2)
+
+
+# ------------------------------------------------------------------ joueurs
+
+var base_actions := {}
+var ui_backup := {}
+## Dernier périphérique utilisé (pour savoir si le joueur 1 joue à la manette)
+var last_kind := "kbm"
+var last_pad := -1
+var prev_kind := "kbm"
+var prev_pad := -1
+
+
+## Crée les actions « nom@index » d'un joueur.
+## kbm : clavier + souris ; pad : -2 toutes les manettes, -1 aucune, sinon l'identifiant de la manette.
+func setup_player(index: int, kbm: bool, pad: int) -> void:
+	for name in base_actions:
+		var act: String = "%s@%d" % [name, index]
+		if InputMap.has_action(act):
+			InputMap.erase_action(act)
+		InputMap.add_action(act, base_actions[name][0])
+		for ev in base_actions[name][1]:
+			if ev is InputEventKey or ev is InputEventMouseButton:
+				if kbm:
+					InputMap.action_add_event(act, ev)
+			elif pad != -1:
+				var d: InputEvent = ev.duplicate()
+				d.device = -1 if pad == -2 else pad
+				InputMap.action_add_event(act, d)
+
+
+## En jeu, les menus se pilotent « à la main » par joueur : on coupe la navigation
+## automatique de Godot (sinon la manette d'un joueur bougerait le menu de l'autre).
+func set_builtin_ui_nav(enabled: bool) -> void:
+	for action in ui_backup:
+		InputMap.action_erase_events(action)
+		if enabled:
+			for ev in ui_backup[action]:
+				InputMap.action_add_event(action, ev)
+
+
+func _input(event: InputEvent) -> void:
+	# état AVANT cet évènement (utile pour savoir si une manette « nouvelle » appuie sur Start)
+	prev_kind = last_kind
+	prev_pad = last_pad
+	if event is InputEventJoypadButton and event.pressed:
+		last_kind = "pad"
+		last_pad = event.device
+	elif event is InputEventJoypadMotion and absf(event.axis_value) > 0.5:
+		last_kind = "pad"
+		last_pad = event.device
+	elif (event is InputEventKey and event.pressed) or event is InputEventMouseButton:
+		last_kind = "kbm"
+
 
 func _ensure(action: String) -> void:
 	if not InputMap.has_action(action):

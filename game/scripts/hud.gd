@@ -60,18 +60,19 @@ class HitMarker extends Control:
 ## Mini-carte : nord en haut, joueur en bleu (flèche), squelettes en rouge, sphère défendue en vert.
 class Minimap extends Control:
 	var main
+	var player
 	const SCALE := 1.5          # pixels par mètre
 	func _process(_d: float) -> void:
 		queue_redraw()
 	func _w2m(c: Vector2, origin: Vector3, w: Vector3) -> Vector2:
 		return c + Vector2(w.x - origin.x, w.z - origin.z) * SCALE
 	func _draw() -> void:
-		if main == null or main.player == null:
+		if main == null or player == null:
 			return
 		var c := size * 0.5
 		var r := size.x * 0.5
 		draw_circle(c, r, Color(0.05, 0.04, 0.12, 0.72))
-		var o: Vector3 = main.player.global_position
+		var o: Vector3 = player.global_position
 		# limites des zones
 		var z1 := _w2m(c, o, Vector3.ZERO)
 		draw_arc(z1, main.MAP_RADIUS * SCALE, 0, TAU, 96, Color(0.45, 0.5, 1.0, 0.7), 2.0)
@@ -99,7 +100,15 @@ class Minimap extends Control:
 		draw_circle(op, 6.0, Color(0, 0, 0, 0.7))
 		draw_circle(op, 4.5, Color(0.3, 1.0, 0.4))
 		# joueur : flèche bleue orientée
-		var yaw: float = main.player.rotation.y
+		# alliés (autres joueurs) : points bleus
+		for other in main.players:
+			if other != player and is_instance_valid(other):
+				var ap := _w2m(c, o, other.global_position)
+				if ap.distance_to(c) > r - 7:
+					ap = c + (ap - c).normalized() * (r - 7)
+				draw_circle(ap, 5.5, Color(0, 0, 0, 0.7))
+				draw_circle(ap, 4.0, Color(0.35, 0.65, 1.0))
+		var yaw: float = player.rotation.y
 		var fwd := Vector2(-sin(yaw), -cos(yaw))
 		var side := Vector2(-fwd.y, fwd.x)
 		var pts := PackedVector2Array([c + fwd * 9.0, c - fwd * 6.0 + side * 6.0, c - fwd * 3.0, c - fwd * 6.0 - side * 6.0])
@@ -111,6 +120,7 @@ class Minimap extends Control:
 
 var root: Control
 var main
+var player          # joueur auquel appartient cette interface
 var minimap: Minimap
 var enemy_box: VBoxContainer
 var enemy_name: Label
@@ -547,26 +557,97 @@ func damage_flash() -> void:
 	vignette_strength = minf(vignette_strength + 0.6, 1.0)
 
 
-func _unhandled_input(event: InputEvent) -> void:
+## Un menu (pause, fin, confirmation, inventaire) de ce joueur est ouvert.
+func menu_open() -> bool:
+	return confirm_panel.visible or inventory_panel.visible or pause_panel.visible or end_panel.visible
+
+
+func _solo() -> bool:
+	return main == null or main.players.size() < 2
+
+
+func _act(ev: InputEvent, name: String) -> bool:
+	return player != null and ev.is_action_pressed(player.a(name))
+
+
+## Entrées de ce joueur quand un de ses menus est ouvert (appelé par le routeur d'entrées).
+## Renvoie vrai si l'évènement a été utilisé.
+func handle_input(ev: InputEvent) -> bool:
+	if not menu_open():
+		if _act(ev, "pause") and not game_over:
+			set_paused(true)
+			return true
+		return false
 	if confirm_panel.visible:
-		if event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel"):
+		if _act(ev, "nav_back") or _act(ev, "pause"):
 			_close_confirm(false)
-			get_viewport().set_input_as_handled()
-		return
-	if inventory_panel.visible:
-		if event.is_action_pressed("pause") or event.is_action_pressed("inventory") or event.is_action_pressed("ui_cancel"):
+			return true
+	elif inventory_panel.visible:
+		if _act(ev, "nav_back") or _act(ev, "pause") or _act(ev, "inventory"):
 			close_inventory()
-			get_viewport().set_input_as_handled()
-		elif event.is_action_pressed("weapon_next"):
+			return true
+		if _act(ev, "weapon_next"):
 			inventory_panel.next_page(1)
-			get_viewport().set_input_as_handled()
-		elif event.is_action_pressed("weapon_prev"):
+			return true
+		if _act(ev, "weapon_prev"):
 			inventory_panel.next_page(-1)
-			get_viewport().set_input_as_handled()
+			return true
+	elif pause_panel.visible:
+		if _act(ev, "pause") or _act(ev, "nav_back"):
+			set_paused(false)
+			return true
+	# navigation dans le menu ouvert
+	if _act(ev, "nav_up") or _act(ev, "nav_left"):
+		_nav_move(-1)
+		return true
+	if _act(ev, "nav_down") or _act(ev, "nav_right"):
+		_nav_move(1)
+		return true
+	if _act(ev, "nav_accept"):
+		var f := get_viewport().gui_get_focus_owner()
+		if f is Button and not (f as Button).disabled and f.is_visible_in_tree():
+			(f as Button).pressed.emit()
+		return true
+	# tout autre évènement de ce joueur est absorbé tant que le menu est ouvert
+	return not (ev is InputEventMouseButton or ev is InputEventMouseMotion)
+
+
+func _current_menu() -> Control:
+	if confirm_panel.visible:
+		return confirm_panel
+	if inventory_panel.visible:
+		return inventory_panel
+	if end_panel.visible:
+		return end_panel
+	return pause_panel
+
+
+func _nav_buttons() -> Array:
+	var out := []
+	for b in _current_menu().find_children("*", "Button", true, false):
+		if b.is_visible_in_tree() and not b.disabled and b.focus_mode != Control.FOCUS_NONE:
+			out.append(b)
+	return out
+
+
+func _nav_move(dir: int) -> void:
+	var btns := _nav_buttons()
+	if btns.is_empty():
 		return
-	if event.is_action_pressed("pause") and not game_over:
-		set_paused(not get_tree().paused)
-		get_viewport().set_input_as_handled()
+	var i := btns.find(get_viewport().gui_get_focus_owner())
+	i = 0 if i < 0 else (i + dir + btns.size()) % btns.size()
+	(btns[i] as Button).grab_focus()
+
+
+func focus_first() -> void:
+	var btns := _nav_buttons()
+	if not btns.is_empty():
+		(btns[0] as Button).grab_focus()
+
+
+func _refresh_mouse() -> void:
+	if main and main.has_method("refresh_mouse"):
+		main.refresh_mouse()
 
 
 func set_paused(p: bool) -> void:
@@ -574,7 +655,9 @@ func set_paused(p: bool) -> void:
 	pause_panel.visible = p
 	if p:
 		(pause_panel.get_meta("first") as Button).grab_focus()
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if p else Input.MOUSE_MODE_CAPTURED
+	if main:
+		main.on_pause_changed(self, p)
+	_refresh_mouse()
 
 
 func show_end(title: String, sub: String) -> void:
@@ -584,7 +667,7 @@ func show_end(title: String, sub: String) -> void:
 	end_panel.visible = true
 	(end_panel.get_meta("first") as Button).grab_focus()
 	pause_panel.visible = false
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_refresh_mouse()
 
 
 # ------------------------------------------------------------------ ennemi visé
@@ -608,15 +691,17 @@ func confirm(title: String, text: String, on_yes: Callable) -> void:
 	confirm_text.text = text
 	confirm_cb = on_yes
 	confirm_panel.visible = true
-	get_tree().paused = true
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if _solo():
+		get_tree().paused = true
 	(confirm_panel.get_meta("first") as Button).grab_focus()
+	_refresh_mouse()
 
 
 func _close_confirm(yes: bool) -> void:
 	confirm_panel.visible = false
-	get_tree().paused = false
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if _solo():
+		get_tree().paused = false
+	_refresh_mouse()
 	if yes and confirm_cb.is_valid():
 		confirm_cb.call()
 
@@ -638,11 +723,14 @@ func toggle_inventory(p) -> void:
 func open_inventory(p) -> void:
 	inv_player = p
 	inventory_panel.open(p)
-	get_tree().paused = true
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	# en solo l'inventaire met le jeu en pause ; à deux, non
+	if _solo():
+		get_tree().paused = true
+	_refresh_mouse()
 
 
 func close_inventory() -> void:
 	inventory_panel.visible = false
-	get_tree().paused = false
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if _solo():
+		get_tree().paused = false
+	_refresh_mouse()

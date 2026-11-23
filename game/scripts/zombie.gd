@@ -143,7 +143,9 @@ func _physics_process(delta: float) -> void:
 	else:
 		velocity.y = -0.5
 
-	# Choix de la cible : le joueur s'il est proche, sinon la sphère.
+	# Choix de la cible : le joueur le plus proche s'il est assez près, sinon la sphère.
+	if main and main.has_method("nearest_player"):
+		player = main.nearest_player(global_position)
 	var target = orb
 	var target_pos: Vector3 = orb.global_position
 	var reach := 1.5 + 0.4 * size_mult   # sphère plus petite
@@ -315,14 +317,14 @@ func take_damage(amount: float, headshot := false) -> void:
 
 
 func _wire_slow() -> float:
-	if player and "upgrades" in player:
-		return Upg.wire_slow(player.upgrades["wire"]["slow"])
+	if main and main.has_method("wire_level"):
+		return Upg.wire_slow(main.wire_level("slow"))
 	return TRAP_SLOW
 
 
 func _wire_dps() -> float:
-	if player and "upgrades" in player:
-		return Upg.wire_dps(player.upgrades["wire"]["damage"])
+	if main and main.has_method("wire_level"):
+		return Upg.wire_dps(main.wire_level("damage"))
 	return TRAP_DPS
 
 

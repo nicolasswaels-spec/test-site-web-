@@ -11,6 +11,9 @@ const StructureScript = preload("res://scripts/structure.gd")
 const RockScript = preload("res://scripts/rock.gd")
 const PickupScript = preload("res://scripts/pickup.gd")
 const HudScript = preload("res://scripts/hud.gd")
+const HudGroup = preload("res://scripts/hud_group.gd")
+const RouterScript = preload("res://scripts/input_router.gd")
+const DropScript = preload("res://scripts/resource_drop.gd")
 
 const MAP_RADIUS := 70.0
 const SPAWN_RADIUS := 63.0
@@ -100,7 +103,12 @@ void fragment() {
 }
 """
 
-var player
+var player                 # joueur 1 (raccourci)
+var players: Array = []    # joueurs (1 ou 2, écran scindé)
+var huds: Array = []
+var views: Array = []      # par joueur : {container, viewport, camera}
+var view_root: Control
+var router
 var orb
 var hud
 var structures := {}
@@ -163,24 +171,41 @@ func _ready() -> void:
 	orb.destroyed.connect(_on_orb_destroyed)
 	orb1 = orb
 
-	hud = HudScript.new()
-	add_child(hud)
-	hud.main = self
-	hud.minimap.main = self
-	hud.menu_pressed.connect(_to_menu)
-	hud.retry_pressed.connect(_retry)
-
-	player = PlayerScript.new()
-	player.main = self
-	player.hud = hud
-	player.position = Vector3(0, 0.2, 8)
-	add_child(player)
-	player.died.connect(_on_player_died)
+	# Rendu par « vues » (une par joueur) qui partagent le même monde 3D ;
+	# la fenêtre principale n'affiche plus la 3D elle-même.
+	process_priority = 100       # après les joueurs : caméras synchronisées sans décalage
+	get_viewport().disable_3d = true
+	GameInput.set_builtin_ui_nav(false)
+	hud = HudGroup.new()
+	var layer := CanvasLayer.new()
+	layer.layer = -1
+	add_child(layer)
+	view_root = Control.new()
+	view_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	view_root.mouse_filter = Control.MOUSE_FILTER_PASS
+	layer.add_child(view_root)
+	if Settings.coop:
+		var pads := Input.get_connected_joypads()
+		if pads.size() >= 2:
+			add_player(true, pads[0])
+			add_player(false, pads[1])
+		elif pads.size() == 1:
+			add_player(true, -1)
+			add_player(false, pads[0])
+		else:
+			add_player(true, -2)
+			hud.show_notice("Branche une manette pour le joueur 2,\npuis appuie sur Start pour le faire entrer.", 6.0)
+	else:
+		add_player(true, -2)
+	player = players[0]
+	router = RouterScript.new()
+	router.main = self
+	add_child(router)
 
 	for i in PICKUPS_PER_ZONE:
 		spawn_pickup(1)
 
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	refresh_mouse()
 	hud.show_center("ZONE ZÉRO", "Coupe du bois (2), construis (3), puis active la sphère (E)", 4.0)
 
 
@@ -747,25 +772,34 @@ func _physics_process(delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	_sync_views()
 	fireflies.global_position = player.global_position + Vector3(0, 1.5, 0)
-	hud.update_player(player)
+	for i in players.size():
+		huds[i].update_player(players[i])
 	hud.set_orb(orb.hp, orb.max_hp)
 
-	var near_orb: bool = not player.dead and player.global_position.distance_to(orb.global_position) < 5.5
+	# un joueur près de la sphère peut lancer la suite (E / X)
+	var near_orb := false
+	var interact := false
+	for p in players:
+		if not p.dead and p.global_position.distance_to(orb.global_position) < 5.5:
+			near_orb = true
+			if Input.is_action_just_pressed(p.a("interact")) and not p.input_blocked():
+				interact = true
 	var prompt := ""
 	match state:
 		"idle":
 			hud.set_wave("PRÉPARATION", "Approche-toi de la sphère et appuie sur E pour lancer le combat")
 			if near_orb:
 				prompt = "[E / X] LANCER LE COMBAT"
-				if Input.is_action_just_pressed("interact"):
+				if interact:
 					_start_wave(1)
 		"break":
 			countdown -= delta
 			hud.set_wave("%sVAGUE %d/%d DANS %d s" % ["" if zone == 1 else "SPHÈRE 2 · ", wave + 1, TOTAL_WAVES, int(ceil(countdown))], "Coupe du bois et renforce tes défenses !")
 			if near_orb:
 				prompt = "[E / X] LANCER LA VAGUE SUIVANTE"
-				if Input.is_action_just_pressed("interact"):
+				if interact:
 					carry_time = countdown
 					countdown = 0.0
 					if carry_time > 1.0:
@@ -783,7 +817,7 @@ func _process(delta: float) -> void:
 			hud.set_wave("EXPLORATION", "La forêt s'est ouverte au nord : rejoins la 2e sphère (suis la lumière)")
 			if near_orb:
 				prompt = "[E / X] LANCER LE COMBAT (2e SPHÈRE)"
-				if Input.is_action_just_pressed("interact"):
+				if interact:
 					if orb2_beacon:
 						orb2_beacon.queue_free()
 						orb2_beacon = null
@@ -791,12 +825,15 @@ func _process(delta: float) -> void:
 		"free":
 			hud.set_wave("FORÊT LIBÉRÉE", "Les deux sphères sont sauves. Explore librement !")
 
-	if player.dead and state != "lost":
-		respawn_t -= delta
-		prompt = "Réapparition dans %d..." % int(ceil(respawn_t))
-		if respawn_t <= 0.0:
-			player.respawn(orb.global_position + Vector3(rng.randf_range(-2, 2), 0.5, 6.0))
-	hud.set_prompt(prompt)
+	for i in players.size():
+		var p = players[i]
+		var pr := prompt if (not p.dead and p.global_position.distance_to(orb.global_position) < 5.5) else ""
+		if p.dead and state != "lost":
+			p.respawn_t -= delta
+			pr = "Réapparition dans %d..." % int(ceil(p.respawn_t))
+			if p.respawn_t <= 0.0:
+				p.respawn(orb.global_position + Vector3(rng.randf_range(-2, 2) + i * 1.5, 0.5, 6.0))
+		huds[i].set_prompt(pr)
 
 	orb_alert_t -= delta
 	hud.set_alert("⚠ LA SPHÈRE EST ATTAQUÉE !" if orb_alert_t > 0.0 and fmod(orb_alert_t, 0.5) > 0.2 else "")
@@ -909,7 +946,7 @@ func _spawn_zombie(boss: bool) -> void:
 	z.hp = z.max_hp
 	z.main = self
 	z.orb = orb
-	z.player = player
+	z.player = nearest_player(z.position)
 	var a: float = spawn_angles[rng.randi() % spawn_angles.size()] + rng.randf_range(-0.18, 0.18)
 	var r := _spawn_radius() + rng.randf_range(-2.5, 2.5)
 	z.position = _spawn_center() + Vector3(cos(a) * r, 0.05, sin(a) * r)
@@ -933,9 +970,10 @@ func _end_wave() -> void:
 	state = "break"
 	countdown = BREAK_TIME + carry_time
 	carry_time = 0.0
-	player.wood = mini(player.wood + 50, player.RES_MAX)
-	if not player.dead:
-		player.hp = player.MAX_HP
+	for p in players:
+		p.wood = mini(p.wood + 50, p.RES_MAX)
+		if not p.dead:
+			p.hp = p.MAX_HP
 	orb.repair(150.0)
 	hud.show_center("VAGUE %d TERMINÉE" % wave, "+50 bois · vie restaurée · sphère réparée (+150)", 3.0)
 
@@ -945,9 +983,10 @@ func _end_wave() -> void:
 func _complete_zone1() -> void:
 	state = "explore"
 	Sfx.play("win")
-	player.wood = mini(player.wood + 100, player.RES_MAX)
-	if not player.dead:
-		player.hp = player.MAX_HP
+	for p in players:
+		p.wood = mini(p.wood + 100, p.RES_MAX)
+		if not p.dead:
+			p.hp = p.MAX_HP
 	hud.show_center("VICTOIRE !", "La 1re sphère est sauve... mais la forêt s'ouvre au nord !", 5.0)
 	rifle_craftable = true
 	get_tree().create_timer(1.0, false).timeout.connect(_unlock_zone2)
@@ -989,7 +1028,8 @@ func _unlock_zone2() -> void:
 func craft_rifle() -> void:
 	if player.has_rifle:
 		return
-	player.unlock_rifle()
+	for p in players:
+		p.unlock_rifle()
 	Sfx.play("build", 0.0, 0.7)
 	hud.show_center("FUSIL D'ASSAUT", "Fabriqué ! Touche 2 / LB-RB pour l'équiper", 3.0)
 
@@ -1123,9 +1163,184 @@ func _on_orb_destroyed() -> void:
 	_finish(false)
 
 
-func _on_player_died() -> void:
-	respawn_t = RESPAWN_TIME
-	hud.show_center("ÉLIMINÉ", "La sphère tient toujours... pour l'instant.", 2.0)
+func _on_player_died(p) -> void:
+	p.respawn_t = RESPAWN_TIME
+	p.hud.show_center("ÉLIMINÉ", "La sphère tient toujours... pour l'instant.", 2.0)
+
+
+# ------------------------------------------------------------------ joueurs et écran scindé
+
+## Ajoute un joueur avec ses périphériques, sa vue (caméra) et son interface.
+func add_player(use_kbm: bool, pad_id: int) -> Node:
+	var idx := players.size()
+	GameInput.setup_player(idx, use_kbm, pad_id)
+	var container := SubViewportContainer.new()
+	container.stretch = true
+	container.mouse_filter = Control.MOUSE_FILTER_PASS
+	view_root.add_child(container)
+	var sv := SubViewport.new()
+	sv.world_3d = get_viewport().world_3d
+	sv.msaa_3d = Viewport.MSAA_2X
+	sv.audio_listener_enable_3d = idx == 0
+	sv.handle_input_locally = false
+	container.add_child(sv)
+	var cam := Camera3D.new()
+	cam.near = 0.03
+	cam.far = 500.0
+	sv.add_child(cam)
+	cam.current = true
+	var h = HudScript.new()
+	sv.add_child(h)
+	h.main = self
+	h.minimap.main = self
+	h.menu_pressed.connect(_to_menu)
+	h.retry_pressed.connect(_retry)
+	var p = PlayerScript.new()
+	p.index = idx
+	p.kbm = use_kbm
+	p.pad = pad_id
+	p.main = self
+	p.hud = h
+	h.player = p
+	h.minimap.player = p
+	p.position = orb.global_position + Vector3(idx * 2.0, 0.2, 8)
+	add_child(p)
+	p.died.connect(_on_player_died.bind(p))
+	players.append(p)
+	huds.append(h)
+	hud.huds = huds
+	views.append({"container": container, "viewport": sv, "camera": cam})
+	# ce que chaque caméra voit : pas son propre corps, pas l'arme en main de l'autre
+	for i in players.size():
+		var mask := 0xFFFFF
+		for q in players:
+			if q.index == i:
+				mask &= ~q.body_layer()
+			else:
+				mask &= ~q.view_layer()
+		views[i]["camera"].cull_mask = mask
+	_layout_views()
+	if router and is_instance_valid(router):
+		move_child(router, get_child_count() - 1)
+	return p
+
+
+func _layout_views() -> void:
+	var n := views.size()
+	for i in n:
+		var c: SubViewportContainer = views[i]["container"]
+		c.anchor_top = 0.0
+		c.anchor_bottom = 1.0
+		c.anchor_left = float(i) / n
+		c.anchor_right = float(i + 1) / n
+		c.offset_left = 2.0 if i > 0 else 0.0
+		c.offset_right = -2.0 if i < n - 1 else 0.0
+		c.offset_top = 0.0
+		c.offset_bottom = 0.0
+
+
+## Caméras des vues = caméras des joueurs ; en écran scindé, l'interface est dessinée
+## sur une toile un peu plus grande puis réduite pour tenir dans la moitié d'écran.
+func _sync_views() -> void:
+	for i in players.size():
+		var v: Dictionary = views[i]
+		var pc: Camera3D = players[i].cam
+		var vc: Camera3D = v["camera"]
+		vc.global_transform = pc.global_transform
+		vc.fov = pc.fov
+		vc.h_offset = pc.h_offset
+		vc.v_offset = pc.v_offset
+		var sv: SubViewport = v["viewport"]
+		var want := Vector2i.ZERO
+		if players.size() > 1:
+			want = Vector2i(int(sv.size.x * 1.3), int(sv.size.y * 1.3))
+		if sv.size_2d_override != want:
+			sv.size_2d_override = want
+			sv.size_2d_override_stretch = want != Vector2i.ZERO
+
+
+## Arrivée du joueur 2 en cours de partie : Start sur une manette libre,
+## ou Entrée au clavier si le joueur 1 joue à la manette.
+func try_join(ev: InputEvent) -> bool:
+	var p1 = players[0]
+	if ev is InputEventJoypadButton and ev.pressed and ev.button_index == JOY_BUTTON_START:
+		var p1_pad: int = GameInput.prev_pad if GameInput.prev_kind == "pad" else -1
+		if GameInput.prev_kind == "pad" and ev.device == p1_pad:
+			return false   # c'est le joueur 1 qui veut mettre pause
+		_reassign_p1(true, p1_pad if p1_pad != ev.device else -1)
+		add_player(false, ev.device)
+		_announce_join()
+		return true
+	if ev is InputEventKey and ev.pressed and not ev.echo and (ev.physical_keycode == KEY_ENTER or ev.physical_keycode == KEY_KP_ENTER):
+		if GameInput.prev_kind == "pad" or (p1.pad >= 0 and not p1.kbm):
+			_reassign_p1(false, GameInput.prev_pad if GameInput.prev_pad >= 0 else 0)
+			add_player(true, -1)
+			_announce_join()
+			return true
+	return false
+
+
+func _reassign_p1(use_kbm: bool, pad_id: int) -> void:
+	var p1 = players[0]
+	p1.kbm = use_kbm
+	p1.pad = pad_id
+	GameInput.setup_player(0, use_kbm, pad_id)
+
+
+func _announce_join() -> void:
+	var p2 = players[1]
+	p2.wood = 60
+	hud.show_center("JOUEUR 2 !", "Écran scindé : chacun ses ressources, son inventaire et ses armes.", 3.0)
+	refresh_mouse()
+
+
+func nearest_player(pos: Vector3):
+	var best = null
+	var bd := INF
+	for p in players:
+		if p.dead:
+			continue
+		var d: float = p.global_position.distance_to(pos)
+		if d < bd:
+			bd = d
+			best = p
+	return best if best else players[0]
+
+
+## Plus haut niveau d'amélioration des barbelés parmi les joueurs.
+func wire_level(branch: String) -> int:
+	var lvl := 0
+	for p in players:
+		lvl = maxi(lvl, p.upgrades["wire"][branch])
+	return lvl
+
+
+func spawn_resource_drop(kind: String, amount: int, pos: Vector3, from_player) -> void:
+	var d := DropScript.new()
+	d.main = self
+	d.kind = kind
+	d.amount = amount
+	d.dropper = from_player
+	d.position = Vector3(pos.x, 0.05, pos.z)
+	add_child(d)
+
+
+## Souris visible si le joueur clavier/souris a un menu ouvert, ou si le jeu est en pause.
+func refresh_mouse() -> void:
+	var visible := get_tree().paused
+	for p in players:
+		if p.kbm and p.hud and p.hud.menu_open():
+			visible = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if visible else Input.MOUSE_MODE_CAPTURED
+
+
+func on_pause_changed(from_hud, paused: bool) -> void:
+	for h in huds:
+		if h != from_hud:
+			if paused:
+				h.show_center("PAUSE", "Un joueur a mis le jeu en pause", 600.0)
+			else:
+				h.show_center("", "", 0.01)
 
 
 func _finish(victory: bool) -> void:

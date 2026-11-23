@@ -44,6 +44,13 @@ const PISTOL_ADS := Vector3(0.0, -0.085, -0.36)
 
 var main
 var hud
+## Écran scindé : numéro du joueur et périphériques qui le contrôlent
+var index := 0
+var kbm := true          # clavier + souris
+var pad := -2            # -2 toutes les manettes, -1 aucune, sinon numéro de manette
+var respawn_t := 0.0
+var avatar: Node3D
+const PLAYER_COLORS := [Color(0.25, 0.55, 1.0), Color(1.0, 0.55, 0.15)]
 
 var head: Node3D
 var cam: Camera3D
@@ -105,6 +112,26 @@ var ghost_valid := false
 var ghost_info := {}
 
 
+## Nom de l'action propre à ce joueur (ex. "fire@1").
+func a(action: String) -> String:
+	return "%s@%d" % [action, index]
+
+
+## Couche de rendu de l'arme en main / du fantôme (visible uniquement par ce joueur)
+func view_layer() -> int:
+	return 1 << (5 + index)
+
+
+## Couche de rendu du corps (invisible pour ce joueur, visible pour l'autre)
+func body_layer() -> int:
+	return 1 << (2 + index)
+
+
+## Un menu de ce joueur est ouvert : il ne contrôle plus son personnage.
+func input_blocked() -> bool:
+	return hud != null and hud.menu_open()
+
+
 func _ready() -> void:
 	add_to_group("player")
 	collision_layer = 2
@@ -126,7 +153,6 @@ func _ready() -> void:
 	cam.near = 0.03
 	cam.far = 500.0
 	head.add_child(cam)
-	cam.current = true
 	viewmodel = Node3D.new()
 	cam.add_child(viewmodel)
 
@@ -134,8 +160,47 @@ func _ready() -> void:
 	_build_pistol()
 	_build_axe()
 	_build_ghost()
+	_build_avatar()
 	_select_weapon(W.PISTOL, true)
+	_apply_layers(viewmodel, view_layer())
+	_apply_layers(ghost, view_layer())
 
+
+func _apply_layers(n: Node, mask: int) -> void:
+	if n is VisualInstance3D:
+		(n as VisualInstance3D).layers = mask
+	for c in n.get_children():
+		_apply_layers(c, mask)
+
+
+## Petit personnage visible par l'autre joueur (couleur du joueur, étiquette J1 / J2).
+func _build_avatar() -> void:
+	avatar = Node3D.new()
+	add_child(avatar)
+	var col: Color = PLAYER_COLORS[index % 2]
+	var suit := Mats.col(col, 0.6)
+	var dark := Mats.col(col.darkened(0.55), 0.8)
+	var skin := Mats.col(Color(0.95, 0.78, 0.62), 0.7)
+	Mats.box(avatar, Vector3(0.22, 0.8, 0.26), dark, Vector3(-0.14, 0.4, 0))
+	Mats.box(avatar, Vector3(0.22, 0.8, 0.26), dark, Vector3(0.14, 0.4, 0))
+	Mats.box(avatar, Vector3(0.6, 0.7, 0.34), suit, Vector3(0, 1.15, 0))
+	Mats.box(avatar, Vector3(0.4, 0.45, 0.18), dark, Vector3(0, 1.15, 0.24))   # sac à dos
+	Mats.box(avatar, Vector3(0.18, 0.65, 0.2), suit, Vector3(-0.4, 1.15, -0.05))
+	Mats.box(avatar, Vector3(0.18, 0.65, 0.2), suit, Vector3(0.4, 1.15, -0.05))
+	Mats.sphere(avatar, 0.21, skin, Vector3(0, 1.72, 0), 12)
+	Mats.box(avatar, Vector3(0.46, 0.12, 0.46), suit, Vector3(0, 1.88, 0))     # bonnet
+	var tag := Label3D.new()
+	tag.text = "J%d" % (index + 1)
+	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	tag.fixed_size = true
+	tag.pixel_size = 0.0008
+	tag.font_size = 48
+	tag.outline_size = 12
+	tag.modulate = col.lightened(0.3)
+	tag.no_depth_test = true
+	tag.position = Vector3(0, 2.3, 0)
+	avatar.add_child(tag)
+	_apply_layers(avatar, body_layer())
 
 # ------------------------------------------------------------------ modèles
 
@@ -366,6 +431,11 @@ func _build_ghost() -> void:
 # ------------------------------------------------------------------ entrées
 
 func _unhandled_input(event: InputEvent) -> void:
+	var is_mouse := event is InputEventMouseButton or event is InputEventMouseMotion
+	if is_mouse and not kbm:
+		return
+	if input_blocked():
+		return
 	if event is InputEventMouseButton and event.pressed and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		return
@@ -380,60 +450,60 @@ func _unhandled_input(event: InputEvent) -> void:
 			_cycle_weapon(-1)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_cycle_weapon(1)
-	if event.is_action_pressed("weapon_1"):
+	if event.is_action_pressed(a("weapon_1")):
 		if loadout[0] >= 0:
 			_select_weapon(loadout[0])
-	elif event.is_action_pressed("weapon_2"):
+	elif event.is_action_pressed(a("weapon_2")):
 		if loadout[1] >= 0:
 			_select_weapon(loadout[1])
 		elif hud:
 			hud.flash_message("Emplacement 2 vide (inventaire : Select / I)")
-	elif event.is_action_pressed("weapon_3"):
+	elif event.is_action_pressed(a("weapon_3")):
 		_select_weapon(W.AXE)
-	elif event.is_action_pressed("weapon_4"):
+	elif event.is_action_pressed(a("weapon_4")):
 		_select_weapon(W.BUILD)
-	elif event.is_action_pressed("cycle_piece"):
+	elif event.is_action_pressed(a("cycle_piece")):
 		if weapon == W.BUILD:
 			build_piece = (build_piece + 1) % 3
 			Sfx.play("equip", -8.0)
 		else:
 			_select_weapon(W.BUILD)
-	elif event.is_action_pressed("piece_wall"):
+	elif event.is_action_pressed(a("piece_wall")):
 		_pick_piece(0)
-	elif event.is_action_pressed("piece_floor"):
+	elif event.is_action_pressed(a("piece_floor")):
 		_pick_piece(1)
-	elif event.is_action_pressed("piece_ramp"):
+	elif event.is_action_pressed(a("piece_ramp")):
 		_pick_piece(2)
-	elif event.is_action_pressed("reload") and _is_gun(weapon):
+	elif event.is_action_pressed(a("reload")) and _is_gun(weapon):
 		_start_reload()
-	elif event.is_action_pressed("repair"):
+	elif event.is_action_pressed(a("repair")):
 		_try_repair()
-	elif event.is_action_pressed("upgrade"):
+	elif event.is_action_pressed(a("upgrade")):
 		_try_upgrade()
-	elif event.is_action_pressed("edit"):
+	elif event.is_action_pressed(a("edit")):
 		_try_edit()
-	elif event.is_action_pressed("trap"):
+	elif event.is_action_pressed(a("trap")):
 		_try_trap()
-	elif event.is_action_pressed("build_material"):
+	elif event.is_action_pressed(a("build_material")):
 		_toggle_material()
-	elif event.is_action_pressed("weapon_next") and weapon != W.BUILD:
+	elif event.is_action_pressed(a("weapon_next")) and weapon != W.BUILD:
 		_cycle_weapon(1)
-	elif event.is_action_pressed("weapon_prev"):
+	elif event.is_action_pressed(a("weapon_prev")):
 		_cycle_weapon(-1)
-	elif event.is_action_pressed("weapon_swap"):
+	elif event.is_action_pressed(a("weapon_swap")):
 		if weapon == W.BUILD:
 			_toggle_material()
 		else:
 			_select_weapon(W.AXE if _is_gun(weapon) else last_gun)
-	elif event.is_action_pressed("build_toggle"):
+	elif event.is_action_pressed(a("build_toggle")):
 		_select_weapon(last_gun if weapon == W.BUILD else W.BUILD)
-	elif event.is_action_pressed("piece_next"):
+	elif event.is_action_pressed(a("piece_next")):
 		_pick_piece((build_piece + 1) % 3)
-	elif event.is_action_pressed("inventory"):
+	elif event.is_action_pressed(a("inventory")):
 		if hud:
 			hud.toggle_inventory(self)
 			get_viewport().set_input_as_handled()   # sinon l'interface le referme aussitôt
-	elif event.is_action_pressed("sprint_toggle"):
+	elif event.is_action_pressed(a("sprint_toggle")):
 		sprint_toggle = true
 
 
@@ -586,16 +656,18 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		return
 
-	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	var input := Input.get_vector(a("move_left"), a("move_right"), a("move_forward"), a("move_back"))
+	if input_blocked():
+		input = Vector2.ZERO
 	var dir := (transform.basis * Vector3(input.x, 0.0, input.y)).normalized()
 	var spd := WALK_SPEED
 	if input.length() < 0.3:
 		sprint_toggle = false
-	if (Input.is_action_pressed("sprint") or sprint_toggle) and input.y < 0.0 and not aiming:
+	if (Input.is_action_pressed(a("sprint")) or sprint_toggle) and input.y < 0.0 and not aiming:
 		spd = SPRINT_SPEED
 	if aiming:
 		spd *= 0.6
-	if Input.is_action_just_pressed("jump") and is_on_floor():
+	if Input.is_action_just_pressed(a("jump")) and is_on_floor() and not input_blocked():
 		velocity.y = JUMP_VELOCITY
 	var accel := 14.0 if is_on_floor() else 4.0
 	velocity.x = lerpf(velocity.x, dir.x * spd, minf(accel * delta, 1.0))
@@ -632,9 +704,13 @@ func _update_weapons(delta: float) -> void:
 	build_cd -= delta
 	# Souris : on n'agit que si elle est capturée (le clic qui la capture ne doit pas tirer).
 	# Manette : toujours actif.
-	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
-	aiming = Input.is_action_pressed("aim") and _is_gun(weapon) and not reloading \
-		and (captured or not Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
+	var captured := kbm and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	if input_blocked():
+		aiming = false
+		trigger_held = false
+		return
+	aiming = Input.is_action_pressed(a("aim")) and _is_gun(weapon) and not reloading \
+		and (captured or not (kbm and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)))
 
 	if reloading:
 		reload_t -= delta
@@ -642,7 +718,7 @@ func _update_weapons(delta: float) -> void:
 			reloading = false
 			ammo = gun_mag(weapon) if _is_gun(weapon) else ammo
 
-	var firing := Input.is_action_pressed("fire") and (captured or not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT))
+	var firing := Input.is_action_pressed(a("fire")) and (captured or not (kbm and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)))
 	match weapon:
 		W.PISTOL, W.RIFLE:
 			# pistolet : coup par coup (une pression = un tir) ; fusil : automatique
@@ -659,11 +735,11 @@ func _update_weapons(delta: float) -> void:
 		W.BUILD:
 			# Manette : RT = mur, LT = sol, RB = rampe. Souris : clic gauche = pièce choisie.
 			var want := -1
-			if Input.is_action_pressed("pad_build_wall"):
+			if Input.is_action_pressed(a("pad_build_wall")):
 				want = 0
-			elif Input.is_action_pressed("pad_build_floor"):
+			elif Input.is_action_pressed(a("pad_build_floor")):
 				want = 1
-			elif Input.is_action_pressed("pad_build_ramp"):
+			elif Input.is_action_pressed(a("pad_build_ramp")):
 				want = 2
 			elif captured and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 				want = build_piece
@@ -676,8 +752,8 @@ func _update_weapons(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	# Visée au stick droit (courbe quadratique pour la précision)
-	if not dead and not get_tree().paused:
-		var look := Input.get_vector("look_left", "look_right", "look_up", "look_down")
+	if not dead and not get_tree().paused and not input_blocked():
+		var look := Input.get_vector(a("look_left"), a("look_right"), a("look_up"), a("look_down"))
 		if look.length() > 0.0:
 			look = look * look.length()
 			var spd := STICK_LOOK_SPEED * (0.45 if aiming else 1.0)
@@ -1012,6 +1088,37 @@ func _try_repair() -> void:
 		return
 	_spend(m, cost)
 	build_target.repair()
+
+
+## Ajoute des ressources (bois, pierre, pièces) dans la limite du maximum. Renvoie la quantité prise.
+func add_resource(kind: String, amount: int) -> int:
+	var have: int = {"wood": wood, "stone": stone, "coins": coins}[kind]
+	var take := mini(amount, RES_MAX - have)
+	match kind:
+		"wood":
+			wood += take
+		"stone":
+			stone += take
+		"coins":
+			coins += take
+	return take
+
+
+## Dépose au sol, devant soi, une quantité d'une ressource.
+func drop_resource(kind: String, amount: int) -> void:
+	var have: int = {"wood": wood, "stone": stone, "coins": coins}[kind]
+	amount = mini(amount, have)
+	if amount <= 0 or main == null:
+		return
+	match kind:
+		"wood":
+			wood -= amount
+		"stone":
+			stone -= amount
+		"coins":
+			coins -= amount
+	var fwd := -global_transform.basis.z
+	main.spawn_resource_drop(kind, amount, global_position + Vector3(fwd.x, 0, fwd.z).normalized() * 1.6, self)
 
 
 func collect_coin() -> void:

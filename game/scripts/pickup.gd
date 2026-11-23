@@ -46,9 +46,14 @@ func _process(delta: float) -> void:
 	t += delta
 	model.position.y = 0.35 + sin(t * 2.0) * 0.06
 	model.rotation.y += delta * 1.6
-	if main and main.player and not main.player.dead:
-		var p: Vector3 = main.player.global_position
+	if main == null:
+		return
+	for pl in main.players:
+		if pl.dead:
+			continue
+		var p: Vector3 = pl.global_position
 		if Vector2(p.x - global_position.x, p.z - global_position.z).length() < 1.4 and absf(p.y - global_position.y) < 2.0:
-			main.player.collect_coin()
+			pl.collect_coin()
 			main.on_pickup_collected(self)
 			queue_free()
+			return

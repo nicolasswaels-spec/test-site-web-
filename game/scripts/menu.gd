@@ -22,6 +22,10 @@ void fragment() {
 
 func _ready() -> void:
 	get_tree().paused = false
+	get_viewport().disable_3d = false
+	GameInput.set_builtin_ui_nav(true)
+	GameInput.setup_player(0, true, -2)
+	Settings.coop = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	theme = UI.make_theme()
 
@@ -69,6 +73,16 @@ func _ready() -> void:
 	start.pressed.connect(_on_start)
 	vb.add_child(start)
 
+	var duo := Button.new()
+	duo.text = "JOUER À DEUX"
+	duo.custom_minimum_size = Vector2(380, 64)
+	duo.add_theme_font_size_override("font_size", 26)
+	duo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	duo.pressed.connect(func():
+		Settings.coop = true
+		_on_start())
+	vb.add_child(duo)
+
 	var quality := Button.new()
 	quality.custom_minimum_size = Vector2(380, 50)
 	quality.add_theme_font_size_override("font_size", 18)
@@ -89,7 +103,7 @@ func _ready() -> void:
 	vb.add_child(quit)
 
 	var help := Label.new()
-	help.text = "ZQSD / WASD : bouger · Souris : viser · Clic G : tirer / couper / construire · Clic D : viser · I : inventaire\n1 : pistolet · 2 : fusil · 3 : hache · 4 : construction (F : mur / sol / rampe) · R : recharger · E : interagir · Échap : pause\nManette : croix directionnelle pour choisir, A pour valider"
+	help.text = "ZQSD / WASD : bouger · Souris : viser · Clic G : tirer / couper / construire · Clic D : viser · I : inventaire\n1 : pistolet · 2 : fusil · 3 : hache · 4 : construction (F : mur / sol / rampe) · R : recharger · E : interagir · Échap : pause\nManette : croix directionnelle pour choisir, A pour valider · À deux : « JOUER À DEUX », ou Start sur une 2e manette en cours de partie"
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	help.add_theme_font_size_override("font_size", 15)
 	help.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)

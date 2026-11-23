@@ -12,6 +12,14 @@ lumineuse contre 10 vagues de zombies.
 
 Les modèles de nature viennent du pack CC0 de Quaternius (voir Crédits) ; le reste est généré par le code.
 
+## Jouer à deux (écran scindé)
+
+- Depuis le menu : **JOUER À DEUX** (avec 2 manettes : une par joueur ; avec 1 manette : clavier/souris pour le joueur 1, manette pour le joueur 2).
+- En cours de partie : le joueur 2 appuie sur **Start** d'une manette libre, ou sur **Entrée** du clavier si le joueur 1 joue à la manette.
+- Chacun a sa vue, son interface, sa mini-carte, ses ressources, ses armes et ses améliorations. Les squelettes visent le joueur le plus proche.
+- À deux, l'inventaire ne met pas le jeu en pause ; seul le joueur qui l'a ouvert le pilote. La pause (Start / Échap) met tout le monde en pause, et seul celui qui l'a déclenchée peut reprendre.
+- **Déposer des ressources** : dans l'inventaire (page Résumé), choisir la quantité (10, 50, 100, 500 ou tout) puis DÉPOSER. Un paquet apparaît au sol devant soi ; n'importe quel joueur le ramasse en marchant dessus. Les armes ne se déposent pas.
+
 ## Commandes
 
 Les touches sont **physiques** : ZQSD sur un clavier AZERTY, WASD sur un clavier QWERTY.
