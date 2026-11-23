@@ -1,14 +1,27 @@
 extends CharacterBody3D
-## Zombie : avance vers la sphère, attaque le joueur s'il est proche,
-## et détruit les constructions qui lui barrent la route.
+## Mort-vivant (squelette animé du pack KayKit, CC0) : avance vers la sphère,
+## attaque le joueur s'il est proche, et détruit les constructions qui lui barrent la route.
 
 const Mats = preload("res://scripts/mats.gd")
+const MODELS := [
+	preload("res://assets/skeletons/Skeleton_Minion.glb"),
+	preload("res://assets/skeletons/Skeleton_Rogue.glb"),
+]
+const BOSS_MODEL := preload("res://assets/skeletons/Skeleton_Warrior.glb")
+const MODEL_HEIGHT := 2.17
+const ANIM_WALK := "Walking_D_Skeletons"
+const ANIM_SPAWN := "Spawn_Ground_Skeletons"
+const ANIM_DEATH := "Death_C_Skeletons"
+const ANIM_HIT := "Hit_A"
+const SPAWN_SPEED := 2.0
+
+static var _flash_mat: StandardMaterial3D
+static var _eye_mats := {}
 
 signal died(zombie)
 
 const CHASE_RANGE := 13.0
 const GRAVITY := 20.0
-const RISE_TIME := 0.9
 
 var max_hp := 80.0
 var hp := 80.0
@@ -25,18 +38,17 @@ var dead := false
 var attack_cd := 0.5
 var attack_anim := 0.0
 var anim_t := 0.0
-var rise_t := RISE_TIME
+var rise_t := 0.0
+var anim: AnimationPlayer
+var meshes: Array[MeshInstance3D] = []
+var attack_anim_name := "Unarmed_Melee_Attack_Punch_A"
+var hit_t := 0.0
 var flash_t := 0.0
 var groan_t := 0.0
 var blocked_by = null
 var blocked_t := 0.0
 
 var visual: Node3D
-var arm_l: Node3D
-var arm_r: Node3D
-var leg_l: Node3D
-var leg_r: Node3D
-var skin_mat: StandardMaterial3D
 
 
 func _ready() -> void:
@@ -51,11 +63,9 @@ func _ready() -> void:
 	shape.shape = cap
 	shape.position.y = 0.9 * s
 	add_child(shape)
-	head_height = 1.42 * s
+	head_height = 1.12 * s
 	_build_model(s)
-	anim_t = randf() * 10.0
 	groan_t = randf_range(2.0, 9.0)
-	visual.position.y = -2.0 * s
 	if main:
 		main.spawn_impact(global_position + Vector3.UP * 0.2, Vector3.UP, Color(0.35, 0.25, 0.15), 14, 1.3)
 
@@ -63,44 +73,45 @@ func _ready() -> void:
 func _build_model(s: float) -> void:
 	visual = Node3D.new()
 	add_child(visual)
-	skin_mat = StandardMaterial3D.new()
-	skin_mat.roughness = 0.8
+	var scene: PackedScene = BOSS_MODEL if is_boss else MODELS[randi() % MODELS.size()]
+	var model := scene.instantiate() as Node3D
+	model.rotation.y = PI   # le modèle regarde vers +Z, le jeu vers -Z
+	model.scale = Vector3.ONE * (1.8 / MODEL_HEIGHT) * s
+	visual.add_child(model)
+	anim = model.find_child("AnimationPlayer", true, false)
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		meshes.append(mi)
+		if mi.name.ends_with("_Eyes"):
+			mi.material_override = _eye_material()
+	# Animations en boucle (l'import glTF ne les marque pas comme telles)
+	var walk := anim.get_animation(ANIM_WALK)
+	walk.loop_mode = Animation.LOOP_LINEAR
 	if is_boss:
-		skin_mat.albedo_color = Color(0.55, 0.35, 0.65)
-	else:
-		skin_mat.albedo_color = Color(0.42, 0.68, 0.32).lerp(Color(0.55, 0.72, 0.4), randf())
-	var shirts := [Color(0.55, 0.2, 0.6), Color(0.2, 0.35, 0.7), Color(0.6, 0.35, 0.15), Color(0.75, 0.2, 0.2), Color(0.25, 0.5, 0.45)]
-	var shirt := Mats.col(Color(0.15, 0.12, 0.12) if is_boss else shirts[randi() % shirts.size()])
-	var pants := Mats.col(Color(0.18, 0.2, 0.32) if randf() > 0.4 else Color(0.32, 0.25, 0.18))
-	var eye := Mats.col(Color(1.0, 0.15, 0.1) if is_boss else Color(1.0, 0.9, 0.2), 0.3, 4.0)
-	var dark := Mats.col(Color(0.12, 0.05, 0.05))
-
-	Mats.box(visual, Vector3(0.62, 0.72, 0.36) * s, shirt, Vector3(0, 1.08, 0) * s)
-	Mats.box(visual, Vector3(0.5, 0.2, 0.3) * s, skin_mat, Vector3(0.02, 0.8, 0.0) * s)  # ventre
-	var head := Node3D.new()
-	head.position = Vector3(0, 1.66, -0.04) * s
-	head.rotation_degrees = Vector3(12, 0, randf_range(-12, 12))
-	visual.add_child(head)
-	Mats.box(head, Vector3(0.46, 0.46, 0.46) * s, skin_mat)
-	Mats.box(head, Vector3(0.1, 0.07, 0.03) * s, eye, Vector3(-0.11, 0.05, -0.235) * s)
-	Mats.box(head, Vector3(0.1, 0.07, 0.03) * s, eye, Vector3(0.11, 0.05, -0.235) * s)
-	Mats.box(head, Vector3(0.26, 0.08, 0.03) * s, dark, Vector3(0, -0.12, -0.235) * s)
-	if is_boss:
-		Mats.box(visual, Vector3(0.3, 0.25, 0.35) * s, dark, Vector3(-0.45, 1.5, 0) * s, Vector3(0, 0, 20))
-		Mats.box(visual, Vector3(0.3, 0.25, 0.35) * s, dark, Vector3(0.45, 1.5, 0) * s, Vector3(0, 0, -20))
-
-	arm_l = _limb(Vector3(-0.42, 1.38, 0) * s, Vector3(0.2, 0.7, 0.2) * s, skin_mat)
-	arm_r = _limb(Vector3(0.42, 1.38, 0) * s, Vector3(0.2, 0.7, 0.2) * s, skin_mat)
-	leg_l = _limb(Vector3(-0.16, 0.74, 0) * s, Vector3(0.25, 0.74, 0.27) * s, pants)
-	leg_r = _limb(Vector3(0.16, 0.74, 0) * s, Vector3(0.25, 0.74, 0.27) * s, pants)
+		attack_anim_name = "2H_Melee_Attack_Chop"
+	rise_t = anim.get_animation(ANIM_SPAWN).length / SPAWN_SPEED
+	anim.play(ANIM_SPAWN, -1, SPAWN_SPEED)
 
 
-func _limb(pivot: Vector3, size: Vector3, mat: Material) -> Node3D:
-	var p := Node3D.new()
-	p.position = pivot
-	visual.add_child(p)
-	Mats.box(p, size, mat, Vector3(0, -size.y * 0.5, 0))
-	return p
+func _eye_material() -> StandardMaterial3D:
+	var key := "boss" if is_boss else "normal"
+	if not _eye_mats.has(key):
+		var m := StandardMaterial3D.new()
+		var c := Color(1.0, 0.2, 0.1) if is_boss else Color(1.0, 0.75, 0.2)
+		m.albedo_color = c
+		m.emission_enabled = true
+		m.emission = c
+		m.emission_energy_multiplier = 5.0
+		_eye_mats[key] = m
+	return _eye_mats[key]
+
+
+static func _flash() -> StandardMaterial3D:
+	if _flash_mat == null:
+		_flash_mat = StandardMaterial3D.new()
+		_flash_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_flash_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_flash_mat.albedo_color = Color(1, 1, 1, 0.55)
+	return _flash_mat
 
 
 func _physics_process(delta: float) -> void:
@@ -108,9 +119,7 @@ func _physics_process(delta: float) -> void:
 		return
 	if rise_t > 0.0:
 		rise_t -= delta
-		visual.position.y = lerpf(0.0, -2.0 * size_mult, maxf(rise_t, 0.0) / RISE_TIME)
 		return
-	visual.position.y = 0.0
 
 	if not is_on_floor():
 		velocity.y -= GRAVITY * delta
@@ -183,24 +192,23 @@ func _physics_process(delta: float) -> void:
 
 
 func _animate(delta: float) -> void:
-	var moving := Vector2(velocity.x, velocity.z).length() > 0.1
-	if moving:
-		anim_t += delta * speed * 2.4
-		leg_l.rotation.x = sin(anim_t) * 0.6
-		leg_r.rotation.x = -sin(anim_t) * 0.6
-	else:
-		leg_l.rotation.x = lerpf(leg_l.rotation.x, 0.0, 10.0 * delta)
-		leg_r.rotation.x = lerpf(leg_r.rotation.x, 0.0, 10.0 * delta)
-	attack_anim = maxf(attack_anim - delta * 3.0, 0.0)
-	var lunge := sin(attack_anim * PI) * 0.9
-	arm_l.rotation.x = 1.4 + sin(anim_t * 0.5) * 0.12 + lunge
-	arm_r.rotation.x = 1.4 - sin(anim_t * 0.5) * 0.12 + lunge
-	visual.rotation.z = sin(anim_t * 0.5) * 0.08
-	visual.rotation.x = -lunge * 0.25
+	attack_anim = maxf(attack_anim - delta, 0.0)
+	hit_t = maxf(hit_t - delta, 0.0)
 	if flash_t > 0.0:
 		flash_t -= delta
 		if flash_t <= 0.0:
-			skin_mat.emission_enabled = false
+			for mi in meshes:
+				mi.material_overlay = null
+	# L'attaque ou la réaction au coup se termine avant de reprendre la marche
+	if anim.is_playing() and anim.current_animation != ANIM_WALK and (attack_anim > 0.0 or hit_t > 0.0):
+		return
+	var moving := Vector2(velocity.x, velocity.z).length() > 0.1
+	if moving:
+		if anim.current_animation != ANIM_WALK:
+			anim.play(ANIM_WALK, 0.2)
+		anim.speed_scale = speed / 2.2
+	elif attack_anim <= 0.0 and anim.current_animation == ANIM_WALK:
+		anim.play("Idle_Combat" if anim.has_animation("Idle_Combat") else "Idle", 0.2)
 
 
 func take_damage(amount: float, headshot := false) -> void:
@@ -208,11 +216,14 @@ func take_damage(amount: float, headshot := false) -> void:
 		return
 	hp -= amount
 	flash_t = 0.08
-	skin_mat.emission_enabled = true
-	skin_mat.emission = Color(1, 1, 1)
-	skin_mat.emission_energy_multiplier = 1.5 if headshot else 0.8
+	for mi in meshes:
+		mi.material_overlay = _flash()
 	if hp <= 0.0:
 		_die()
+	elif headshot and attack_anim <= 0.0 and hit_t <= 0.0 and rise_t <= 0.0 and not is_boss:
+		hit_t = 0.35
+		anim.speed_scale = 1.0
+		anim.play(ANIM_HIT, 0.05, 1.8)
 
 
 func _die() -> void:
@@ -220,11 +231,13 @@ func _die() -> void:
 	remove_from_group("zombie")
 	collision_layer = 0
 	collision_mask = 0
-	skin_mat.emission_enabled = false
+	for mi in meshes:
+		mi.material_overlay = null
 	died.emit(self)
 	Sfx.play_3d("zdie", global_position + Vector3.UP, 0.0, 0.7 if is_boss else 1.0)
+	anim.speed_scale = 1.0
+	anim.play(ANIM_DEATH, 0.1, 1.4)
 	var tw := create_tween()
-	tw.tween_property(visual, "rotation:x", PI * 0.5, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tw.tween_interval(0.8)
-	tw.tween_property(visual, "position:y", -1.2 * size_mult, 0.8)
+	tw.tween_interval(1.9)
+	tw.tween_property(visual, "position:y", -1.2 * size_mult, 0.9)
 	tw.tween_callback(queue_free)

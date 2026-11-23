@@ -22,6 +22,7 @@ const AXE_TREE_DAMAGE := 25.0
 const AXE_ZOMBIE_DAMAGE := 45.0
 const CELL := 4.0
 const BUILD_COST := 10
+const MAT_NAMES := ["BOIS", "PIERRE"]
 const MAX_HP := 100.0
 const MASK_SHOOT := 1 | 4 | 8 | 16 | 32
 
@@ -64,6 +65,15 @@ var bob_t := 0.0
 var equip_t := 0.0
 var hp := MAX_HP
 var wood := 60
+var stone := 0
+var build_mat := 0   # 0 bois, 1 pierre
+var build_target = null
+var crystal_mat: StandardMaterial3D
+var sight_glow: OmniLight3D
+var ads_t := 0.0
+var shake_t := 0.0
+var shake_amp := 0.0
+var swinging := false
 var dead := false
 var invuln_t := 0.0
 var ghost_valid := false
@@ -144,6 +154,14 @@ func _build_rifle() -> void:
 	brass.roughness = 0.4
 	var leather := Mats.col(Color(0.20, 0.10, 0.07), 0.9)
 	var crystal := Mats.col(Color(0.30, 0.95, 0.90), 0.1, 4.0)
+	# matériau propre au cristal-viseur : il s'estompe quand on vise
+	crystal_mat = StandardMaterial3D.new()
+	crystal_mat.albedo_color = Color(0.30, 0.95, 0.90, 1.0)
+	crystal_mat.roughness = 0.1
+	crystal_mat.emission_enabled = true
+	crystal_mat.emission = Color(0.30, 0.95, 0.90)
+	crystal_mat.emission_energy_multiplier = 4.0
+	crystal_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 
 	# boîtier et capot
 	Mats.box(rifle, Vector3(0.08, 0.10, 0.34), steel, Vector3(0, 0, 0))
@@ -155,8 +173,9 @@ func _build_rifle() -> void:
 	# cristal-viseur en losange sur le dessus
 	var holder := Mats.box(rifle, Vector3(0.05, 0.03, 0.07), steel_dark, Vector3(0, 0.09, 0.03))
 	holder.name = "SightHolder"
-	Mats.box(rifle, Vector3(0.032, 0.032, 0.032), crystal, Vector3(0, 0.122, 0.03), Vector3(45, 45, 0))
+	Mats.box(rifle, Vector3(0.032, 0.032, 0.032), crystal_mat, Vector3(0, 0.122, 0.03), Vector3(45, 45, 0))
 	var glow := OmniLight3D.new()
+	sight_glow = glow
 	glow.light_color = Color(0.3, 0.95, 0.9)
 	glow.light_energy = 0.2
 	glow.omni_range = 0.45
@@ -276,12 +295,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		_pick_piece(2)
 	elif event.is_action_pressed("reload") and weapon == W.RIFLE:
 		_start_reload()
-	elif event.is_action_pressed("weapon_next"):
+	elif event.is_action_pressed("repair"):
+		_try_repair()
+	elif event.is_action_pressed("upgrade"):
+		_try_upgrade()
+	elif event.is_action_pressed("build_material"):
+		_toggle_material()
+	elif event.is_action_pressed("weapon_next") and weapon != W.BUILD:
 		_select_weapon((weapon + 1) % 3)
 	elif event.is_action_pressed("weapon_prev"):
 		_select_weapon((weapon + 2) % 3)
 	elif event.is_action_pressed("weapon_swap"):
-		_select_weapon(W.AXE if weapon == W.RIFLE else W.RIFLE)
+		if weapon == W.BUILD:
+			_toggle_material()
+		else:
+			_select_weapon(W.AXE if weapon == W.RIFLE else W.RIFLE)
 	elif event.is_action_pressed("build_toggle"):
 		_select_weapon(W.RIFLE if weapon == W.BUILD else W.BUILD)
 	elif event.is_action_pressed("piece_next"):
@@ -381,8 +409,20 @@ func _update_weapons(delta: float) -> void:
 			if firing and swing_cd <= 0.0:
 				_swing()
 		W.BUILD:
+			# Manette : RT = mur, LT = sol, RB = rampe. Souris : clic gauche = pièce choisie.
+			var want := -1
+			if Input.is_action_pressed("pad_build_wall"):
+				want = 0
+			elif Input.is_action_pressed("pad_build_floor"):
+				want = 1
+			elif Input.is_action_pressed("pad_build_ramp"):
+				want = 2
+			elif captured and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+				want = build_piece
+			if want >= 0 and want != build_piece:
+				build_piece = want
 			_update_ghost()
-			if firing and build_cd <= 0.0:
+			if want >= 0 and build_cd <= 0.0:
 				_place()
 
 
@@ -412,7 +452,26 @@ func _process(delta: float) -> void:
 		target_rot = Vector3(-0.5, 0.3, 0.5)
 	rifle.position = rifle.position.lerp(target_pos + bob + equip_off + Vector3(0, 0, recoil * 0.06), minf(16.0 * delta, 1.0))
 	rifle.rotation = rifle.rotation.lerp(target_rot + Vector3(recoil * 0.1, 0, 0), minf(14.0 * delta, 1.0))
-	axe.position = AXE_POS + bob * 1.5 + equip_off
+	if not swinging:
+		axe.position = AXE_POS + bob * 1.5 + equip_off
+
+	# Le cristal-viseur s'estompe quand on vise pour voir la cible au travers
+	ads_t = move_toward(ads_t, 1.0 if aiming else 0.0, delta * 6.0)
+	crystal_mat.albedo_color.a = lerpf(1.0, 0.18, ads_t)
+	crystal_mat.emission_energy_multiplier = lerpf(4.0, 0.25, ads_t)
+	sight_glow.light_energy = lerpf(0.2, 0.0, ads_t)
+
+	# Tremblement de caméra (impacts de hache)
+	if shake_t > 0.0:
+		shake_t -= delta
+		var k := shake_amp * clampf(shake_t / 0.15, 0.0, 1.0)
+		cam.h_offset = randf_range(-k, k)
+		cam.v_offset = randf_range(-k, k)
+	else:
+		cam.h_offset = 0.0
+		cam.v_offset = 0.0
+
+	_update_build_target()
 
 	flash_t -= delta
 	muzzle_flash.visible = flash_t > 0.0
@@ -471,13 +530,35 @@ func _shoot() -> void:
 
 # ------------------------------------------------------------------ hache
 
+## Coup de hache en 4 temps : armé (on lève la hache en arrière), frappe rapide en arc,
+## impact (petit arrêt + tremblement), puis retour en position.
 func _swing() -> void:
-	swing_cd = 0.5
-	Sfx.play("swing", -6.0)
+	swing_cd = 0.62
+	swinging = true
 	var tw := create_tween()
-	tw.tween_property(axe_pivot, "rotation", Vector3(-1.3, 0.35, 0.5), 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tw.tween_property(axe_pivot, "rotation", Vector3.ZERO, 0.28).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	get_tree().create_timer(0.11, false).timeout.connect(_axe_impact)
+	# 1. armé : la hache recule et monte au-dessus de l'épaule
+	tw.tween_property(axe, "position", AXE_POS + Vector3(0.06, 0.16, 0.12), 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(axe_pivot, "rotation", Vector3(0.75, -0.25, -0.35), 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(cam, "rotation:z", -0.025, 0.16)
+	tw.tween_callback(func(): Sfx.play("swing", -4.0))
+	# 2. frappe : arc rapide vers le bas et vers le centre
+	tw.tween_property(axe, "position", AXE_POS + Vector3(-0.16, -0.05, -0.18), 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(axe_pivot, "rotation", Vector3(-1.45, 0.45, 0.65), 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(cam, "rotation:z", 0.035, 0.09)
+	# 3. impact
+	tw.tween_callback(_axe_impact)
+	tw.tween_interval(0.06)
+	# 4. accompagnement puis retour
+	tw.tween_property(axe_pivot, "rotation", Vector3(-1.6, 0.55, 0.75), 0.06)
+	tw.tween_property(axe, "position", AXE_POS, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(axe_pivot, "rotation", Vector3.ZERO, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(cam, "rotation:z", 0.0, 0.2)
+	tw.tween_callback(func(): swinging = false)
+
+
+func _shake(amount: float) -> void:
+	shake_amp = amount
+	shake_t = 0.15
 
 
 func _axe_impact() -> void:
@@ -491,11 +572,23 @@ func _axe_impact() -> void:
 	if r.is_empty():
 		return
 	var c = r.collider
-	if c and c.is_in_group("tree"):
+	_shake(0.012)
+	if c and c.is_in_group("rock"):
+		var got: int = c.mine(AXE_TREE_DAMAGE)
+		if got > 0:
+			stone = mini(stone + got, 999)
+			if hud:
+				hud.stone_gain(got)
+		elif hud and main and not main.stone_unlocked:
+			hud.flash_message("La pierre se débloque à la vague %d" % main.STONE_WAVE)
+		main.spawn_impact(r.position, r.normal, Color(0.5, 0.5, 0.6), 10, 1.0)
+		_shake(0.02)
+	elif c and c.is_in_group("tree"):
 		var gained: int = c.chop(AXE_TREE_DAMAGE)
 		wood = mini(wood + gained, 999)
 		if hud and gained > 0:
 			hud.wood_gain(gained)
+		_shake(0.018)
 		main.spawn_impact(r.position, r.normal, Color(0.65, 0.45, 0.25), 10, 1.0)
 	elif c and c.is_in_group("zombie"):
 		c.take_damage(AXE_ZOMBIE_DAMAGE, false)
@@ -560,7 +653,8 @@ func _update_ghost() -> void:
 	ghost_info = _compute_build()
 	ghost.mesh = piece_meshes[build_piece]
 	ghost.global_transform = ghost_info["xform"]
-	ghost_valid = wood >= BUILD_COST and not main.structures.has(ghost_info["key"])
+	ghost_valid = _material_count(build_mat) >= BUILD_COST and not main.structures.has(ghost_info["key"])
+	ghost_ok_mat.albedo_color = Color(0.3, 0.7, 1.0, 0.35) if build_mat == 0 else Color(0.75, 0.7, 1.0, 0.4)
 	ghost.material_override = ghost_ok_mat if ghost_valid else ghost_bad_mat
 
 
@@ -568,13 +662,87 @@ func _place() -> void:
 	if ghost_info.is_empty():
 		return
 	if not ghost_valid:
-		if wood < BUILD_COST and hud:
-			hud.flash_message("Pas assez de bois ! Coupe des arbres (2)")
+		if _material_count(build_mat) < BUILD_COST and hud:
+			hud.flash_message("Pas assez de bois ! Coupe des arbres (hache)" if build_mat == 0 else "Pas assez de pierre ! Casse des rochers (hache)")
 		build_cd = 0.4
 		return
-	wood -= BUILD_COST
+	_spend(build_mat, BUILD_COST)
 	build_cd = 0.15
-	main.place_structure(build_piece, ghost_info["xform"], ghost_info["key"])
+	main.place_structure(build_piece, ghost_info["xform"], ghost_info["key"], build_mat)
+
+
+func _material_count(m: int) -> int:
+	return wood if m == 0 else stone
+
+
+func _spend(m: int, amount: int) -> void:
+	if m == 0:
+		wood -= amount
+	else:
+		stone -= amount
+
+
+func _toggle_material() -> void:
+	if main and not main.stone_unlocked:
+		if hud:
+			hud.flash_message("La pierre se débloque à la vague %d" % main.STONE_WAVE)
+		return
+	build_mat = 1 - build_mat
+	Sfx.play("equip", -6.0)
+	if weapon != W.BUILD:
+		_select_weapon(W.BUILD)
+
+
+# ------------------------------------------------------------------ réparation / amélioration
+
+## La construction visée (jusqu'à 6 m), sinon la plus proche à moins de 3,5 m.
+func _update_build_target() -> void:
+	build_target = null
+	if dead or main == null:
+		return
+	var from := cam.global_position
+	var to := from - cam.global_transform.basis.z * 6.0
+	var q := PhysicsRayQueryParameters3D.create(from, to, 8)
+	var r := get_world_3d().direct_space_state.intersect_ray(q)
+	if not r.is_empty() and r.collider and r.collider.is_in_group("structure"):
+		build_target = r.collider
+	else:
+		var best := 3.5
+		for st in get_tree().get_nodes_in_group("structure"):
+			var d: float = st.global_position.distance_to(global_position + Vector3.UP)
+			if d < best:
+				best = d
+				build_target = st
+
+
+func _try_repair() -> void:
+	if build_target == null or not is_instance_valid(build_target):
+		return
+	var cost: int = build_target.repair_cost()
+	if cost == 0:
+		hud.flash_message("Cette construction est intacte")
+		return
+	var m: int = build_target.material_type
+	if _material_count(m) < cost:
+		hud.flash_message("Il faut %d %s pour réparer" % [cost, MAT_NAMES[m].to_lower()])
+		return
+	_spend(m, cost)
+	build_target.repair()
+
+
+func _try_upgrade() -> void:
+	if build_target == null or not is_instance_valid(build_target):
+		return
+	if not build_target.can_upgrade():
+		hud.flash_message("Déjà améliorée")
+		return
+	var m: int = build_target.material_type
+	var cost: int = build_target.UPGRADE_COST
+	if _material_count(m) < cost:
+		hud.flash_message("Il faut %d %s pour améliorer" % [cost, MAT_NAMES[m].to_lower()])
+		return
+	_spend(m, cost)
+	build_target.upgrade()
 
 
 # ------------------------------------------------------------------ santé

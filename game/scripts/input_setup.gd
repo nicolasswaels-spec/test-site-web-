@@ -23,6 +23,9 @@ func _ready() -> void:
 	_key("piece_floor", KEY_F2)
 	_key("piece_ramp", KEY_F3)
 	_key("pause", KEY_ESCAPE)
+	_key("repair", KEY_G)
+	_key("upgrade", KEY_T)
+	_key("build_material", KEY_V)
 	_mouse("fire", MOUSE_BUTTON_LEFT)
 	_mouse("aim", MOUSE_BUTTON_RIGHT)
 
@@ -47,7 +50,12 @@ func _ready() -> void:
 	_button("sprint_toggle", JOY_BUTTON_LEFT_STICK)   # clic stick gauche
 	_button("piece_prev", JOY_BUTTON_DPAD_LEFT)
 	_button("piece_next", JOY_BUTTON_DPAD_RIGHT)
-	_button("cycle_piece", JOY_BUTTON_DPAD_UP)
+	_button("upgrade", JOY_BUTTON_DPAD_UP)
+	_button("repair", JOY_BUTTON_DPAD_DOWN)
+	# En mode construction : RT = mur, LT = sol, RB = rampe
+	_axis("pad_build_wall", JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	_axis("pad_build_floor", JOY_AXIS_TRIGGER_LEFT, 1.0)
+	_button("pad_build_ramp", JOY_BUTTON_RIGHT_SHOULDER)
 	_button("pause", JOY_BUTTON_START)
 	_button("pause", JOY_BUTTON_BACK)
 	# Navigation dans les menus à la manette
@@ -63,7 +71,7 @@ func _ready() -> void:
 		InputMap.action_set_deadzone(a, 0.2)
 	for a in ["look_left", "look_right", "look_up", "look_down"]:
 		InputMap.action_set_deadzone(a, 0.12)
-	for a in ["fire", "aim"]:
+	for a in ["fire", "aim", "pad_build_wall", "pad_build_floor"]:
 		InputMap.action_set_deadzone(a, 0.35)
 
 

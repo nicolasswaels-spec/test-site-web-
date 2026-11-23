@@ -24,6 +24,9 @@ Les touches sont **physiques** : ZQSD sur un clavier AZERTY, WASD sur un clavier
 | Viser (fusil) | Clic droit |
 | Fusil / Hache / Construction | 1 / 2 / 3 (ou molette) |
 | Changer de pièce (mur → sol → rampe) | F (ou F1 / F2 / F3) |
+| Changer de matériau (bois / pierre) | V |
+| Réparer la construction visée | G |
+| Améliorer la construction visée (×3 PV) | T |
 | Recharger | R |
 | Lancer le combat (près de la sphère) | E |
 | Pause | Échap |
@@ -40,7 +43,9 @@ Les touches sont **physiques** : ZQSD sur un clavier AZERTY, WASD sur un clavier
 | Changer d'arme | LB / RB | L1 / R1 |
 | Fusil ↔ hache | Y | Triangle |
 | Mode construction (entrer / sortir) | B | Rond |
-| Changer de pièce | Croix directionnelle ← → | Croix directionnelle ← → |
+| En construction : mur / sol / rampe | RT / LT / RB | R2 / L2 / R1 |
+| En construction : bois ↔ pierre | Y | Triangle |
+| Réparer / améliorer la construction visée | Croix ↓ / ↑ | Croix ↓ / ↑ |
 | Recharger / lancer le combat | X | Carré |
 | Pause | Start | Options |
 
@@ -49,10 +54,10 @@ Dans les menus : croix directionnelle ou stick gauche pour se déplacer, A / Cro
 ## Règles
 
 - **Fusil d'assaut** : chargeur de 30 balles, munitions illimitées, rechargement en 1,6 s. Les tirs à la tête font double dégât (marqueur jaune).
-- **Hache** : chaque coup sur un arbre donne +10 bois, +20 en bonus quand il tombe. Elle frappe aussi les zombies.
-- **Construction** : grille de 4 m comme dans Fortnite, 10 bois par pièce. Une pièce apparaît à 30 % de sa solidité et se renforce en 1,5 s. Fantôme bleu : placement possible, rouge : impossible.
-- **Zombies** : ils sortent de terre au bord de la zone (repérés par des colonnes rouges) et marchent vers la sphère. Si tu passes à moins de 13 m, ils te prennent en chasse. Une construction qui leur barre la route est frappée jusqu'à ce qu'elle casse.
-- **Vagues** : 10 vagues de plus en plus nombreuses, rapides et résistantes. Un boss arrive à la vague 5, deux à la vague 10. Entre deux vagues, tu as 25 s (E pour passer), +50 bois, ta vie est restaurée et la sphère est réparée de 150 PV.
+- **Hache** : chaque coup sur un arbre donne +10 bois (+20 quand il tombe), sur un rocher +10 pierre (+20 quand il casse, à partir de la vague 5). Elle frappe aussi les ennemis.
+- **Construction** : grille de 4 m comme dans Fortnite, 10 bois (ou 10 pierres) par pièce. La pierre se débloque à la vague 5 et a 2× plus de PV que le bois. Les PV s'affichent au-dessus de chaque pièce. On peut réparer la pièce visée (coût proportionnel aux dégâts) et l'améliorer une fois pour 50 du même matériau (PV ×3, renforts en fer). Une pièce apparaît à 30 % de sa solidité et se renforce en 1,5 s. Fantôme bleu : placement possible, rouge : impossible.
+- **Ennemis** (squelettes animés) : ils sortent de terre au bord de la zone (repérés par des colonnes rouges) et marchent vers la sphère. Si tu passes à moins de 13 m, ils te prennent en chasse. Une construction qui leur barre la route est frappée jusqu'à ce qu'elle casse.
+- **Vagues** : 10 vagues de plus en plus nombreuses, rapides et résistantes. Un boss arrive à la vague 5, deux à la vague 10. Entre deux vagues, tu as 60 s (E pour passer), +50 bois, ta vie est restaurée et la sphère est réparée de 150 PV.
 - **Mort** : tu réapparais près de la sphère après 5 s, avec 3 s d'invulnérabilité.
 - **Défaite** si la sphère est détruite. **Victoire** après la 10ᵉ vague.
 
@@ -84,4 +89,5 @@ dans `main.gd` (`_start_wave` et `_spawn_zombie` : nombre, PV et vitesse des zom
 - Modèles 3D de nature (sapins, herbe, plantes, buissons, rochers, arbres morts) et leurs textures :
   pack **Ultimate Stylized Nature** de [Quaternius](https://quaternius.com), licence **CC0** (domaine public).
   Fichiers dans `assets/nature/`, textures réduites à 1024 px, recolorées en code (`scripts/nature.gd`).
-- Tout le reste (fusil, hache, zombies, sphère, constructions, sons, shaders) est généré par le code du jeu.
+- Ennemis : squelettes animés du pack **KayKit Character Pack: Skeletons** de [Kay Lousberg](https://www.kaylousberg.com), licence **CC0**. Fichiers dans `assets/skeletons/`.
+- Tout le reste (fusil, hache, sphère, constructions, sons, shaders) est généré par le code du jeu.

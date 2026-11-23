@@ -25,6 +25,11 @@ class Crosshair extends Control:
 			draw_arc(c, 10.0, 0.0, TAU, 24, Color(0, 0, 0, 0.6), 4.0)
 			draw_arc(c, 10.0, 0.0, TAU, 24, Color(1, 1, 1, 0.9), 2.0)
 			return
+		if mode == 3:
+			# point de visée discret quand on épaule
+			draw_circle(c, 2.6, Color(0, 0, 0, 0.7))
+			draw_circle(c, 1.6, Color(0.4, 1.0, 0.95, 0.95))
+			return
 		if mode == 1:
 			draw_circle(c, 4.0, Color(0, 0, 0, 0.6))
 			draw_circle(c, 2.5, Color.WHITE)
@@ -67,6 +72,11 @@ var ammo_label: Label
 var info_label: Label
 var wood_label: Label
 var wood_pop: Label
+var stone_label: Label
+var stone_pop: Label
+var build_prompt: Label
+var notice_label: Label
+var notice_t := 0.0
 var slots: Array[PanelContainer] = []
 var slot_on: StyleBoxFlat
 var slot_off: StyleBoxFlat
@@ -150,6 +160,8 @@ func _ready() -> void:
 	br.add_child(wood_row)
 	wood_pop = _label(wood_row, "", 22, Color(0.6, 1.0, 0.5))
 	wood_label = _label(wood_row, "BOIS 0", 26, Color(0.95, 0.75, 0.5))
+	stone_pop = _label(wood_row, "", 22, Color(0.6, 1.0, 0.5))
+	stone_label = _label(wood_row, "", 26, Color(0.78, 0.78, 0.92))
 	ammo_label = _label(br, "30 / ∞", 40)
 	ammo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	info_label = _label(br, "", 16, Color(0.85, 0.9, 1.0))
@@ -188,6 +200,12 @@ func _ready() -> void:
 	_place(prompt_label, 0.5, 0.6, 0.5, 0.6, -400, 0, 400, 40)
 	message_label = _label(root, "", 22, Color(1, 0.6, 0.4))
 	_place(message_label, 0.5, 0.67, 0.5, 0.67, -400, 0, 400, 40)
+	build_prompt = _label(root, "", 20, Color(0.85, 0.95, 1.0))
+	_place(build_prompt, 0.5, 0.56, 0.5, 0.56, -500, 0, 500, 60)
+	notice_label = _label(root, "", 22, Color(0.85, 0.85, 1.0))
+	_place(notice_label, 0.5, 0.36, 0.5, 0.36, -600, 0, 600, 110)
+	notice_label.add_theme_stylebox_override("normal", UI.box(Color(0.06, 0.04, 0.16, 0.8), 12, 24.0, 14.0))
+	notice_label.visible = false
 
 	pause_panel = _overlay("PAUSE", "", ["REPRENDRE", "MENU PRINCIPAL"], [func(): set_paused(false), func(): menu_pressed.emit()])
 	var end := _overlay("", "", ["REJOUER", "MENU PRINCIPAL"], [func(): retry_pressed.emit(), func(): menu_pressed.emit()])
@@ -277,12 +295,30 @@ func _process(delta: float) -> void:
 	if message_t > 0.0:
 		message_t -= delta
 		message_label.modulate.a = clampf(message_t, 0.0, 1.0)
+	if notice_t > 0.0:
+		notice_t -= delta
+		notice_label.modulate.a = clampf(notice_t, 0.0, 1.0)
+		notice_label.visible = notice_t > 0.0
 
 
 func update_player(p) -> void:
 	hp_bar.value = p.hp
 	hp_label.text = "%d PV" % int(ceil(p.hp))
 	wood_label.text = "BOIS %d" % p.wood
+	stone_label.text = ("   PIERRE %d" % p.stone) if (p.main and p.main.stone_unlocked) else ""
+	# Construction visée : réparer / améliorer
+	var bt = p.build_target
+	if bt and is_instance_valid(bt) and not p.dead:
+		var mname: String = p.MAT_NAMES[bt.material_type].to_lower()
+		var parts: Array[String] = [bt.describe() + "  %d / %d PV" % [int(ceil(bt.hp)), int(bt.max_hp)]]
+		var rc: int = bt.repair_cost()
+		if rc > 0:
+			parts.append("[G / ↓] Réparer (%d %s)" % [rc, mname])
+		if bt.can_upgrade():
+			parts.append("[T / ↑] Améliorer ×3 PV (%d %s)" % [bt.UPGRADE_COST, mname])
+		build_prompt.text = "\n".join(parts)
+	else:
+		build_prompt.text = ""
 	for i in slots.size():
 		slots[i].add_theme_stylebox_override("panel", slot_on if i == p.weapon else slot_off)
 	var mode := 0
@@ -291,15 +327,17 @@ func update_player(p) -> void:
 			ammo_label.text = "RECHARGE..." if p.reloading else "%d / ∞" % p.ammo
 			info_label.text = "Clic G / RT : tirer · Clic D / LT : viser · R / X : recharger"
 			mode = 0
-			crosshair.visible = not p.aiming
+			if p.aiming:
+				mode = 3
+			crosshair.visible = true
 		1:
 			ammo_label.text = "HACHE"
-			info_label.text = "Clic G / RT : couper un arbre (+10 bois)"
+			info_label.text = "Clic G / RT : couper un arbre (bois) ou un rocher (pierre)"
 			mode = 1
 			crosshair.visible = true
 		2:
-			ammo_label.text = p.PIECE_NAMES[p.build_piece]
-			info_label.text = "Clic G / RT : construire (%d bois) · F / croix : mur, sol, rampe" % p.BUILD_COST
+			ammo_label.text = "%s · %s" % [p.PIECE_NAMES[p.build_piece], p.MAT_NAMES[p.build_mat]]
+			info_label.text = "Souris : clic G construire · F pièce · V matériau\nManette : RT mur · LT sol · RB rampe · Y matériau  (%d par pièce)" % p.BUILD_COST
 			mode = 2
 			crosshair.visible = true
 	if p.dead:
@@ -350,6 +388,21 @@ func hitmarker(head: bool) -> void:
 	hit.t = 0.2
 	hit.head = head
 	hit.queue_redraw()
+
+
+func stone_gain(amount: int) -> void:
+	stone_pop.text = "   +%d" % amount
+	stone_pop.modulate.a = 1.0
+	var tw := create_tween()
+	tw.tween_interval(0.6)
+	tw.tween_property(stone_pop, "modulate:a", 0.0, 0.5)
+
+
+func show_notice(text: String, duration := 6.0) -> void:
+	notice_label.text = text
+	notice_t = duration
+	notice_label.modulate.a = 1.0
+	notice_label.visible = true
 
 
 func wood_gain(amount: int) -> void:

@@ -8,12 +8,14 @@ const ZombieScript = preload("res://scripts/zombie.gd")
 const TreeScript = preload("res://scripts/tree.gd")
 const OrbScript = preload("res://scripts/orb.gd")
 const StructureScript = preload("res://scripts/structure.gd")
+const RockScript = preload("res://scripts/rock.gd")
 const HudScript = preload("res://scripts/hud.gd")
 
 const MAP_RADIUS := 70.0
 const SPAWN_RADIUS := 63.0
 const TOTAL_WAVES := 10
-const BREAK_TIME := 25.0
+const BREAK_TIME := 60.0
+const STONE_WAVE := 5
 const RESPAWN_TIME := 5.0
 const TREE_COUNT := 140
 
@@ -87,6 +89,7 @@ var obstacle_pos: Array[Vector3] = []
 var obstacle_rad: Array[float] = []
 var zombie_cache: Array[Node] = []
 var rocks: Array[Node3D] = []
+var stone_unlocked := false
 var fireflies: CPUParticles3D
 var high := true
 var tracer_mat: StandardMaterial3D
@@ -120,6 +123,10 @@ func _ready() -> void:
 	_build_scenery()
 	_spawn_trees()
 	rebuild_obstacles()
+	# Rochers (récoltables à partir de la vague 5), placés à l'écart des arbres
+	for i in 34:
+		spawn_rock(_random_free_spot(12.0))
+		rebuild_obstacles()
 
 	orb = OrbScript.new()
 	add_child(orb)
@@ -358,32 +365,6 @@ func _build_scenery() -> void:
 		var m := Mats.cylinder(self, rng.randf_range(1.0, 6.0), hgt * 0.32, hgt, spire_mat, Vector3(cos(a) * r, hgt * 0.5 - 4.0, sin(a) * r), Vector3(rng.randf_range(-6, 6), 0, rng.randf_range(-6, 6)), 5)
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
-	# Rochers
-	for i in 24:
-		var a := rng.randf() * TAU
-		var r := rng.randf_range(12.0, MAP_RADIUS - 4.0)
-		var sc := rng.randf_range(1.4, 3.0)
-		var body := StaticBody3D.new()
-		body.collision_layer = 16
-		body.collision_mask = 0
-		body.position = Vector3(cos(a) * r, 0, sin(a) * r)
-		body.rotation.y = rng.randf() * TAU
-		add_child(body)
-		var m := MeshInstance3D.new()
-		m.mesh = Nature.rock(1 + i % 5)
-		m.scale = Vector3.ONE * sc
-		body.add_child(m)
-		var ab: AABB = m.mesh.get_aabb()
-		var rad := maxf(ab.size.x, ab.size.z) * 0.5 * sc
-		var cs := CollisionShape3D.new()
-		var ss := SphereShape3D.new()
-		ss.radius = rad * 0.8
-		cs.shape = ss
-		cs.position.y = ab.size.y * sc * 0.3
-		body.add_child(cs)
-		rocks.append(body)
-		body.set_meta("radius", rad)
-
 	# Lucioles autour du joueur
 	fireflies = CPUParticles3D.new()
 	fireflies.amount = 140 if high else 60
@@ -442,6 +423,41 @@ func _spawn_trees() -> void:
 		add_child(t)
 
 
+func _random_free_spot(min_r: float) -> Vector3:
+	for attempt in 30:
+		var a := rng.randf() * TAU
+		var r := rng.randf_range(min_r, MAP_RADIUS - 5.0)
+		var p := Vector3(cos(a) * r, 0, sin(a) * r)
+		var ok := true
+		for i in obstacle_pos.size():
+			if p.distance_to(obstacle_pos[i]) < obstacle_rad[i] + 1.5:
+				ok = false
+				break
+		if ok:
+			return p
+	var a2 := rng.randf() * TAU
+	return Vector3(cos(a2), 0, sin(a2)) * rng.randf_range(min_r, MAP_RADIUS - 5.0)
+
+
+func spawn_rock(pos: Vector3) -> void:
+	var rk := RockScript.new()
+	rk.variant = 1 + rng.randi() % 5
+	rk.rock_scale = rng.randf_range(1.5, 3.0)
+	rk.main = self
+	rk.position = pos
+	rk.rotation.y = rng.randf() * TAU
+	add_child(rk)
+	rocks.append(rk)
+	call_deferred("rebuild_obstacles")
+
+
+func on_rock_broken(rk: Node3D) -> void:
+	rocks.erase(rk)
+	rebuild_obstacles()
+	# un nouveau rocher apparaît ailleurs un peu plus tard
+	get_tree().create_timer(40.0, false).timeout.connect(func(): spawn_rock(_random_free_spot(12.0)))
+
+
 func rebuild_obstacles() -> void:
 	obstacle_pos.clear()
 	obstacle_rad.clear()
@@ -449,8 +465,9 @@ func rebuild_obstacles() -> void:
 		obstacle_pos.append(t.global_position)
 		obstacle_rad.append(0.45 * t.tree_scale + 1.4)
 	for r in rocks:
-		obstacle_pos.append(r.global_position)
-		obstacle_rad.append(float(r.get_meta("radius")) + 1.2)
+		if is_instance_valid(r) and r.is_inside_tree():
+			obstacle_pos.append(r.global_position)
+			obstacle_rad.append(r.radius + 1.2)
 
 
 ## Force de répulsion pour que les zombies contournent arbres, rochers et congénères.
@@ -522,9 +539,10 @@ func spawn_tracer(a: Vector3, b: Vector3) -> void:
 	tw.tween_callback(mi.queue_free)
 
 
-func place_structure(piece: int, xform: Transform3D, key: String) -> void:
+func place_structure(piece: int, xform: Transform3D, key: String, mat_type := 0) -> void:
 	var s := StructureScript.new()
 	s.piece = piece
+	s.material_type = mat_type
 	s.key = key
 	s.main = self
 	s.transform = xform
@@ -605,7 +623,12 @@ func _start_wave(n: int) -> void:
 	var sub := "Protège la sphère !"
 	if bosses_left > 0:
 		sub = "Attention : %s en approche !" % ("un BOSS" if bosses_left == 1 else "deux BOSS")
-	hud.show_center("VAGUE %d" % n, sub, 2.5)
+	if n == STONE_WAVE and not stone_unlocked:
+		stone_unlocked = true
+		hud.show_center("VAGUE %d" % n, "NOUVEAU : la PIERRE est débloquée !", 4.0)
+		hud.show_notice("Frappe les rochers à la hache pour récolter de la pierre,\npuis construis en pierre : 2× plus solide que le bois.\nChanger de matériau : V (clavier) / Y en mode construction (manette)", 9.0)
+	else:
+		hud.show_center("VAGUE %d" % n, sub, 2.5)
 
 
 func _make_spawn_marker() -> Node3D:
