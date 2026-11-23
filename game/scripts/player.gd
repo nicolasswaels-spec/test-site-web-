@@ -27,7 +27,7 @@ const MAX_HP := 100.0
 const MASK_SHOOT := 1 | 4 | 8 | 16 | 32
 
 const HIP_POS := Vector3(0.25, -0.22, -0.64)
-const ADS_POS := Vector3(0.0, -0.105, -0.40)
+const ADS_POS := Vector3(0.0, -0.105, -0.55)
 const AXE_POS := Vector3(0.34, -0.32, -0.55)
 
 var main
@@ -224,18 +224,39 @@ func _build_axe() -> void:
 	viewmodel.add_child(axe)
 	axe_pivot = Node3D.new()
 	axe.add_child(axe_pivot)
-	var handle := Mats.col(Color(0.5, 0.3, 0.16))
-	var metal := Mats.col(Color(0.7, 0.72, 0.78), 0.3)
-	var edge := Mats.col(Color(0.92, 0.94, 1.0), 0.2)
-	var grip := Mats.col(Color(0.75, 0.15, 0.15))
+	var wood := ShaderMaterial.new()
+	var wsh := Shader.new()
+	wsh.code = WOOD_SHADER
+	wood.shader = wsh
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color(0.20, 0.21, 0.26)
+	steel.metallic = 0.5
+	steel.roughness = 0.45
+	var edge := StandardMaterial3D.new()
+	edge.albedo_color = Color(0.75, 0.78, 0.85)
+	edge.metallic = 0.6
+	edge.roughness = 0.25
+	var brass := StandardMaterial3D.new()
+	brass.albedo_color = Color(0.80, 0.56, 0.26)
+	brass.metallic = 0.6
+	brass.roughness = 0.4
+	var leather := Mats.col(Color(0.20, 0.10, 0.07), 0.9)
+	var rune := Mats.col(Color(0.30, 0.95, 0.90), 0.1, 3.0)
 	var h := Node3D.new()
 	h.rotation_degrees = Vector3(-25, 0, 18)
 	axe_pivot.add_child(h)
-	Mats.cylinder(h, 0.025, 0.03, 0.62, handle, Vector3(0, 0.18, 0), Vector3.ZERO, 8)
-	Mats.cylinder(h, 0.034, 0.034, 0.14, grip, Vector3(0, -0.05, 0), Vector3.ZERO, 8)
-	Mats.box(h, Vector3(0.05, 0.16, 0.22), metal, Vector3(0, 0.44, -0.09))
-	Mats.box(h, Vector3(0.03, 0.22, 0.05), edge, Vector3(0, 0.44, -0.215))
-	Mats.box(h, Vector3(0.06, 0.08, 0.08), metal, Vector3(0, 0.44, 0.05))
+	# manche en bois, poignée en cuir, pommeau et virole en laiton
+	Mats.cylinder(h, 0.022, 0.028, 0.66, wood, Vector3(0, 0.2, 0), Vector3.ZERO, 8)
+	Mats.cylinder(h, 0.032, 0.032, 0.17, leather, Vector3(0, -0.04, 0), Vector3.ZERO, 8)
+	Mats.cylinder(h, 0.036, 0.03, 0.03, brass, Vector3(0, -0.14, 0), Vector3.ZERO, 8)
+	Mats.cylinder(h, 0.03, 0.03, 0.03, brass, Vector3(0, 0.36, 0), Vector3.ZERO, 8)
+	# tête : douille, joue, tranchant clair et bec arrière
+	Mats.box(h, Vector3(0.05, 0.09, 0.07), steel, Vector3(0, 0.46, 0.0))
+	Mats.box(h, Vector3(0.035, 0.12, 0.12), steel, Vector3(0, 0.46, -0.09))
+	Mats.box(h, Vector3(0.03, 0.2, 0.06), steel, Vector3(0, 0.46, -0.17))
+	Mats.box(h, Vector3(0.022, 0.24, 0.025), edge, Vector3(0, 0.46, -0.21))
+	Mats.box(h, Vector3(0.03, 0.04, 0.07), steel, Vector3(0, 0.46, 0.06), Vector3(-20, 0, 0))
+	Mats.box(h, Vector3(0.038, 0.012, 0.07), rune, Vector3(0, 0.46, -0.1))
 
 
 func _build_ghost() -> void:
