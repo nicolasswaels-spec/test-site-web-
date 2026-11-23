@@ -100,10 +100,10 @@ func _ready() -> void:
 	label = Label3D.new()
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
-	label.fixed_size = false
-	label.pixel_size = 0.006
-	label.font_size = 64
-	label.outline_size = 14
+	label.fixed_size = true   # même taille à l'écran quelle que soit la distance
+	label.pixel_size = 0.0007
+	label.font_size = 40
+	label.outline_size = 10
 	label.modulate = Color(0.6, 1.0, 0.5)
 	label.outline_modulate = Color(0, 0, 0, 0.9)
 	label.render_priority = 10
