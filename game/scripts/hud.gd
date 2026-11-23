@@ -45,6 +45,15 @@ class HitMarker extends Control:
 	var t := 0.0
 	var head := false
 	func _process(delta: float) -> void:
+	# écran scindé : bandeau du haut resserré pour ne pas passer sous la mini-carte
+	var w := get_viewport().get_visible_rect().size.x
+	if (w < 1300.0) != narrow:
+		narrow = w < 1300.0
+		top_box.offset_left = -300.0 if not narrow else -330.0 - 0.0
+		top_box.offset_right = 300.0 if not narrow else 210.0
+		top_box.anchor_left = 0.5 if not narrow else 0.45
+		top_box.anchor_right = 0.5 if not narrow else 0.45
+		wave_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if narrow else TextServer.AUTOWRAP_OFF
 		if t > 0.0:
 			t -= delta
 			queue_redraw()
@@ -119,6 +128,8 @@ class Minimap extends Control:
 
 
 var root: Control
+var top_box: VBoxContainer
+var narrow := false
 var main
 var player          # joueur auquel appartient cette interface
 var minimap: Minimap
@@ -200,6 +211,7 @@ func _ready() -> void:
 
 	# --- haut : vague + sphère
 	var top := VBoxContainer.new()
+	top_box = top
 	_place(top, 0.5, 0.0, 0.5, 0.0, -300, 10, 300, 150)
 	top.add_theme_constant_override("separation", 2)
 	root.add_child(top)
