@@ -74,6 +74,7 @@ var ads_t := 0.0
 var shake_t := 0.0
 var shake_amp := 0.0
 var swinging := false
+var swing_tween: Tween
 var dead := false
 var invuln_t := 0.0
 var ghost_valid := false
@@ -556,10 +557,13 @@ func _shoot() -> void:
 func _swing() -> void:
 	swing_cd = 0.62
 	swinging = true
+	if swing_tween and swing_tween.is_valid():
+		swing_tween.kill()
 	var tw := create_tween()
+	swing_tween = tw
 	# 1. armé : la hache recule et monte au-dessus de l'épaule
-	tw.tween_property(axe, "position", AXE_POS + Vector3(0.06, 0.16, 0.12), 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	tw.parallel().tween_property(axe_pivot, "rotation", Vector3(0.75, -0.25, -0.35), 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.tween_property(axe, "position", AXE_POS + Vector3(0.05, 0.08, 0.03), 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(axe_pivot, "rotation", Vector3(0.55, -0.2, -0.3), 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tw.parallel().tween_property(cam, "rotation:z", -0.025, 0.16)
 	tw.tween_callback(func(): Sfx.play("swing", -4.0))
 	# 2. frappe : arc rapide vers le bas et vers le centre
