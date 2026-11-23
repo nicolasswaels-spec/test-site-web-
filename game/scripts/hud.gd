@@ -56,7 +56,73 @@ class HitMarker extends Control:
 			draw_line(c + d * 7.0, c + d * 15.0, col, 3.0)
 
 
+## Mini-carte : nord en haut, joueur en bleu (flèche), squelettes en rouge, sphère défendue en vert.
+class Minimap extends Control:
+	var main
+	const SCALE := 1.5          # pixels par mètre
+	func _process(_d: float) -> void:
+		queue_redraw()
+	func _w2m(c: Vector2, origin: Vector3, w: Vector3) -> Vector2:
+		return c + Vector2(w.x - origin.x, w.z - origin.z) * SCALE
+	func _draw() -> void:
+		if main == null or main.player == null:
+			return
+		var c := size * 0.5
+		var r := size.x * 0.5
+		draw_circle(c, r, Color(0.05, 0.04, 0.12, 0.72))
+		var o: Vector3 = main.player.global_position
+		# limites des zones
+		var z1 := _w2m(c, o, Vector3.ZERO)
+		draw_arc(z1, main.MAP_RADIUS * SCALE, 0, TAU, 96, Color(0.45, 0.5, 1.0, 0.7), 2.0)
+		if main.zone2_unlocked:
+			draw_arc(_w2m(c, o, main.ZONE2_CENTER), main.ZONE2_RADIUS * SCALE, 0, TAU, 96, Color(0.45, 0.5, 1.0, 0.7), 2.0)
+			var a := _w2m(c, o, Vector3(-main.CORRIDOR_HALF, 0, main.CORRIDOR_Z.x))
+			var b := _w2m(c, o, Vector3(main.CORRIDOR_HALF, 0, main.CORRIDOR_Z.y))
+			draw_rect(Rect2(a, b - a), Color(0.45, 0.5, 1.0, 0.25))
+		# constructions
+		for st in main.structures.values():
+			if is_instance_valid(st):
+				var sp := _w2m(c, o, st.global_position)
+				if sp.distance_to(c) < r - 3:
+					draw_rect(Rect2(sp - Vector2(2, 2), Vector2(4, 4)), Color(0.85, 0.65, 0.4, 0.8))
+		# squelettes
+		for z in main.zombie_cache:
+			if is_instance_valid(z):
+				var zp := _w2m(c, o, z.global_position)
+				if zp.distance_to(c) < r - 3:
+					draw_circle(zp, 5.0 if z.is_boss else 3.0, Color(1.0, 0.2, 0.15))
+		# sphère défendue (épinglée au bord si hors de portée)
+		var op := _w2m(c, o, main.orb.global_position)
+		if op.distance_to(c) > r - 7:
+			op = c + (op - c).normalized() * (r - 7)
+		draw_circle(op, 6.0, Color(0, 0, 0, 0.7))
+		draw_circle(op, 4.5, Color(0.3, 1.0, 0.4))
+		# joueur : flèche bleue orientée
+		var yaw: float = main.player.rotation.y
+		var fwd := Vector2(-sin(yaw), -cos(yaw))
+		var side := Vector2(-fwd.y, fwd.x)
+		var pts := PackedVector2Array([c + fwd * 9.0, c - fwd * 6.0 + side * 6.0, c - fwd * 3.0, c - fwd * 6.0 - side * 6.0])
+		draw_colored_polygon(pts, Color(0.35, 0.65, 1.0))
+		draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[3], pts[0]]), Color.WHITE, 1.5)
+		draw_arc(c, r, 0, TAU, 64, Color(1, 1, 1, 0.5), 2.0)
+		draw_string(ThemeDB.fallback_font, Vector2(c.x - 5, 16), "N", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 1, 1, 0.8))
+
+
 var root: Control
+var main
+var minimap: Minimap
+var enemy_box: VBoxContainer
+var enemy_name: Label
+var enemy_bar: ProgressBar
+var enemy_fill: StyleBoxFlat
+var confirm_panel: Control
+var confirm_title: Label
+var confirm_text: Label
+var confirm_cb: Callable
+var inventory_panel: Control
+var inv_res: Label
+var inv_weapons: VBoxContainer
+var inv_player
 var crosshair: Crosshair
 var hit: HitMarker
 var vignette_mat: ShaderMaterial
@@ -183,10 +249,10 @@ func _ready() -> void:
 	slot_on.border_color = Color.WHITE
 	slot_on.set_border_width_all(3)
 	slot_off = UI.box(Color(0.05, 0.05, 0.15, 0.65), 8, 14.0, 8.0)
-	for txt in ["1\nFUSIL", "2\nHACHE", "3\nBÂTIR"]:
+	for txt in ["1\nPISTOLET", "2\nFUSIL", "3\nHACHE", "4\nBÂTIR"]:
 		var p := PanelContainer.new()
 		p.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		p.custom_minimum_size = Vector2(110, 70)
+		p.custom_minimum_size = Vector2(100, 70)
 		p.add_theme_stylebox_override("panel", slot_off)
 		var l := _label(p, txt, 16)
 		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -215,11 +281,38 @@ func _ready() -> void:
 	notice_label.add_theme_stylebox_override("normal", UI.box(Color(0.06, 0.04, 0.16, 0.8), 12, 24.0, 14.0))
 	notice_label.visible = false
 
+	# mini-carte en haut à droite
+	minimap = Minimap.new()
+	minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_place(minimap, 1.0, 0.0, 1.0, 0.0, -230, 14, -14, 230)
+	root.add_child(minimap)
+
+	# barre de vie de l'ennemi visé (au-dessus du viseur)
+	enemy_box = VBoxContainer.new()
+	enemy_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_place(enemy_box, 0.5, 0.5, 0.5, 0.5, -110, -78, 110, -30)
+	root.add_child(enemy_box)
+	enemy_name = _label(enemy_box, "", 15, Color(1, 0.8, 0.75))
+	enemy_bar = ProgressBar.new()
+	enemy_bar.show_percentage = false
+	enemy_bar.custom_minimum_size = Vector2(220, 12)
+	enemy_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	enemy_bar.add_theme_stylebox_override("background", UI.box(Color(0, 0, 0, 0.6), 4, 0.0, 0.0))
+	enemy_fill = UI.box(Color(0.95, 0.25, 0.2), 4, 0.0, 0.0)
+	enemy_bar.add_theme_stylebox_override("fill", enemy_fill)
+	enemy_box.add_child(enemy_bar)
+	enemy_box.visible = false
+
 	pause_panel = _overlay("PAUSE", "", ["REPRENDRE", "MENU PRINCIPAL"], [func(): set_paused(false), func(): menu_pressed.emit()])
 	var end := _overlay("", "", ["REJOUER", "MENU PRINCIPAL"], [func(): retry_pressed.emit(), func(): menu_pressed.emit()])
 	end_panel = end
 	end_title = end.get_meta("title")
 	end_sub = end.get_meta("sub")
+	confirm_panel = _overlay("", "", ["CONFIRMER", "ANNULER"], [func(): _close_confirm(true), func(): _close_confirm(false)])
+	confirm_title = confirm_panel.get_meta("title")
+	confirm_text = confirm_panel.get_meta("sub")
+	confirm_title.add_theme_font_size_override("font_size", 52)
+	_build_inventory()
 
 
 # ------------------------------------------------------------------ helpers UI
@@ -323,8 +416,12 @@ func update_player(p) -> void:
 		var rc: int = bt.repair_cost()
 		if rc > 0:
 			parts.append("[G / ↓] Réparer (%d %s)" % [rc, mname])
+		elif bt.is_repairing():
+			parts.append("Réparation en cours...")
 		if bt.can_upgrade():
-			parts.append("[T / ↑] Améliorer ×3 PV (%d %s)" % [bt.UPGRADE_COST, mname])
+			parts.append("[T / ↑] Améliorer : PV ×%d (%d %s)" % [int(bt.next_upgrade_mult()), bt.upgrade_cost(), mname])
+		else:
+			parts.append("Niveau maximum")
 		parts.append("[X / →] Modifier : %s" % bt.next_edit_label())
 		if bt.can_have_trap():
 			parts.append("[B / clic stick droit] Poser des barbelés (%d pièces)" % bt.TRAP_COST)
@@ -335,23 +432,24 @@ func update_player(p) -> void:
 		build_prompt.text = ""
 	for i in slots.size():
 		slots[i].add_theme_stylebox_override("panel", slot_on if i == p.weapon else slot_off)
+		slots[i].modulate.a = 0.35 if (i == 1 and not p.has_rifle) else 1.0
 	var mode := 0
 	match p.weapon:
-		0:
+		0, 1:
 			ammo_label.add_theme_color_override("font_color", Color.WHITE)
 			ammo_label.text = "RECHARGE..." if p.reloading else "%d / ∞" % p.ammo
-			info_label.text = "Clic G / RT : tirer · Clic D / LT : viser · R / X : recharger"
+			info_label.text = ("Coup par coup · " if p.weapon == 0 else "") + "Clic G / RT : tirer · Clic D / LT : viser · R / X : recharger"
 			mode = 0
 			if p.aiming:
 				mode = 3
 			crosshair.visible = true
-		1:
+		2:
 			ammo_label.add_theme_color_override("font_color", Color.WHITE)
 			ammo_label.text = "HACHE"
 			info_label.text = "Clic G / RT : couper un arbre (bois) ou un rocher (pierre)"
 			mode = 1
 			crosshair.visible = true
-		2:
+		3:
 			var have: int = p.wood if p.build_mat == 0 else p.stone
 			ammo_label.text = "%s · %s %d" % [p.PIECE_NAMES[p.build_piece], p.MAT_NAMES[p.build_mat], have]
 			ammo_label.add_theme_color_override("font_color", Color.WHITE if have >= p.BUILD_COST else Color(1, 0.4, 0.35))
@@ -444,6 +542,16 @@ func damage_flash() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if confirm_panel.visible:
+		if event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel"):
+			_close_confirm(false)
+			get_viewport().set_input_as_handled()
+		return
+	if inventory_panel.visible:
+		if event.is_action_pressed("pause") or event.is_action_pressed("inventory") or event.is_action_pressed("ui_cancel"):
+			close_inventory()
+			get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("pause") and not game_over:
 		set_paused(not get_tree().paused)
 		get_viewport().set_input_as_handled()
@@ -465,3 +573,129 @@ func show_end(title: String, sub: String) -> void:
 	(end_panel.get_meta("first") as Button).grab_focus()
 	pause_panel.visible = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+# ------------------------------------------------------------------ ennemi visé
+
+func set_enemy(z) -> void:
+	if z == null or not is_instance_valid(z) or z.dead:
+		enemy_box.visible = false
+		return
+	enemy_box.visible = true
+	var names := {"minion": "SQUELETTE", "rogue": "SQUELETTE À CAPUCHE", "boss": "BOSS"}
+	enemy_name.text = "%s  %d / %d" % [names.get(z.kind, "SQUELETTE"), int(ceil(maxf(z.hp, 0.0))), int(z.max_hp)]
+	enemy_bar.max_value = z.max_hp
+	enemy_bar.value = maxf(z.hp, 0.0)
+	enemy_fill.bg_color = Color(1.0, 0.75, 0.15) if z.kind == "boss" else Color(0.95, 0.25, 0.2)
+
+
+# ------------------------------------------------------------------ fenêtre de confirmation
+
+func confirm(title: String, text: String, on_yes: Callable) -> void:
+	confirm_title.text = title
+	confirm_text.text = text
+	confirm_cb = on_yes
+	confirm_panel.visible = true
+	get_tree().paused = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	(confirm_panel.get_meta("first") as Button).grab_focus()
+
+
+func _close_confirm(yes: bool) -> void:
+	confirm_panel.visible = false
+	get_tree().paused = false
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if yes and confirm_cb.is_valid():
+		confirm_cb.call()
+
+
+# ------------------------------------------------------------------ inventaire
+
+func _build_inventory() -> void:
+	var dim := ColorRect.new()
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0.03, 0.02, 0.1, 0.75)
+	dim.visible = false
+	root.add_child(dim)
+	inventory_panel = dim
+	var cc := CenterContainer.new()
+	cc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.add_child(cc)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", UI.box(Color(0.07, 0.05, 0.18, 0.95), 16, 36.0, 26.0))
+	cc.add_child(panel)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 14)
+	panel.add_child(vb)
+	var t := _label(vb, "INVENTAIRE", 52, UI.YELLOW)
+	t.add_theme_constant_override("outline_size", 12)
+	t.add_theme_color_override("font_outline_color", UI.DARK)
+	_label(vb, "RESSOURCES", 20, Color(0.75, 0.8, 1.0))
+	inv_res = _label(vb, "", 26)
+	_label(vb, "ARMES  (choisis-en une)", 20, Color(0.75, 0.8, 1.0))
+	inv_weapons = VBoxContainer.new()
+	inv_weapons.add_theme_constant_override("separation", 10)
+	vb.add_child(inv_weapons)
+	var close := Button.new()
+	close.text = "FERMER"
+	close.custom_minimum_size = Vector2(240, 54)
+	close.add_theme_font_size_override("font_size", 22)
+	close.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	close.pressed.connect(close_inventory)
+	vb.add_child(close)
+	_label(vb, "I / Tab / bouton Vue pour fermer", 14, Color(0.7, 0.7, 0.8))
+
+
+func toggle_inventory(p) -> void:
+	if inventory_panel.visible:
+		close_inventory()
+	else:
+		open_inventory(p)
+
+
+func open_inventory(p) -> void:
+	inv_player = p
+	inv_res.text = "BOIS  %d      PIERRE  %d      PIÈCES  %d" % [p.wood, p.stone, p.coins]
+	for c in inv_weapons.get_children():
+		c.queue_free()
+	var first: Button = null
+	var descs := [
+		["PISTOLET", "12 balles · coup par coup · munitions illimitées", 0, true],
+		["FUSIL D'ASSAUT", "30 balles · automatique · munitions illimitées" if p.has_rifle else "Verrouillé : se fabrique à la fin de la 1re sphère", 1, p.has_rifle],
+		["HACHE", "Coupe le bois, casse les rochers, démolit tes constructions", 2, true],
+		["CONSTRUCTION", "Murs, sols, rampes en bois ou en pierre", 3, true],
+	]
+	if p.main and p.main.rifle_craftable and not p.has_rifle:
+		var craft := Button.new()
+		craft.text = "FABRIQUER LE FUSIL D'ASSAUT"
+		craft.custom_minimum_size = Vector2(620, 56)
+		craft.add_theme_font_size_override("font_size", 22)
+		craft.pressed.connect(func():
+			p.main.craft_rifle()
+			open_inventory(p))
+		inv_weapons.add_child(craft)
+		first = craft
+	for d in descs:
+		var b := Button.new()
+		b.text = "%s%s\n%s" % [d[0], "  (en main)" if p.weapon == d[2] else "", d[1]]
+		b.custom_minimum_size = Vector2(620, 70)
+		b.add_theme_font_size_override("font_size", 18)
+		b.disabled = not d[3]
+		var w: int = d[2]
+		b.pressed.connect(func():
+			p._select_weapon(w)
+			close_inventory())
+		inv_weapons.add_child(b)
+		if first == null and d[3]:
+			first = b
+	inventory_panel.visible = true
+	get_tree().paused = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if first:
+		first.grab_focus()
+
+
+func close_inventory() -> void:
+	inventory_panel.visible = false
+	get_tree().paused = false
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED

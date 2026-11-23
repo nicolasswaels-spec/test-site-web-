@@ -46,6 +46,10 @@ var meshes: Array[MeshInstance3D] = []
 var attack_anim_name := "Unarmed_Melee_Attack_Punch_A"
 var hit_t := 0.0
 var traps := 0          # nombre de barbelés traversés en ce moment
+var waypoint := Vector3.ZERO   # point de passage choisi (là où la base est la moins défendue)
+var has_waypoint := false
+var route_t := 0.0
+var route_noise := 0.0
 const TRAP_SLOW := 0.3
 const TRAP_DPS := 6.0
 var flash_t := 0.0
@@ -71,6 +75,8 @@ func _ready() -> void:
 	head_height = 1.12 * s
 	_build_model(s)
 	groan_t = randf_range(2.0, 9.0)
+	route_t = randf_range(0.0, 1.5)
+	route_noise = randf()
 	if main:
 		main.spawn_impact(global_position + Vector3.UP * 0.2, Vector3.UP, Color(0.35, 0.25, 0.15), 14, 1.3)
 
@@ -144,10 +150,30 @@ func _physics_process(delta: float) -> void:
 			target_pos = player.global_position
 			reach = 1.3 + 0.4 * size_mult
 
+	# Vers la sphère : on passe de préférence par le côté le moins barricadé
+	var steer_pos := target_pos
+	if target == orb and main:
+		route_t -= delta
+		if route_t <= 0.0:
+			route_t = randf_range(1.6, 2.4)
+			var wp: Vector3 = main.choose_route(global_position, orb.global_position, route_noise)
+			has_waypoint = wp.distance_to(orb.global_position) > 0.5
+			waypoint = wp
+		if has_waypoint:
+			var d_wp := Vector2(waypoint.x - global_position.x, waypoint.z - global_position.z).length()
+			var d_orb_me := Vector2(orb.global_position.x - global_position.x, orb.global_position.z - global_position.z).length()
+			var d_orb_wp := Vector2(orb.global_position.x - waypoint.x, orb.global_position.z - waypoint.z).length()
+			if d_wp < 2.5 or d_orb_me <= d_orb_wp + 0.5:
+				has_waypoint = false
+			else:
+				steer_pos = waypoint
+
 	var to := target_pos - global_position
 	to.y = 0.0
 	var dist := to.length()
-	var dir := to / maxf(dist, 0.001)
+	var steer := steer_pos - global_position
+	steer.y = 0.0
+	var dir := steer / maxf(steer.length(), 0.001)
 	if main:
 		dir += main.avoidance(self)
 	dir.y = 0.0
@@ -172,8 +198,16 @@ func _physics_process(delta: float) -> void:
 		if attack_cd <= 0.0:
 			attack_cd = 1.1 if not is_boss else 1.6
 			attack_anim = 1.0
-			# la sphère encaisse un peu moins que le joueur ou les murs
-			attack_target.take_damage(damage * (0.6 if attack_target == orb else 1.0))
+			# sphère : 60 % ; joueur et constructions : moitié pour les squelettes normaux,
+			# et le boss frappe les constructions deux fois plus fort
+			var dmg := damage
+			if attack_target == orb:
+				dmg *= 0.6
+			elif attack_target == player:
+				dmg *= 1.0 if is_boss else 0.5
+			else:
+				dmg *= 2.0 if is_boss else 0.5
+			attack_target.take_damage(dmg)
 	else:
 		var spd := speed * (TRAP_SLOW if traps > 0 else 1.0)
 		velocity.x = dir.x * spd
@@ -255,10 +289,14 @@ func take_damage(amount: float, headshot := false) -> void:
 
 
 func trap_enter() -> void:
+	if is_boss:
+		return   # le boss ignore les barbelés
 	traps += 1
 
 
 func trap_exit() -> void:
+	if is_boss:
+		return
 	traps = maxi(traps - 1, 0)
 
 

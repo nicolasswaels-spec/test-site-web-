@@ -128,6 +128,8 @@ var bosses_left := 0
 var spawn_timer := 0.0
 var spawn_interval := 1.0
 var countdown := 0.0
+var carry_time := 0.0   # temps de préparation non utilisé, reporté à la pause suivante
+var rifle_craftable := false
 var respawn_t := 0.0
 var spawn_angles: Array[float] = []
 var spawn_markers: Array[Node3D] = []
@@ -163,6 +165,8 @@ func _ready() -> void:
 
 	hud = HudScript.new()
 	add_child(hud)
+	hud.main = self
+	hud.minimap.main = self
 	hud.menu_pressed.connect(_to_menu)
 	hud.retry_pressed.connect(_retry)
 
@@ -576,6 +580,84 @@ func rebuild_obstacles() -> void:
 			obstacle_rad.append(r.radius + 1.2)
 
 
+const ROUTE_DETOUR_COST := 12.0   # « coût » d'un mètre de détour, en PV de barricade
+var base_radius := 0.0
+var base_radius_t := 0.0
+
+
+## Choisit par où un squelette approche la sphère : il compare le chemin direct et des
+## chemins qui contournent (points autour de la base). Coût = PV des constructions à
+## traverser + détour. Un peu de hasard pour qu'ils ne s'agglutinent pas tous au même endroit.
+## Renvoie un point de passage, ou la position de la sphère pour aller tout droit.
+func choose_route(from: Vector3, to: Vector3, noise: float) -> Vector3:
+	if structures.is_empty() or base_radius <= 0.0:
+		return to
+	var rel := Vector2(from.x - to.x, from.z - to.z)
+	var dist := rel.length()
+	var ring := base_radius + 4.0
+	if dist <= ring + 1.0:
+		return to
+	var bearing := atan2(rel.y, rel.x)
+	var best_cost := INF
+	var best := to
+	var offsets := [0.0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, 1.4, -1.4]
+	for i in offsets.size():
+		var off: float = offsets[i]
+		var a := bearing + off
+		var wp := to + Vector3(cos(a), 0, sin(a)) * ring
+		var cost := _blocking_hp(wp, to)
+		if off != 0.0:
+			cost += _blocking_hp(from, wp)
+			cost += (from.distance_to(wp) + ring - dist) * ROUTE_DETOUR_COST
+		else:
+			cost += _blocking_hp(from, wp)
+		# préférence, pas obligation : ±20 % de hasard propre à chaque squelette
+		cost *= 1.0 + 0.4 * (fmod(noise * 7.13 + i * 0.618, 1.0) - 0.5)
+		if cost < best_cost:
+			best_cost = cost
+			best = to if off == 0.0 else wp
+	return best
+
+
+## Somme des PV des constructions traversées par un segment (à hauteur de squelette).
+func _blocking_hp(a: Vector3, b: Vector3) -> float:
+	var space := get_world_3d().direct_space_state
+	var from := Vector3(a.x, 0.5, a.z)
+	var to := Vector3(b.x, 0.5, b.z)
+	var exclude: Array[RID] = []
+	var total := 0.0
+	for k in 6:
+		var q := PhysicsRayQueryParameters3D.create(from, to, 8 | 64)
+		q.exclude = exclude
+		var r := space.intersect_ray(q)
+		if r.is_empty():
+			break
+		var c = r.collider
+		exclude.append(r.rid)
+		if c.has_meta("structure"):
+			c = c.get_meta("structure")
+			if is_instance_valid(c):
+				exclude.append(c.get_rid())
+		if is_instance_valid(c) and c.is_in_group("structure"):
+			total += c.hp
+	return total
+
+
+func _update_base_radius(delta: float) -> void:
+	base_radius_t -= delta
+	if base_radius_t > 0.0:
+		return
+	base_radius_t = 1.0
+	base_radius = 0.0
+	if orb == null:
+		return
+	for st in structures.values():
+		if is_instance_valid(st):
+			var d := Vector2(st.global_position.x - orb.global_position.x, st.global_position.z - orb.global_position.z).length()
+			if d < 35.0:
+				base_radius = maxf(base_radius, d + 2.0)
+
+
 ## Force de répulsion pour que les zombies contournent arbres, rochers et congénères.
 func avoidance(z: Node3D) -> Vector3:
 	var push := Vector3.ZERO
@@ -659,8 +741,9 @@ func place_structure(piece: int, xform: Transform3D, key: String, mat_type := 0)
 
 # ------------------------------------------------------------------ boucle de jeu
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	zombie_cache = get_tree().get_nodes_in_group("zombie")
+	_update_base_radius(delta)
 
 
 func _process(delta: float) -> void:
@@ -683,7 +766,10 @@ func _process(delta: float) -> void:
 			if near_orb:
 				prompt = "[E / X] LANCER LA VAGUE SUIVANTE"
 				if Input.is_action_just_pressed("interact"):
+					carry_time = countdown
 					countdown = 0.0
+					if carry_time > 1.0:
+						hud.flash_message("%d s de préparation reportées à la prochaine pause" % int(carry_time))
 			if countdown <= 0.0:
 				_start_wave(wave + 1)
 		"wave":
@@ -733,7 +819,8 @@ func _start_wave(n: int) -> void:
 	wave = n
 	state = "wave"
 	var d := difficulty()
-	to_spawn = 6 + (d - 1) * 4
+	# zone 1 (au pistolet) : beaucoup moins de squelettes ; zone 2 : comme avant
+	to_spawn = (4 + (d - 1) * 3) if zone == 1 else (6 + (d - 1) * 4)
 	bosses_left = n / 5   # mini-boss à la vague 5, deux boss à la vague 10
 	spawn_interval = maxf(0.3, 1.3 - d * 0.09)
 	spawn_timer = 1.5
@@ -805,14 +892,19 @@ func _update_spawning(delta: float) -> void:
 func _spawn_zombie(boss: bool) -> void:
 	var z := ZombieScript.new()
 	var n := difficulty()
-	z.max_hp = 60.0 + (n - 1) * 14.0
-	z.speed = minf(2.3 + n * 0.17, 4.1)
+	if zone == 1:
+		# PV : de 40 à la vague 1 jusqu'à l'ancien maximum (186) à la vague 10 ; un peu plus lents
+		z.max_hp = lerpf(40.0, 186.0, (n - 1) / 9.0)
+		z.speed = minf(2.3 + n * 0.17, 4.1) * 0.85
+	else:
+		z.max_hp = 60.0 + (n - 1) * 14.0
+		z.speed = minf(2.3 + n * 0.17, 4.1)
 	z.damage = 8.0 + n
 	if boss:
 		z.is_boss = true
 		z.size_mult = 1.9
 		z.max_hp *= 14.0
-		z.speed *= 0.75
+		z.speed *= 0.75 * 0.9   # boss ralenti de 10 %
 		z.damage *= 3.0
 	z.hp = z.max_hp
 	z.main = self
@@ -839,8 +931,9 @@ func _end_wave() -> void:
 			hud.show_center("VICTOIRE !", "La 2e sphère est sauve. La forêt t'appartient.", 5.0)
 		return
 	state = "break"
-	countdown = BREAK_TIME
-	player.wood = mini(player.wood + 50, 999)
+	countdown = BREAK_TIME + carry_time
+	carry_time = 0.0
+	player.wood = mini(player.wood + 50, player.RES_MAX)
 	if not player.dead:
 		player.hp = player.MAX_HP
 	orb.repair(150.0)
@@ -852,11 +945,15 @@ func _end_wave() -> void:
 func _complete_zone1() -> void:
 	state = "explore"
 	Sfx.play("win")
-	player.wood = mini(player.wood + 100, 999)
+	player.wood = mini(player.wood + 100, player.RES_MAX)
 	if not player.dead:
 		player.hp = player.MAX_HP
 	hud.show_center("VICTOIRE !", "La 1re sphère est sauve... mais la forêt s'ouvre au nord !", 5.0)
+	rifle_craftable = true
 	get_tree().create_timer(1.0, false).timeout.connect(_unlock_zone2)
+	get_tree().create_timer(3.0, false).timeout.connect(func():
+		if not player.has_rifle:
+			hud.confirm("NOUVELLE ARME", "Tu peux maintenant fabriquer le FUSIL D'ASSAUT\n(30 balles, tir automatique, munitions illimitées).\n\nLe fabriquer maintenant ?", craft_rifle))
 
 
 func _unlock_zone2() -> void:
@@ -887,6 +984,14 @@ func _unlock_zone2() -> void:
 	add_child(orb2_beacon)
 	rebuild_obstacles()
 	hud.show_notice("NOUVELLE ZONE : la forêt d'érables pourpres.\nUne 2e sphère t'attend au nord (suis la colonne de lumière).\nConstruis autour d'elle, puis lance ses vagues avec E / X.\nLes squelettes n'attaqueront plus que cette sphère.", 10.0)
+
+
+func craft_rifle() -> void:
+	if player.has_rifle:
+		return
+	player.unlock_rifle()
+	Sfx.play("build", 0.0, 0.7)
+	hud.show_center("FUSIL D'ASSAUT", "Fabriqué ! Touche 2 / LB-RB pour l'équiper", 3.0)
 
 
 func _make_beacon() -> Node3D:

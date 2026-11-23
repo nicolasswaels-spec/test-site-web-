@@ -9,8 +9,40 @@ enum { WOOD, STONE }
 const SIZES := [Vector3(4.0, 4.0, 0.22), Vector3(4.0, 0.22, 4.0), Vector3(4.0, 0.22, 5.66)]
 const BASE_HP := [220.0, 150.0, 150.0]
 const STONE_MULT := 2.0
-const UPGRADE_MULT := 3.0
-const UPGRADE_COST := 50
+## Améliorations : niveau 1 = PV ×3 (50), niveau 2 = ×2 de plus (150), niveau 3 = ×4 de plus (1000)
+const UPGRADE_MULTS := [1.0, 3.0, 6.0, 24.0]
+const UPGRADE_COSTS := [50, 150, 1000]
+const MAX_LEVEL := 3
+const REPAIR_TIME := 5.0
+const BAR_SHADER := """
+shader_type spatial;
+render_mode unshaded, depth_test_disabled, cull_disabled, shadows_disabled, fog_disabled;
+uniform float ratio = 1.0;
+uniform float repair = 0.0;       // part de la barre qui sera réparée (bleu)
+uniform float level = 0.0;
+void vertex() {
+	// toujours face à la caméra, taille constante à l'écran
+	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(INV_VIEW_MATRIX[0], INV_VIEW_MATRIX[1], INV_VIEW_MATRIX[2], MODEL_MATRIX[3]);
+	float dist = -(MODELVIEW_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).z;
+	VERTEX *= clamp(dist, 2.0, 60.0) * 0.045;
+}
+void fragment() {
+	vec2 uv = UV;
+	float border = step(uv.x, 0.015) + step(0.985, uv.x) + step(uv.y, 0.12) + step(0.88, uv.y);
+	vec3 good = vec3(0.35, 0.95, 0.35);
+	vec3 bad = vec3(1.0, 0.25, 0.2);
+	vec3 col = vec3(0.08, 0.08, 0.1);
+	if (uv.x < ratio) {
+		col = mix(bad, good, ratio) * (1.0 - 0.25 * uv.y);
+	} else if (uv.x < ratio + repair) {
+		col = vec3(0.3, 0.6, 1.0) * (0.75 + 0.25 * sin(TIME * 8.0));
+	}
+	// graduations par tranche de 10 %
+	col *= 1.0 - 0.35 * step(0.96, fract(uv.x * 10.0));
+	col = mix(col, vec3(0.0), clamp(border, 0.0, 1.0));
+	ALBEDO = col;
+}
+"""
 const BUILD_TIME := 1.5
 const PIECE_NAMES := ["MUR", "SOL", "RAMPE"]
 const MAT_NAMES := ["BOIS", "PIERRE"]
@@ -78,6 +110,12 @@ var mat: ShaderMaterial
 var flash := 0.0
 var label: Label3D
 var shown_hp := -1
+var bar: MeshInstance3D
+var bar_mat: ShaderMaterial
+static var _bar_shader: Shader
+var repair_t := 0.0          # temps de réparation restant
+var repair_rate := 0.0       # PV rendus par seconde pendant la réparation
+var repair_icon: Label3D
 
 
 func _ready() -> void:
@@ -99,6 +137,39 @@ func _ready() -> void:
 	_rebuild_visual()
 	_rebuild_collision()
 
+	# Barre de vie (billboard, taille constante) + chiffres + symbole de réparation
+	if _bar_shader == null:
+		_bar_shader = Shader.new()
+		_bar_shader.code = BAR_SHADER
+	bar_mat = ShaderMaterial.new()
+	bar_mat.shader = _bar_shader
+	bar_mat.render_priority = 10
+	bar = MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(2.4, 0.28)
+	bar.mesh = qm
+	bar.material_override = bar_mat
+	bar.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	bar.top_level = true
+	add_child(bar)
+	bar.global_position = global_position + Vector3.UP * (2.9 if piece == WALL else 1.2)
+	bar.visible = false
+	repair_icon = Label3D.new()
+	repair_icon.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	repair_icon.no_depth_test = true
+	repair_icon.fixed_size = true
+	repair_icon.pixel_size = 0.0011
+	repair_icon.font_size = 64
+	repair_icon.outline_size = 14
+	repair_icon.modulate = Color(0.4, 0.75, 1.0)
+	repair_icon.text = "+ RÉPARATION"
+	repair_icon.render_priority = 11
+	repair_icon.outline_render_priority = 10
+	repair_icon.top_level = true
+	add_child(repair_icon)
+	repair_icon.global_position = global_position + Vector3.UP * (3.5 if piece == WALL else 1.8)
+	repair_icon.visible = false
+
 	label = Label3D.new()
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
@@ -112,7 +183,7 @@ func _ready() -> void:
 	label.outline_render_priority = 9
 	label.top_level = true
 	add_child(label)
-	label.global_position = global_position + Vector3.UP * (2.6 if piece == WALL else 1.0)
+	label.global_position = global_position + Vector3.UP * (2.35 if piece == WALL else 0.75)
 	label.visible = false
 
 	mat.set_shader_parameter("to_local", Projection(global_transform.affine_inverse()))
@@ -124,9 +195,7 @@ func _compute_max_hp() -> float:
 	var v: float = BASE_HP[piece]
 	if material_type == STONE:
 		v *= STONE_MULT
-	if level > 0:
-		v *= UPGRADE_MULT
-	return v
+	return v * UPGRADE_MULTS[level]
 
 
 ## Les blocs pleins de la pièce selon sa modification : liste de [centre, taille] en local.
@@ -215,6 +284,28 @@ func _rebuild_visual() -> void:
 		Mats.box(visual, Vector3(0.22, 0.3, size.z), frame, Vector3(-hx + 0.11, 0, 0))
 		Mats.box(visual, Vector3(size.x, 0.3, 0.22), frame, Vector3(0, 0, hz - 0.11))
 		Mats.box(visual, Vector3(size.x, 0.3, 0.22), frame, Vector3(0, 0, -hz + 0.11))
+	if level >= 3:
+		# niveau max : runes turquoise lumineuses
+		var rune := Mats.col(Color(0.3, 0.95, 0.9), 0.2, 3.0)
+		if piece == WALL:
+			for x in [-1.8, 1.8]:
+				Mats.box(visual, Vector3(0.06, 3.4, 0.4), rune, Vector3(x, 0, 0))
+		else:
+			for x in [-1.75, 1.75]:
+				Mats.box(visual, Vector3(0.06, 0.38, size.z - 0.4), rune, Vector3(x, 0, 0))
+	if level >= 2:
+		# plaques d'acier aux coins
+		var plate := Mats.col(Color(0.30, 0.32, 0.38), 0.35)
+		if piece == WALL:
+			for cx in [-1.55, 1.55]:
+				for cy in [-1.55, 1.55]:
+					if variant == 1 and cy < 0.0 and absf(cx) < 0.9:
+						continue
+					Mats.box(visual, Vector3(0.6, 0.6, 0.34), plate, Vector3(cx, cy, 0))
+		else:
+			for cx in [-1.55, 1.55]:
+				for cz in [-1.55, 1.55]:
+					Mats.box(visual, Vector3(0.6, 0.32, 0.6), plate, Vector3(cx, 0, cz * size.z / 4.0))
 	if level > 0:
 		# renforts en fer riveté
 		var iron := Mats.col(Color(0.16, 0.17, 0.20), 0.4)
@@ -240,6 +331,13 @@ func _process(delta: float) -> void:
 		hp = minf(hp + max_hp * 0.7 / BUILD_TIME * delta, max_hp)
 		if hp >= max_hp:
 			building = false
+	if repair_t > 0.0:
+		var dt := minf(delta, repair_t)
+		repair_t -= dt
+		hp = minf(hp + repair_rate * dt, max_hp)
+		repair_icon.modulate.a = 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.01)
+		if repair_t <= 0.0:
+			repair_icon.visible = false
 	if flash > 0.0:
 		flash = maxf(flash - delta * 6.0, 0.0)
 	mat.set_shader_parameter("flash", flash)
@@ -253,35 +351,50 @@ func _update_label() -> void:
 	if p:
 		d = p.global_position.distance_to(global_position)
 	var damaged := hp < max_hp - 0.5
-	label.visible = d < 12.0 or (damaged and d < 35.0)
-	if not label.visible:
+	var show := d < 12.0 or (damaged and d < 35.0) or repair_t > 0.0
+	bar.visible = show
+	label.visible = show and d < 14.0
+	if not show:
 		return
+	var ratio := hp / max_hp
+	bar_mat.set_shader_parameter("ratio", ratio)
+	bar_mat.set_shader_parameter("repair", (repair_rate * repair_t) / max_hp if repair_t > 0.0 else 0.0)
 	var h := int(ceil(hp))
 	if h == shown_hp:
 		return
 	shown_hp = h
-	var ratio := hp / max_hp
-	var bars := int(round(ratio * 10.0))
-	label.text = "%s%s\n%d / %d" % ["|".repeat(bars), ".".repeat(10 - bars), h, int(max_hp)]
-	label.modulate = Color(1.0, 0.3, 0.25).lerp(Color(0.55, 1.0, 0.45), ratio)
+	label.text = "%d / %d%s" % [h, int(max_hp), ("   NIV %d" % level) if level > 0 else ""]
 
 
 func describe() -> String:
-	return "%s EN %s%s" % [PIECE_NAMES[piece], MAT_NAMES[material_type], " (AMÉLIORÉ)" if level > 0 else ""]
+	return "%s EN %s%s" % [PIECE_NAMES[piece], MAT_NAMES[material_type], (" · NIVEAU %d" % level) if level > 0 else ""]
 
 
 ## Coût de réparation (dans le matériau de la pièce) pour revenir à 100 %.
 func repair_cost() -> int:
+	if repair_t > 0.0:
+		return 0
 	var missing := max_hp - hp
 	if missing < 0.5:
 		return 0
 	return maxi(1, int(ceil(missing / max_hp * 10.0)))
 
 
+func is_repairing() -> bool:
+	return repair_t > 0.0
+
+
+## Réparation en 5 s : ne rend que les PV qui manquaient au début ; la pièce peut
+## continuer à prendre des dégâts pendant ce temps.
 func repair() -> void:
-	hp = max_hp
-	building = false
-	flash = 0.6
+	if repair_t > 0.0:
+		return
+	if building:
+		building = false
+	var missing := max_hp - hp
+	repair_rate = missing / REPAIR_TIME
+	repair_t = REPAIR_TIME
+	repair_icon.visible = true
 	Sfx.play_3d("build", global_position, 0.0, 0.8)
 
 
@@ -373,18 +486,29 @@ func add_trap() -> void:
 
 
 func can_upgrade() -> bool:
-	return level == 0
+	return level < MAX_LEVEL
+
+
+func upgrade_cost() -> int:
+	return UPGRADE_COSTS[level] if level < MAX_LEVEL else 0
+
+
+## Multiplicateur de PV apporté par la prochaine amélioration (×3, ×2, ×4).
+func next_upgrade_mult() -> float:
+	return UPGRADE_MULTS[level + 1] / UPGRADE_MULTS[level] if level < MAX_LEVEL else 1.0
 
 
 func upgrade() -> void:
-	if level > 0:
+	if level >= MAX_LEVEL:
 		return
 	var ratio := hp / max_hp
-	level = 1
+	var old_max := max_hp
+	level += 1
 	max_hp = _compute_max_hp()
 	hp = max_hp * ratio
 	if building:
 		hp = max_hp * maxf(ratio, 0.3)
+	repair_rate *= max_hp / old_max
 	shown_hp = -1
 	_rebuild_visual()
 	flash = 1.0

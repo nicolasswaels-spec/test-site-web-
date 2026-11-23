@@ -18,6 +18,9 @@ func _ready() -> void:
 	_key("weapon_1", KEY_1)
 	_key("weapon_2", KEY_2)
 	_key("weapon_3", KEY_3)
+	_key("weapon_4", KEY_4)
+	_key("inventory", KEY_I)
+	_key("inventory", KEY_TAB)
 	_key("cycle_piece", KEY_F)
 	_key("piece_wall", KEY_F1)
 	_key("piece_floor", KEY_F2)
@@ -60,7 +63,7 @@ func _ready() -> void:
 	_axis("pad_build_floor", JOY_AXIS_TRIGGER_LEFT, 1.0)
 	_button("pad_build_ramp", JOY_BUTTON_RIGHT_SHOULDER)
 	_button("pause", JOY_BUTTON_START)
-	_button("pause", JOY_BUTTON_BACK)
+	_button("inventory", JOY_BUTTON_BACK)   # bouton Vue / Share
 	# Navigation dans les menus à la manette
 	_button("ui_accept", JOY_BUTTON_A)
 	_button("ui_cancel", JOY_BUTTON_B)

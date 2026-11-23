@@ -38,7 +38,19 @@ static func make_theme() -> Theme:
 	t.set_stylebox("normal", "Button", normal)
 	t.set_stylebox("hover", "Button", hover)
 	t.set_stylebox("pressed", "Button", pressed)
-	t.set_stylebox("focus", "Button", StyleBoxEmpty.new())
+	# Sélection visible à la manette / au clavier : cadre blanc épais autour du bouton
+	var focus := StyleBoxFlat.new()
+	focus.draw_center = false
+	focus.set_border_width_all(5)
+	focus.border_color = Color(1, 1, 1)
+	focus.set_corner_radius_all(14)
+	focus.expand_margin_left = 6
+	focus.expand_margin_right = 6
+	focus.expand_margin_top = 6
+	focus.expand_margin_bottom = 6
+	focus.shadow_color = Color(1, 0.9, 0.4, 0.6)
+	focus.shadow_size = 10
+	t.set_stylebox("focus", "Button", focus)
 	for k in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
 		t.set_color(k, "Button", DARK)
 	t.set_font_size("font_size", "Button", 30)

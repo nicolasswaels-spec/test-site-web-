@@ -6,7 +6,9 @@ const Structure = preload("res://scripts/structure.gd")
 
 signal died
 
-enum W { RIFLE, AXE, BUILD }
+enum W { PISTOL, RIFLE, AXE, BUILD }
+const WEAPON_NAMES := ["PISTOLET", "FUSIL D'ASSAUT", "HACHE", "CONSTRUCTION"]
+const RES_MAX := 9999
 const PIECE_NAMES := ["MUR", "SOL", "RAMPE"]
 
 const WALK_SPEED := 6.5
@@ -14,6 +16,11 @@ const SPRINT_SPEED := 10.0
 const JUMP_VELOCITY := 7.5
 const GRAVITY := 20.0
 const MOUSE_SENS := 0.0025
+## Caractéristiques des armes à feu (munitions illimitées, seul le chargeur compte)
+const GUNS := {
+	W.PISTOL: {"mag": 12, "interval": 0.2, "damage": 34.0, "reload": 1.2, "auto": false, "spread": 0.012, "kick": 0.02},
+	W.RIFLE: {"mag": 30, "interval": 0.1, "damage": 24.0, "reload": 1.6, "auto": true, "spread": 0.022, "kick": 0.011},
+}
 const MAG_SIZE := 30
 const FIRE_INTERVAL := 0.1
 const RELOAD_TIME := 1.6
@@ -31,6 +38,8 @@ const MASK_SHOOT := 1 | 4 | 8 | 16 | 32
 const HIP_POS := Vector3(0.25, -0.22, -0.64)
 const ADS_POS := Vector3(0.0, -0.105, -0.55)
 const AXE_POS := Vector3(0.34, -0.32, -0.55)
+const PISTOL_HIP := Vector3(0.2, -0.2, -0.42)
+const PISTOL_ADS := Vector3(0.0, -0.085, -0.36)
 
 var main
 var hud
@@ -38,7 +47,10 @@ var hud
 var head: Node3D
 var cam: Camera3D
 var viewmodel: Node3D
-var rifle: Node3D
+var rifle: Node3D          # arme à feu actuellement en main (pistolet ou fusil)
+var gun_data := {}         # W -> {node, muzzle, flash, light, crystal, glow, hip, ads}
+var has_rifle := false
+var mags := {W.PISTOL: 12, W.RIFLE: 30}
 var muzzle: Marker3D
 var muzzle_flash: MeshInstance3D
 var muzzle_light: OmniLight3D
@@ -49,9 +61,9 @@ var ghost_ok_mat: StandardMaterial3D
 var ghost_bad_mat: StandardMaterial3D
 var piece_meshes: Array[BoxMesh] = []
 
-var weapon := W.RIFLE
+var weapon := W.PISTOL
 var build_piece := 0
-var ammo := MAG_SIZE
+var ammo := 12
 var reloading := false
 var reload_t := 0.0
 var fire_cd := 0.0
@@ -78,6 +90,8 @@ var ads_t := 0.0
 var shake_t := 0.0
 var shake_amp := 0.0
 var swinging := false
+var trigger_held := false
+var last_gun := W.PISTOL
 var climbing := false
 var swing_tween: Tween
 var dead := false
@@ -112,9 +126,10 @@ func _ready() -> void:
 	cam.add_child(viewmodel)
 
 	_build_rifle()
+	_build_pistol()
 	_build_axe()
 	_build_ghost()
-	_select_weapon(W.RIFLE, true)
+	_select_weapon(W.PISTOL, true)
 
 
 # ------------------------------------------------------------------ modèles
@@ -140,6 +155,7 @@ void fragment() {
 func _build_rifle() -> void:
 	rifle = Node3D.new()
 	rifle.position = HIP_POS
+	rifle.visible = false
 	rifle.scale = Vector3.ONE * 0.82
 	viewmodel.add_child(rifle)
 	rifle_rest_rot = Vector3(0.0, deg_to_rad(6.0), 0.0)
@@ -222,6 +238,63 @@ func _build_rifle() -> void:
 	muzzle_light.omni_range = 7.0
 	muzzle_light.light_energy = 0.0
 	muzzle.add_child(muzzle_light)
+	gun_data[W.RIFLE] = {"node": rifle, "muzzle": muzzle, "flash": muzzle_flash, "light": muzzle_light,
+		"crystal": crystal_mat, "glow": sight_glow, "hip": HIP_POS, "ads": ADS_POS, "rest": Vector3(0, deg_to_rad(6.0), 0)}
+
+
+## Pistolet : même esprit que le fusil (acier bleui, crosse en bois, cristal turquoise).
+func _build_pistol() -> void:
+	var g := Node3D.new()
+	g.position = PISTOL_HIP
+	g.scale = Vector3.ONE * 0.9
+	viewmodel.add_child(g)
+	var wood := ShaderMaterial.new()
+	var wsh := Shader.new()
+	wsh.code = WOOD_SHADER
+	wood.shader = wsh
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color(0.10, 0.11, 0.15)
+	steel.metallic = 0.35
+	steel.roughness = 0.55
+	var brass := StandardMaterial3D.new()
+	brass.albedo_color = Color(0.80, 0.56, 0.26)
+	brass.metallic = 0.6
+	brass.roughness = 0.4
+	var cmat := StandardMaterial3D.new()
+	cmat.albedo_color = Color(0.30, 0.95, 0.90, 1.0)
+	cmat.emission_enabled = true
+	cmat.emission = Color(0.30, 0.95, 0.90)
+	cmat.emission_energy_multiplier = 4.0
+	cmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	# culasse, canon, crosse en bois, pontet, chien
+	Mats.box(g, Vector3(0.05, 0.06, 0.24), steel, Vector3(0, 0.0, -0.04))
+	Mats.cylinder(g, 0.014, 0.014, 0.08, steel, Vector3(0, -0.005, -0.19), Vector3(90, 0, 0), 8)
+	Mats.cylinder(g, 0.018, 0.018, 0.012, brass, Vector3(0, -0.005, -0.155), Vector3(90, 0, 0), 8)
+	Mats.box(g, Vector3(0.052, 0.008, 0.2), brass, Vector3(0, -0.032, -0.04))
+	Mats.box(g, Vector3(0.042, 0.13, 0.06), wood, Vector3(0, -0.09, 0.07), Vector3(-16, 0, 0))
+	Mats.box(g, Vector3(0.01, 0.01, 0.06), steel, Vector3(0, -0.05, 0.0))
+	Mats.box(g, Vector3(0.012, 0.025, 0.02), steel, Vector3(0, 0.035, 0.085), Vector3(-30, 0, 0))
+	Mats.box(g, Vector3(0.003, 0.01, 0.12), Mats.col(Color(0.30, 0.95, 0.90), 0.1, 4.0), Vector3(0.026, 0.0, -0.04))
+	Mats.box(g, Vector3(0.016, 0.016, 0.016), cmat, Vector3(0, 0.042, 0.06), Vector3(45, 45, 0))
+	Mats.box(g, Vector3(0.006, 0.014, 0.008), steel, Vector3(0, 0.036, -0.15))
+	var glow := OmniLight3D.new()
+	glow.light_color = Color(0.3, 0.95, 0.9)
+	glow.light_energy = 0.15
+	glow.omni_range = 0.3
+	glow.position = Vector3(0, 0.05, 0.06)
+	g.add_child(glow)
+	var m := Marker3D.new()
+	m.position = Vector3(0, -0.005, -0.24)
+	g.add_child(m)
+	var fl := Mats.sphere(m, 0.05, Mats.col(Color(1.0, 0.75, 0.35), 0.2, 8.0), Vector3.ZERO, 6)
+	fl.visible = false
+	var li := OmniLight3D.new()
+	li.light_color = Color(1.0, 0.7, 0.4)
+	li.omni_range = 6.0
+	li.light_energy = 0.0
+	m.add_child(li)
+	gun_data[W.PISTOL] = {"node": g, "muzzle": m, "flash": fl, "light": li, "crystal": cmat, "glow": glow,
+		"hip": PISTOL_HIP, "ads": PISTOL_ADS, "rest": Vector3(0, deg_to_rad(4.0), 0)}
 
 
 func _build_axe() -> void:
@@ -299,14 +372,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		head.rotation.x = clampf(head.rotation.x - event.relative.y * sens, -1.5, 1.5)
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_select_weapon((weapon + 2) % 3)
+			_cycle_weapon(-1)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_select_weapon((weapon + 1) % 3)
+			_cycle_weapon(1)
 	if event.is_action_pressed("weapon_1"):
-		_select_weapon(W.RIFLE)
+		_select_weapon(W.PISTOL)
 	elif event.is_action_pressed("weapon_2"):
-		_select_weapon(W.AXE)
+		_select_weapon(W.RIFLE)
 	elif event.is_action_pressed("weapon_3"):
+		_select_weapon(W.AXE)
+	elif event.is_action_pressed("weapon_4"):
 		_select_weapon(W.BUILD)
 	elif event.is_action_pressed("cycle_piece"):
 		if weapon == W.BUILD:
@@ -320,7 +395,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_pick_piece(1)
 	elif event.is_action_pressed("piece_ramp"):
 		_pick_piece(2)
-	elif event.is_action_pressed("reload") and weapon == W.RIFLE:
+	elif event.is_action_pressed("reload") and _is_gun(weapon):
 		_start_reload()
 	elif event.is_action_pressed("repair"):
 		_try_repair()
@@ -333,20 +408,21 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("build_material"):
 		_toggle_material()
 	elif event.is_action_pressed("weapon_next") and weapon != W.BUILD:
-		_select_weapon((weapon + 1) % 3)
+		_cycle_weapon(1)
 	elif event.is_action_pressed("weapon_prev"):
-		_select_weapon((weapon + 2) % 3)
+		_cycle_weapon(-1)
 	elif event.is_action_pressed("weapon_swap"):
 		if weapon == W.BUILD:
 			_toggle_material()
 		else:
-			_select_weapon(W.AXE if weapon == W.RIFLE else W.RIFLE)
+			_select_weapon(W.AXE if _is_gun(weapon) else last_gun)
 	elif event.is_action_pressed("build_toggle"):
-		_select_weapon(W.RIFLE if weapon == W.BUILD else W.BUILD)
+		_select_weapon(last_gun if weapon == W.BUILD else W.BUILD)
 	elif event.is_action_pressed("piece_next"):
 		_pick_piece((build_piece + 1) % 3)
-	elif event.is_action_pressed("piece_prev"):
-		_pick_piece((build_piece + 2) % 3)
+	elif event.is_action_pressed("inventory"):
+		if hud:
+			hud.toggle_inventory(self)
 	elif event.is_action_pressed("sprint_toggle"):
 		sprint_toggle = true
 
@@ -356,12 +432,49 @@ func _pick_piece(p: int) -> void:
 	_select_weapon(W.BUILD)
 
 
+func _is_gun(w: int) -> bool:
+	return w == W.PISTOL or w == W.RIFLE
+
+
+func _cycle_weapon(dir: int) -> void:
+	var order := [W.PISTOL, W.RIFLE, W.AXE, W.BUILD]
+	var i := order.find(weapon)
+	for k in 4:
+		i = (i + dir + 4) % 4
+		if order[i] != W.RIFLE or has_rifle:
+			_select_weapon(order[i])
+			return
+
+
+func unlock_rifle() -> void:
+	has_rifle = true
+	_select_weapon(W.RIFLE)
+
+
 func _select_weapon(w: int, force := false) -> void:
+	if w == W.RIFLE and not has_rifle:
+		if hud:
+			hud.flash_message("Fusil d'assaut pas encore fabriqué (fin de la 1re sphère)")
+		return
 	if w == weapon and not force:
 		return
+	if _is_gun(weapon):
+		mags[weapon] = ammo
 	weapon = w
 	reloading = false
-	rifle.visible = w == W.RIFLE
+	if _is_gun(w):
+		last_gun = w
+		ammo = mags[w]
+		var gd: Dictionary = gun_data[w]
+		rifle = gd["node"]
+		muzzle = gd["muzzle"]
+		muzzle_flash = gd["flash"]
+		muzzle_light = gd["light"]
+		crystal_mat = gd["crystal"]
+		sight_glow = gd["glow"]
+		rifle_rest_rot = gd["rest"]
+	for k in gun_data:
+		gun_data[k]["node"].visible = (k == w)
 	axe.visible = w == W.AXE
 	ghost.visible = w == W.BUILD
 	equip_t = 1.0
@@ -428,23 +541,26 @@ func _update_weapons(delta: float) -> void:
 	# Souris : on n'agit que si elle est capturée (le clic qui la capture ne doit pas tirer).
 	# Manette : toujours actif.
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
-	aiming = Input.is_action_pressed("aim") and weapon == W.RIFLE and not reloading \
+	aiming = Input.is_action_pressed("aim") and _is_gun(weapon) and not reloading \
 		and (captured or not Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
 
 	if reloading:
 		reload_t -= delta
 		if reload_t <= 0.0:
 			reloading = false
-			ammo = MAG_SIZE
+			ammo = GUNS[weapon]["mag"] if _is_gun(weapon) else ammo
 
 	var firing := Input.is_action_pressed("fire") and (captured or not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT))
 	match weapon:
-		W.RIFLE:
-			if firing and fire_cd <= 0.0 and not reloading:
+		W.PISTOL, W.RIFLE:
+			# pistolet : coup par coup (une pression = un tir) ; fusil : automatique
+			var trigger := firing if GUNS[weapon]["auto"] else (firing and not trigger_held)
+			if trigger and fire_cd <= 0.0 and not reloading:
 				if ammo > 0:
 					_shoot()
 				else:
 					_start_reload()
+			trigger_held = firing
 		W.AXE:
 			if firing and swing_cd <= 0.0:
 				_swing()
@@ -485,10 +601,11 @@ func _process(delta: float) -> void:
 	recoil = lerpf(recoil, 0.0, minf(14.0 * delta, 1.0))
 	var equip_off := Vector3(0, -0.35 * equip_t * equip_t, 0)
 
-	var target_pos := ADS_POS if aiming else HIP_POS
+	var gdat: Dictionary = gun_data[last_gun]
+	var target_pos: Vector3 = gdat["ads"] if aiming else gdat["hip"]
 	var target_rot := Vector3.ZERO if aiming else rifle_rest_rot
 	if reloading:
-		target_pos = HIP_POS + Vector3(-0.05, -0.08, 0.05)
+		target_pos = gdat["hip"] + Vector3(-0.05, -0.08, 0.05)
 		target_rot = Vector3(-0.5, 0.3, 0.5)
 	rifle.position = rifle.position.lerp(target_pos + bob + equip_off + Vector3(0, 0, recoil * 0.06), minf(16.0 * delta, 1.0))
 	rifle.rotation = rifle.rotation.lerp(target_rot + Vector3(recoil * 0.1, 0, 0), minf(14.0 * delta, 1.0))
@@ -512,6 +629,7 @@ func _process(delta: float) -> void:
 		cam.v_offset = 0.0
 
 	_update_build_target()
+	_update_aimed_enemy()
 
 	flash_t -= delta
 	muzzle_flash.visible = flash_t > 0.0
@@ -523,21 +641,22 @@ func _process(delta: float) -> void:
 # ------------------------------------------------------------------ fusil
 
 func _start_reload() -> void:
-	if reloading or ammo >= MAG_SIZE:
+	if not _is_gun(weapon) or reloading or ammo >= GUNS[weapon]["mag"]:
 		return
 	reloading = true
-	reload_t = RELOAD_TIME
+	reload_t = GUNS[weapon]["reload"]
 	Sfx.play("reload", -2.0)
 
 
 func _shoot() -> void:
 	ammo -= 1
-	fire_cd = FIRE_INTERVAL
+	var gs: Dictionary = GUNS[weapon]
+	fire_cd = gs["interval"]
 	flash_t = 0.04
 	recoil = 1.0
-	Sfx.play("shot", -5.0)
+	Sfx.play("shot", -5.0, 1.25 if weapon == W.PISTOL else 1.0)
 
-	var spread := 0.004 if aiming else 0.022
+	var spread: float = 0.004 if aiming else gs["spread"]
 	if Vector2(velocity.x, velocity.z).length() > 1.0:
 		spread += 0.012
 	if not is_on_floor():
@@ -555,7 +674,7 @@ func _shoot() -> void:
 		var c = r.collider
 		if c and c.is_in_group("zombie"):
 			var is_head: bool = r.position.y > c.global_position.y + c.head_height
-			c.take_damage(RIFLE_DAMAGE * (2.0 if is_head else 1.0), is_head)
+			c.take_damage(gs["damage"] * (2.0 if is_head else 1.0), is_head)
 			if hud:
 				hud.hitmarker(is_head)
 			Sfx.play("headshot" if is_head else "hit", -6.0)
@@ -564,7 +683,7 @@ func _shoot() -> void:
 			main.spawn_impact(end, r.normal, Color(1.0, 0.85, 0.55), 6, 0.6)
 	main.spawn_tracer(muzzle.global_position, end)
 
-	head.rotation.x = clampf(head.rotation.x + (0.005 if aiming else 0.011), -1.5, 1.5)
+	head.rotation.x = clampf(head.rotation.x + (0.005 if aiming else gs["kick"]), -1.5, 1.5)
 	rotate_y(randf_range(-0.004, 0.004))
 
 
@@ -619,7 +738,7 @@ func _axe_impact() -> void:
 	if c and c.is_in_group("rock"):
 		var got: int = c.mine(AXE_TREE_DAMAGE)
 		if got > 0:
-			stone = mini(stone + got, 999)
+			stone = mini(stone + got, RES_MAX)
 			if hud:
 				hud.stone_gain(got)
 		elif hud and main and not main.stone_unlocked:
@@ -628,7 +747,7 @@ func _axe_impact() -> void:
 		_shake(0.02)
 	elif c and c.is_in_group("tree"):
 		var gained: int = c.chop(AXE_TREE_DAMAGE)
-		wood = mini(wood + gained, 999)
+		wood = mini(wood + gained, RES_MAX)
 		if hud and gained > 0:
 			hud.wood_gain(gained)
 		_shake(0.018)
@@ -762,8 +881,28 @@ func _update_build_target() -> void:
 				build_target = st
 
 
+## Ennemi sous le viseur (pour afficher sa barre de vie).
+func _update_aimed_enemy() -> void:
+	if hud == null:
+		return
+	if dead:
+		hud.set_enemy(null)
+		return
+	var from := cam.global_position
+	var q := PhysicsRayQueryParameters3D.create(from, from - cam.global_transform.basis.z * 120.0, 1 | 4 | 8 | 16)
+	q.exclude = [get_rid()]
+	var r := get_world_3d().direct_space_state.intersect_ray(q)
+	if not r.is_empty() and r.collider and r.collider.is_in_group("zombie"):
+		hud.set_enemy(r.collider)
+	else:
+		hud.set_enemy(null)
+
+
 func _try_repair() -> void:
 	if build_target == null or not is_instance_valid(build_target):
+		return
+	if build_target.is_repairing():
+		hud.flash_message("Réparation déjà en cours")
 		return
 	var cost: int = build_target.repair_cost()
 	if cost == 0:
@@ -778,7 +917,7 @@ func _try_repair() -> void:
 
 
 func collect_coin() -> void:
-	coins = mini(coins + 1, 999)
+	coins = mini(coins + 1, RES_MAX)
 	Sfx.play("coin", -4.0)
 	if hud:
 		hud.coin_gain(1)
@@ -813,15 +952,27 @@ func _try_upgrade() -> void:
 	if build_target == null or not is_instance_valid(build_target):
 		return
 	if not build_target.can_upgrade():
-		hud.flash_message("Déjà améliorée")
+		hud.flash_message("Niveau maximum atteint")
 		return
 	var m: int = build_target.material_type
-	var cost: int = build_target.UPGRADE_COST
+	var cost: int = build_target.upgrade_cost()
 	if _material_count(m) < cost:
 		hud.flash_message("Il faut %d %s pour améliorer" % [cost, MAT_NAMES[m].to_lower()])
 		return
+	var target = build_target
+	if cost >= 1000:
+		# grosse dépense : on demande confirmation
+		hud.confirm("AMÉLIORATION ULTIME", "Attention : cette amélioration coûte %d %s.\nPV de la construction ×4.\n\nConfirmer ?" % [cost, MAT_NAMES[m].to_lower()],
+			func(): _do_upgrade(target, m, cost))
+		return
+	_do_upgrade(target, m, cost)
+
+
+func _do_upgrade(target, m: int, cost: int) -> void:
+	if not is_instance_valid(target) or _material_count(m) < cost:
+		return
 	_spend(m, cost)
-	build_target.upgrade()
+	target.upgrade()
 
 
 # ------------------------------------------------------------------ santé
@@ -847,7 +998,8 @@ func respawn(pos: Vector3) -> void:
 	dead = false
 	invuln_t = 3.0
 	hp = MAX_HP
-	ammo = MAG_SIZE
+	mags = {W.PISTOL: 12, W.RIFLE: 30}
+	ammo = GUNS[weapon]["mag"] if _is_gun(weapon) else ammo
 	reloading = false
 	position = pos
 	velocity = Vector3.ZERO
