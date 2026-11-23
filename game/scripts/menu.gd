@@ -53,7 +53,7 @@ func _ready() -> void:
 	vb.add_child(title)
 
 	var sub := Label.new()
-	sub.text = "Coupe du bois, construis, défends la sphère.\n10 vagues de zombies."
+	sub.text = "Coupe du bois, construis, défends la sphère.\n10 vagues de squelettes... et une forêt à découvrir."
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.add_theme_font_size_override("font_size", 24)
 	vb.add_child(sub)
@@ -89,7 +89,7 @@ func _ready() -> void:
 	vb.add_child(quit)
 
 	var help := Label.new()
-	help.text = "ZQSD / WASD : bouger · Souris : viser · Clic G : tirer / couper / construire · Clic D : viser\n1 : fusil · 2 : hache · 3 : construction (F : mur / sol / rampe) · R : recharger · E : interagir · Échap : pause"
+	help.text = "ZQSD / WASD : bouger · Souris : viser · Clic G : tirer / couper / construire · Clic D : viser · I : inventaire\n1 : pistolet · 2 : fusil · 3 : hache · 4 : construction (F : mur / sol / rampe) · R : recharger · E : interagir · Échap : pause\nManette : croix directionnelle pour choisir, A pour valider"
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	help.add_theme_font_size_override("font_size", 15)
 	help.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)

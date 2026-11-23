@@ -24,7 +24,7 @@ void vertex() {
 	// toujours face à la caméra, taille constante à l'écran
 	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(INV_VIEW_MATRIX[0], INV_VIEW_MATRIX[1], INV_VIEW_MATRIX[2], MODEL_MATRIX[3]);
 	float dist = -(MODELVIEW_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).z;
-	VERTEX *= clamp(dist, 2.0, 60.0) * 0.045;
+	VERTEX *= clamp(dist, 2.0, 60.0) * 0.11;
 }
 void fragment() {
 	vec2 uv = UV;
@@ -152,13 +152,13 @@ func _ready() -> void:
 	bar.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	bar.top_level = true
 	add_child(bar)
-	bar.global_position = global_position + Vector3.UP * (2.9 if piece == WALL else 1.2)
+	bar.global_position = global_position + Vector3.UP * (2.75 if piece == WALL else 1.1)
 	bar.visible = false
 	repair_icon = Label3D.new()
 	repair_icon.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	repair_icon.no_depth_test = true
 	repair_icon.fixed_size = true
-	repair_icon.pixel_size = 0.0011
+	repair_icon.pixel_size = 0.0007
 	repair_icon.font_size = 64
 	repair_icon.outline_size = 14
 	repair_icon.modulate = Color(0.4, 0.75, 1.0)
@@ -167,7 +167,7 @@ func _ready() -> void:
 	repair_icon.outline_render_priority = 10
 	repair_icon.top_level = true
 	add_child(repair_icon)
-	repair_icon.global_position = global_position + Vector3.UP * (3.5 if piece == WALL else 1.8)
+	repair_icon.global_position = global_position + Vector3.UP * (3.2 if piece == WALL else 1.6)
 	repair_icon.visible = false
 
 	label = Label3D.new()
