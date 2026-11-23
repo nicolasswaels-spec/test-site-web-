@@ -55,6 +55,16 @@ func mine(damage: float) -> int:
 	return STONE_PER_HIT
 
 
+## Frappé par un squelette bloqué.
+func smash(damage: float) -> void:
+	if broken:
+		return
+	hp -= damage
+	Sfx.play_3d("thud", global_position + Vector3.UP, 0.0, 0.8)
+	if hp <= 0.0:
+		_break()
+
+
 func _break() -> void:
 	broken = true
 	remove_from_group("rock")

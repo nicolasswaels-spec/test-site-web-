@@ -63,6 +63,16 @@ func chop(damage: float) -> int:
 	return WOOD_PER_HIT
 
 
+## Frappé par un squelette qui était bloqué : l'arbre finit par tomber (sans bois pour le joueur).
+func smash(damage: float) -> void:
+	if fallen:
+		return
+	hp -= damage
+	Sfx.play_3d("chop", global_position + Vector3.UP, 0.0, 0.7)
+	if hp <= 0.0:
+		_fall()
+
+
 func _fall() -> void:
 	fallen = true
 	remove_from_group("tree")

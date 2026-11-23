@@ -44,7 +44,7 @@ var particles: CPUParticles3D
 var particle_mat: StandardMaterial3D
 var t := 0.0
 var flash := 0.0
-const CORE_Y := 2.5
+const CORE_Y := 1.35   # sphère réduite de moitié
 
 
 func _ready() -> void:
@@ -55,30 +55,30 @@ func _ready() -> void:
 	# Socle en pierre
 	var stone := Mats.col(Color(0.55, 0.58, 0.68), 0.7)
 	var stone_dark := Mats.col(Color(0.38, 0.40, 0.50), 0.7)
-	Mats.cylinder(self, 2.0, 2.3, 0.5, stone_dark, Vector3(0, 0.25, 0), Vector3.ZERO, 8)
-	Mats.cylinder(self, 1.3, 1.7, 0.6, stone, Vector3(0, 0.8, 0), Vector3.ZERO, 8)
+	Mats.cylinder(self, 1.0, 1.15, 0.3, stone_dark, Vector3(0, 0.15, 0), Vector3.ZERO, 8)
+	Mats.cylinder(self, 0.65, 0.85, 0.35, stone, Vector3(0, 0.45, 0), Vector3.ZERO, 8)
 	for i in 8:
 		var a := TAU * i / 8.0
-		Mats.box(self, Vector3(0.25, 0.9, 0.25), stone, Vector3(cos(a) * 1.85, 0.9, sin(a) * 1.85), Vector3(0, -rad_to_deg(a), 8))
+		Mats.box(self, Vector3(0.14, 0.5, 0.14), stone, Vector3(cos(a) * 0.92, 0.5, sin(a) * 0.92), Vector3(0, -rad_to_deg(a), 8))
 
 	var s1 := CollisionShape3D.new()
 	var sph := SphereShape3D.new()
-	sph.radius = 1.3
+	sph.radius = 0.65
 	s1.shape = sph
 	s1.position.y = CORE_Y
 	add_child(s1)
 	var s2 := CollisionShape3D.new()
 	var cyl := CylinderShape3D.new()
-	cyl.radius = 2.2
-	cyl.height = 1.1
+	cyl.radius = 1.1
+	cyl.height = 0.6
 	s2.shape = cyl
-	s2.position.y = 0.55
+	s2.position.y = 0.3
 	add_child(s2)
 
 	core = MeshInstance3D.new()
 	var sm := SphereMesh.new()
-	sm.radius = 1.1
-	sm.height = 2.2
+	sm.radius = 0.55
+	sm.height = 1.1
 	sm.radial_segments = 48
 	sm.rings = 24
 	core.mesh = sm
@@ -92,8 +92,8 @@ func _ready() -> void:
 
 	var shell := MeshInstance3D.new()
 	var sm2 := SphereMesh.new()
-	sm2.radius = 1.5
-	sm2.height = 3.0
+	sm2.radius = 0.75
+	sm2.height = 1.5
 	shell.mesh = sm2
 	shell_mat = ShaderMaterial.new()
 	var sh2 := Shader.new()
@@ -105,8 +105,8 @@ func _ready() -> void:
 	for i in 2:
 		var r := MeshInstance3D.new()
 		var tm := TorusMesh.new()
-		tm.inner_radius = 1.65 + i * 0.3
-		tm.outer_radius = 1.75 + i * 0.3
+		tm.inner_radius = 0.85 + i * 0.16
+		tm.outer_radius = 0.9 + i * 0.16
 		r.mesh = tm
 		r.material_override = Mats.col(Color(1, 1, 1), 0.3, 1.5)
 		r.position.y = CORE_Y
@@ -115,16 +115,16 @@ func _ready() -> void:
 
 	light = OmniLight3D.new()
 	light.position.y = CORE_Y
-	light.omni_range = 16.0
+	light.omni_range = 12.0
 	light.light_energy = 2.5
 	add_child(light)
 
 	particles = CPUParticles3D.new()
 	particles.amount = 40
 	particles.lifetime = 2.5
-	particles.position.y = 1.2
+	particles.position.y = 0.7
 	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	particles.emission_sphere_radius = 2.0
+	particles.emission_sphere_radius = 1.0
 	particles.direction = Vector3.UP
 	particles.spread = 20.0
 	particles.gravity = Vector3(0, 0.6, 0)
@@ -150,7 +150,7 @@ func _process(delta: float) -> void:
 	core_mat.set_shader_parameter("flash", flash)
 	if dead:
 		return
-	core.position.y = CORE_Y + sin(t * 1.4) * 0.15
+	core.position.y = CORE_Y + sin(t * 1.4) * 0.08
 	core.rotation.y += delta * 0.4
 	rings[0].rotation = Vector3(t * 0.7, t * 0.3, 0.4)
 	rings[1].rotation = Vector3(-t * 0.4, 0.0, t * 0.6)

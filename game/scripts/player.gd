@@ -3,6 +3,7 @@ extends CharacterBody3D
 
 const Mats = preload("res://scripts/mats.gd")
 const Structure = preload("res://scripts/structure.gd")
+const Upg = preload("res://scripts/upgrades.gd")
 
 signal died
 
@@ -51,6 +52,10 @@ var rifle: Node3D          # arme à feu actuellement en main (pistolet ou fusil
 var gun_data := {}         # W -> {node, muzzle, flash, light, crystal, glow, hip, ads}
 var has_rifle := false
 var mags := {W.PISTOL: 12, W.RIFLE: 30}
+## Deux armes à feu équipées (choisies dans l'inventaire) ; la hache est toujours là.
+var loadout := [W.PISTOL, -1]
+var upgrades := Upg.new_state()
+const GUN_KEYS := {W.PISTOL: "pistol", W.RIFLE: "rifle"}
 var muzzle: Marker3D
 var muzzle_flash: MeshInstance3D
 var muzzle_light: OmniLight3D
@@ -376,9 +381,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_cycle_weapon(1)
 	if event.is_action_pressed("weapon_1"):
-		_select_weapon(W.PISTOL)
+		if loadout[0] >= 0:
+			_select_weapon(loadout[0])
 	elif event.is_action_pressed("weapon_2"):
-		_select_weapon(W.RIFLE)
+		if loadout[1] >= 0:
+			_select_weapon(loadout[1])
+		elif hud:
+			hud.flash_message("Emplacement 2 vide (inventaire : Select / I)")
 	elif event.is_action_pressed("weapon_3"):
 		_select_weapon(W.AXE)
 	elif event.is_action_pressed("weapon_4"):
@@ -423,6 +432,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("inventory"):
 		if hud:
 			hud.toggle_inventory(self)
+			get_viewport().set_input_as_handled()   # sinon l'interface le referme aussitôt
 	elif event.is_action_pressed("sprint_toggle"):
 		sprint_toggle = true
 
@@ -437,24 +447,106 @@ func _is_gun(w: int) -> bool:
 
 
 func _cycle_weapon(dir: int) -> void:
-	var order := [W.PISTOL, W.RIFLE, W.AXE, W.BUILD]
+	var order := [loadout[0], loadout[1], W.AXE, W.BUILD]
 	var i := order.find(weapon)
+	if i < 0:
+		i = 0
 	for k in 4:
 		i = (i + dir + 4) % 4
-		if order[i] != W.RIFLE or has_rifle:
+		if order[i] >= 0:
 			_select_weapon(order[i])
 			return
 
 
+func owned_guns() -> Array:
+	var arr := [W.PISTOL]
+	if has_rifle:
+		arr.append(W.RIFLE)
+	return arr
+
+
+## Change l'arme d'un emplacement (0 ou 1). Une même arme ne peut pas être dans les deux.
+func set_loadout(slot: int, w: int) -> void:
+	var other := 1 - slot
+	if w >= 0 and loadout[other] == w:
+		loadout[other] = loadout[slot]
+	loadout[slot] = w
+	if loadout[0] < 0 and loadout[1] >= 0:
+		loadout[0] = loadout[1]
+		loadout[1] = -1
+	if _is_gun(weapon) and not loadout.has(weapon):
+		_select_weapon(loadout[0] if loadout[0] >= 0 else W.AXE)
+
+
+## Index de l'emplacement de l'arme en main (0-1 armes, 2 hache, 3 construction).
+func slot_index() -> int:
+	if weapon == W.AXE:
+		return 2
+	if weapon == W.BUILD:
+		return 3
+	return loadout.find(weapon)
+
+
 func unlock_rifle() -> void:
 	has_rifle = true
+	mags[W.RIFLE] = gun_mag(W.RIFLE)
+	if loadout[1] < 0:
+		loadout[1] = W.RIFLE
 	_select_weapon(W.RIFLE)
+
+
+# ------------------------------------------------------------------ caractéristiques améliorées
+
+func gun_lvl(w: int, branch: String) -> int:
+	return upgrades[GUN_KEYS[w]][branch]
+
+
+func gun_mag(w: int) -> int:
+	return Upg.mag_size(GUNS[w]["mag"], gun_lvl(w, "mag"))
+
+
+func gun_interval(w: int) -> float:
+	return GUNS[w]["interval"] * Upg.fire_interval_mult(gun_lvl(w, "rate"))
+
+
+func gun_damage(w: int) -> float:
+	return GUNS[w]["damage"] * Upg.damage_mult(gun_lvl(w, "damage"))
+
+
+func can_afford(c: Dictionary) -> bool:
+	return wood >= c.get("wood", 0) and stone >= c.get("stone", 0) and coins >= c.get("coins", 0)
+
+
+## Achète le niveau suivant d'une branche (si le précédent est acquis et qu'on a les ressources).
+func buy_upgrade(item: String, branch: String) -> bool:
+	var lvl: int = upgrades[item][branch]
+	if lvl >= Upg.MAX_LEVEL:
+		return false
+	var c := Upg.cost(item, branch, lvl + 1)
+	if not can_afford(c):
+		return false
+	wood -= c.get("wood", 0)
+	stone -= c.get("stone", 0)
+	coins -= c.get("coins", 0)
+	upgrades[item][branch] = lvl + 1
+	if branch == "mag":
+		for w in GUN_KEYS:
+			if GUN_KEYS[w] == item:
+				mags[w] = gun_mag(w)
+				if weapon == w:
+					ammo = mags[w]
+	Sfx.play("build", -2.0, 1.3)
+	return true
 
 
 func _select_weapon(w: int, force := false) -> void:
 	if w == W.RIFLE and not has_rifle:
 		if hud:
 			hud.flash_message("Fusil d'assaut pas encore fabriqué (fin de la 1re sphère)")
+		return
+	if _is_gun(w) and not loadout.has(w):
+		if hud:
+			hud.flash_message("Cette arme n'est pas équipée (inventaire : Select / I)")
 		return
 	if w == weapon and not force:
 		return
@@ -548,7 +640,7 @@ func _update_weapons(delta: float) -> void:
 		reload_t -= delta
 		if reload_t <= 0.0:
 			reloading = false
-			ammo = GUNS[weapon]["mag"] if _is_gun(weapon) else ammo
+			ammo = gun_mag(weapon) if _is_gun(weapon) else ammo
 
 	var firing := Input.is_action_pressed("fire") and (captured or not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT))
 	match weapon:
@@ -641,7 +733,7 @@ func _process(delta: float) -> void:
 # ------------------------------------------------------------------ fusil
 
 func _start_reload() -> void:
-	if not _is_gun(weapon) or reloading or ammo >= GUNS[weapon]["mag"]:
+	if not _is_gun(weapon) or reloading or ammo >= gun_mag(weapon):
 		return
 	reloading = true
 	reload_t = GUNS[weapon]["reload"]
@@ -651,7 +743,7 @@ func _start_reload() -> void:
 func _shoot() -> void:
 	ammo -= 1
 	var gs: Dictionary = GUNS[weapon]
-	fire_cd = gs["interval"]
+	fire_cd = gun_interval(weapon)
 	flash_t = 0.04
 	recoil = 1.0
 	Sfx.play("shot", -5.0, 1.25 if weapon == W.PISTOL else 1.0)
@@ -674,7 +766,7 @@ func _shoot() -> void:
 		var c = r.collider
 		if c and c.is_in_group("zombie"):
 			var is_head: bool = r.position.y > c.global_position.y + c.head_height
-			c.take_damage(gs["damage"] * (2.0 if is_head else 1.0), is_head)
+			c.take_damage(gun_damage(weapon) * (2.0 if is_head else 1.0), is_head)
 			if hud:
 				hud.hitmarker(is_head)
 			Sfx.play("headshot" if is_head else "hit", -6.0)
@@ -737,6 +829,7 @@ func _axe_impact() -> void:
 	_shake(0.012)
 	if c and c.is_in_group("rock"):
 		var got: int = c.mine(AXE_TREE_DAMAGE)
+		got = int(round(got * Upg.harvest_mult(upgrades["axe"]["stone"])))
 		if got > 0:
 			stone = mini(stone + got, RES_MAX)
 			if hud:
@@ -747,6 +840,7 @@ func _axe_impact() -> void:
 		_shake(0.02)
 	elif c and c.is_in_group("tree"):
 		var gained: int = c.chop(AXE_TREE_DAMAGE)
+		gained = int(round(gained * Upg.harvest_mult(upgrades["axe"]["wood"])))
 		wood = mini(wood + gained, RES_MAX)
 		if hud and gained > 0:
 			hud.wood_gain(gained)
@@ -980,6 +1074,9 @@ func _do_upgrade(target, m: int, cost: int) -> void:
 func take_damage(amount: float) -> void:
 	if dead or invuln_t > 0.0:
 		return
+	# défense apportée par l'arme en main
+	if _is_gun(weapon):
+		amount *= 1.0 - Upg.defense(gun_lvl(weapon, "defense"))
 	hp = maxf(hp - amount, 0.0)
 	Sfx.play("hurt", 0.0)
 	if hud:
@@ -998,8 +1095,8 @@ func respawn(pos: Vector3) -> void:
 	dead = false
 	invuln_t = 3.0
 	hp = MAX_HP
-	mags = {W.PISTOL: 12, W.RIFLE: 30}
-	ammo = GUNS[weapon]["mag"] if _is_gun(weapon) else ammo
+	mags = {W.PISTOL: gun_mag(W.PISTOL), W.RIFLE: gun_mag(W.RIFLE)}
+	ammo = gun_mag(weapon) if _is_gun(weapon) else ammo
 	reloading = false
 	position = pos
 	velocity = Vector3.ZERO

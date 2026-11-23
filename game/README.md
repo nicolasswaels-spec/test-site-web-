@@ -22,7 +22,7 @@ Les touches sont **physiques** : ZQSD sur un clavier AZERTY, WASD sur un clavier
 | Sauter / Sprinter | Espace / Maj |
 | Tirer, couper, construire | Clic gauche |
 | Viser (fusil) | Clic droit |
-| Pistolet / Fusil d'assaut / Hache / Construction | 1 / 2 / 3 / 4 (ou molette) |
+| Arme 1 / Arme 2 / Hache / Construction | 1 / 2 / 3 / 4 (ou molette) |
 | Inventaire | I ou Tab |
 | Changer de pièce (mur → sol → rampe) | F (ou F1 / F2 / F3) |
 | Changer de matériau (bois / pierre) | V |
@@ -54,12 +54,14 @@ Les touches sont **physiques** : ZQSD sur un clavier AZERTY, WASD sur un clavier
 | Poser des barbelés sur le sol visé | Clic stick droit | R3 |
 | Recharger / lancer le combat | X | Carré |
 | Pause | Start | Options |
-| Inventaire | Vue (Back) | Share / Create |
+| Inventaire (pages : LB / RB) | Vue (Select) | Share / Create |
 
 Dans les menus : croix directionnelle ou stick gauche pour se déplacer, A / Croix pour valider.
 
 ## Règles
 
+- **Inventaire** (Select / I / Tab) : page **Résumé** (ressources, armes possédées, choix des 2 armes équipées ; la hache est toujours équipée) et page **Améliorations** (LB / RB pour changer de page).
+- **Améliorations** : pistolet et fusil (cadence, dégâts par balle, chargeur, défense quand l'arme est en main), hache (récolte de bois payée en bois, récolte de pierre payée en pierre), barbelés (ralentissement, dégâts). 8 niveaux par branche, chaque niveau exige le précédent. Coûts : niveaux 1-2 en bois, 3-4 en pierre, 5-6 bois + pierre, 7-8 bois + pierre + pièces (valeurs dans `scripts/upgrades.gd`).
 - **Armes** : on commence avec un **pistolet** (12 balles, coup par coup). Le **fusil d'assaut** (30 balles, automatique) se fabrique à la fin de la 1re sphère (proposé à l'écran, ou depuis l'inventaire). Munitions illimitées, tirs à la tête ×2. Viser un ennemi affiche sa barre de vie.
 - **Hache** : chaque coup sur un arbre donne +10 bois (+20 quand il tombe), sur un rocher +10 pierre (+20 quand il casse, à partir de la vague 5). Elle frappe aussi les ennemis.
 - **Construction** : grille de 4 m comme dans Fortnite, 10 bois (ou 10 pierres) par pièce. La pierre se débloque à la vague 5 et a 2× plus de PV que le bois. Les PV s'affichent au-dessus de chaque pièce. On peut l'escalader en avançant contre elle, la modifier (mur → porte → fenêtre, sol → trappe, rampe retournée ; les portes laissent passer le joueur mais pas les squelettes), la démolir à la hache, réparer la pièce visée (coût proportionnel aux dégâts) et l'améliorer jusqu'à 3 fois avec le même matériau : niveau 1 = PV ×3 (50), niveau 2 = PV ×2 (150), niveau 3 = PV ×4 (1000, avec confirmation). La réparation prend 5 s (symbole au-dessus de la pièce) et ne rend que les PV qui manquaient au début. Une pièce apparaît à 30 % de sa solidité et se renforce en 1,5 s. Fantôme bleu : placement possible, rouge : impossible.

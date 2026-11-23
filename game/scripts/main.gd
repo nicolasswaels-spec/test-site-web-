@@ -666,7 +666,7 @@ func avoidance(z: Node3D) -> Vector3:
 		var d := p - obstacle_pos[i]
 		d.y = 0.0
 		var l := d.length()
-		var rad := obstacle_rad[i]
+		var rad: float = obstacle_rad[i] + (z.size_mult - 1.0) * 0.9
 		if l < rad and l > 0.01:
 			var n := d / l
 			var tangent := Vector3(-n.z, 0.0, n.x)
@@ -820,7 +820,7 @@ func _start_wave(n: int) -> void:
 	state = "wave"
 	var d := difficulty()
 	# zone 1 (au pistolet) : beaucoup moins de squelettes ; zone 2 : comme avant
-	to_spawn = (4 + (d - 1) * 3) if zone == 1 else (6 + (d - 1) * 4)
+	to_spawn = (3 + (d - 1) * 2) if zone == 1 else (5 + (d - 1) * 3)
 	bosses_left = n / 5   # mini-boss à la vague 5, deux boss à la vague 10
 	spawn_interval = maxf(0.3, 1.3 - d * 0.09)
 	spawn_timer = 1.5

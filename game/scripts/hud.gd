@@ -2,6 +2,7 @@ extends CanvasLayer
 ## Interface en jeu : vie, munitions, bois, vagues, sphère, menus pause / fin.
 
 const UI = preload("res://scripts/ui.gd")
+const InventoryUI = preload("res://scripts/inventory_ui.gd")
 
 signal menu_pressed
 signal retry_pressed
@@ -119,7 +120,7 @@ var confirm_panel: Control
 var confirm_title: Label
 var confirm_text: Label
 var confirm_cb: Callable
-var inventory_panel: Control
+var inventory_panel
 var inv_res: Label
 var inv_weapons: VBoxContainer
 var inv_player
@@ -430,9 +431,14 @@ func update_player(p) -> void:
 		build_prompt.text = "\n".join(parts)
 	else:
 		build_prompt.text = ""
+	var si: int = p.slot_index()
+	var short := {0: "PISTOLET", 1: "FUSIL"}
 	for i in slots.size():
-		slots[i].add_theme_stylebox_override("panel", slot_on if i == p.weapon else slot_off)
-		slots[i].modulate.a = 0.35 if (i == 1 and not p.has_rifle) else 1.0
+		slots[i].add_theme_stylebox_override("panel", slot_on if i == si else slot_off)
+		if i < 2:
+			var w: int = p.loadout[i]
+			(slots[i].get_child(0) as Label).text = "%d\n%s" % [i + 1, short[w] if w >= 0 else "—"]
+			slots[i].modulate.a = 1.0 if w >= 0 else 0.35
 	var mode := 0
 	match p.weapon:
 		0, 1:
@@ -551,6 +557,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.is_action_pressed("pause") or event.is_action_pressed("inventory") or event.is_action_pressed("ui_cancel"):
 			close_inventory()
 			get_viewport().set_input_as_handled()
+		elif event.is_action_pressed("weapon_next"):
+			inventory_panel.next_page(1)
+			get_viewport().set_input_as_handled()
+		elif event.is_action_pressed("weapon_prev"):
+			inventory_panel.next_page(-1)
+			get_viewport().set_input_as_handled()
 		return
 	if event.is_action_pressed("pause") and not game_over:
 		set_paused(not get_tree().paused)
@@ -612,38 +624,8 @@ func _close_confirm(yes: bool) -> void:
 # ------------------------------------------------------------------ inventaire
 
 func _build_inventory() -> void:
-	var dim := ColorRect.new()
-	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0.03, 0.02, 0.1, 0.75)
-	dim.visible = false
-	root.add_child(dim)
-	inventory_panel = dim
-	var cc := CenterContainer.new()
-	cc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dim.add_child(cc)
-	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", UI.box(Color(0.07, 0.05, 0.18, 0.95), 16, 36.0, 26.0))
-	cc.add_child(panel)
-	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 14)
-	panel.add_child(vb)
-	var t := _label(vb, "INVENTAIRE", 52, UI.YELLOW)
-	t.add_theme_constant_override("outline_size", 12)
-	t.add_theme_color_override("font_outline_color", UI.DARK)
-	_label(vb, "RESSOURCES", 20, Color(0.75, 0.8, 1.0))
-	inv_res = _label(vb, "", 26)
-	_label(vb, "ARMES  (choisis-en une)", 20, Color(0.75, 0.8, 1.0))
-	inv_weapons = VBoxContainer.new()
-	inv_weapons.add_theme_constant_override("separation", 10)
-	vb.add_child(inv_weapons)
-	var close := Button.new()
-	close.text = "FERMER"
-	close.custom_minimum_size = Vector2(240, 54)
-	close.add_theme_font_size_override("font_size", 22)
-	close.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	close.pressed.connect(close_inventory)
-	vb.add_child(close)
-	_label(vb, "I / Tab / bouton Vue pour fermer", 14, Color(0.7, 0.7, 0.8))
+	inventory_panel = InventoryUI.new()
+	root.add_child(inventory_panel)
 
 
 func toggle_inventory(p) -> void:
@@ -655,44 +637,9 @@ func toggle_inventory(p) -> void:
 
 func open_inventory(p) -> void:
 	inv_player = p
-	inv_res.text = "BOIS  %d      PIERRE  %d      PIÈCES  %d" % [p.wood, p.stone, p.coins]
-	for c in inv_weapons.get_children():
-		c.queue_free()
-	var first: Button = null
-	var descs := [
-		["PISTOLET", "12 balles · coup par coup · munitions illimitées", 0, true],
-		["FUSIL D'ASSAUT", "30 balles · automatique · munitions illimitées" if p.has_rifle else "Verrouillé : se fabrique à la fin de la 1re sphère", 1, p.has_rifle],
-		["HACHE", "Coupe le bois, casse les rochers, démolit tes constructions", 2, true],
-		["CONSTRUCTION", "Murs, sols, rampes en bois ou en pierre", 3, true],
-	]
-	if p.main and p.main.rifle_craftable and not p.has_rifle:
-		var craft := Button.new()
-		craft.text = "FABRIQUER LE FUSIL D'ASSAUT"
-		craft.custom_minimum_size = Vector2(620, 56)
-		craft.add_theme_font_size_override("font_size", 22)
-		craft.pressed.connect(func():
-			p.main.craft_rifle()
-			open_inventory(p))
-		inv_weapons.add_child(craft)
-		first = craft
-	for d in descs:
-		var b := Button.new()
-		b.text = "%s%s\n%s" % [d[0], "  (en main)" if p.weapon == d[2] else "", d[1]]
-		b.custom_minimum_size = Vector2(620, 70)
-		b.add_theme_font_size_override("font_size", 18)
-		b.disabled = not d[3]
-		var w: int = d[2]
-		b.pressed.connect(func():
-			p._select_weapon(w)
-			close_inventory())
-		inv_weapons.add_child(b)
-		if first == null and d[3]:
-			first = b
-	inventory_panel.visible = true
+	inventory_panel.open(p)
 	get_tree().paused = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	if first:
-		first.grab_focus()
 
 
 func close_inventory() -> void:

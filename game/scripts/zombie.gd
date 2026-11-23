@@ -3,6 +3,7 @@ extends CharacterBody3D
 ## attaque le joueur s'il est proche, et détruit les constructions qui lui barrent la route.
 
 const Mats = preload("res://scripts/mats.gd")
+const Upg = preload("res://scripts/upgrades.gd")
 const MODELS := [
 	preload("res://assets/skeletons/Skeleton_Minion.glb"),
 	preload("res://assets/skeletons/Skeleton_Rogue.glb"),
@@ -50,6 +51,9 @@ var waypoint := Vector3.ZERO   # point de passage choisi (là où la base est la
 var has_waypoint := false
 var route_t := 0.0
 var route_noise := 0.0
+var stuck_t := 0.0
+var stuck_check_pos := Vector3.ZERO
+var stuck_obstacle = null
 const TRAP_SLOW := 0.3
 const TRAP_DPS := 6.0
 var flash_t := 0.0
@@ -142,7 +146,7 @@ func _physics_process(delta: float) -> void:
 	# Choix de la cible : le joueur s'il est proche, sinon la sphère.
 	var target = orb
 	var target_pos: Vector3 = orb.global_position
-	var reach := 2.4 + 0.4 * size_mult
+	var reach := 1.5 + 0.4 * size_mult   # sphère plus petite
 	if player and not player.dead and kind != "boss":
 		var dp: float = player.global_position.distance_to(global_position)
 		if dp < _chase_range():
@@ -209,17 +213,39 @@ func _physics_process(delta: float) -> void:
 				dmg *= 2.0 if is_boss else 0.5
 			attack_target.take_damage(dmg)
 	else:
-		var spd := speed * (TRAP_SLOW if traps > 0 else 1.0)
+		var spd := speed * (_wire_slow() if traps > 0 else 1.0)
 		velocity.x = dir.x * spd
 		velocity.z = dir.z * spd
 	if traps > 0:
-		hp -= TRAP_DPS * delta
+		hp -= _wire_dps() * delta
 		if hp <= 0.0:
 			_die()
 			return
 
 	rotation.y = lerp_angle(rotation.y, atan2(-face.x, -face.z), 8.0 * delta)
 	move_and_slide()
+
+	# Coincé contre un arbre ou un rocher (surtout le boss, plus large) ? On le détruit.
+	if not attack_target and not stuck_obstacle:
+		for i in get_slide_collision_count():
+			var oc = get_slide_collision(i).get_collider()
+			if oc and oc is Node and ((oc as Node).is_in_group("tree") or (oc as Node).is_in_group("rock")):
+				stuck_t += delta
+				if stuck_t > (0.8 if is_boss else 2.5):
+					var moved := Vector2(global_position.x - stuck_check_pos.x, global_position.z - stuck_check_pos.z).length()
+					if moved < 1.0:
+						stuck_obstacle = oc
+					stuck_t = 0.0
+					stuck_check_pos = global_position
+				break
+	if stuck_obstacle:
+		if not is_instance_valid(stuck_obstacle) or not (stuck_obstacle.is_in_group("tree") or stuck_obstacle.is_in_group("rock")):
+			stuck_obstacle = null
+		elif attack_cd <= 0.0:
+			attack_cd = 1.0 if is_boss else 1.2
+			attack_anim = 1.0
+			anim.play(attack_anim_name, 0.15, 1.3)
+			stuck_obstacle.smash(damage * (4.0 if is_boss else 1.5))
 
 	# Une construction nous bloque ? On la frappe.
 	for i in get_slide_collision_count():
@@ -268,7 +294,7 @@ func _animate(delta: float) -> void:
 	if moving:
 		if anim.current_animation != ANIM_WALK:
 			anim.play(ANIM_WALK, 0.2)
-		anim.speed_scale = speed * (TRAP_SLOW if traps > 0 else 1.0) / 2.2
+		anim.speed_scale = speed * (_wire_slow() if traps > 0 else 1.0) / 2.2
 	elif attack_anim <= 0.0 and anim.current_animation == ANIM_WALK:
 		anim.play("Idle_Combat" if anim.has_animation("Idle_Combat") else "Idle", 0.2)
 
@@ -286,6 +312,18 @@ func take_damage(amount: float, headshot := false) -> void:
 		hit_t = 0.35
 		anim.speed_scale = 1.0
 		anim.play(ANIM_HIT, 0.05, 1.8)
+
+
+func _wire_slow() -> float:
+	if player and "upgrades" in player:
+		return Upg.wire_slow(player.upgrades["wire"]["slow"])
+	return TRAP_SLOW
+
+
+func _wire_dps() -> float:
+	if player and "upgrades" in player:
+		return Upg.wire_dps(player.upgrades["wire"]["damage"])
+	return TRAP_DPS
 
 
 func trap_enter() -> void:
