@@ -2,9 +2,10 @@ extends StaticBody3D
 ## Rocher : on y récolte de la pierre à la hache (débloqué à la vague 5).
 
 const Nature = preload("res://scripts/nature.gd")
+const Harvest = preload("res://scripts/harvest.gd")
 
 const STONE_PER_HIT := 10
-const STONE_BONUS_BREAK := 20
+const STONE_BREAK := 30       # pierre du dernier coup, multipliée par le bonus des cibles (jusqu'à ×2)
 
 var variant := 1
 var rock_scale := 2.0
@@ -14,6 +15,10 @@ var max_hp := 200.0
 var hp := 200.0
 var visual: Node3D
 var broken := false
+var harvest := Harvest.new()
+var col_center := Vector3.ZERO
+var col_radius := 1.0
+var last_target_hit := false
 
 
 func _ready() -> void:
@@ -34,12 +39,14 @@ func _ready() -> void:
 	cs.shape = ss
 	cs.position.y = ab.size.y * rock_scale * 0.3
 	add_child(cs)
+	col_center = cs.position
+	col_radius = ss.radius
 	max_hp = 120.0 * rock_scale
 	hp = max_hp
 
 
 ## Appelé par la hache. Renvoie la pierre gagnée (0 si la pierre est verrouillée).
-func mine(damage: float) -> int:
+func mine(damage: float, hit_pos := Vector3.INF) -> int:
 	if broken:
 		return 0
 	Sfx.play_3d("thud", global_position + Vector3.UP, 2.0, 1.3)
@@ -48,10 +55,17 @@ func mine(damage: float) -> int:
 	tw.tween_property(visual, "scale", Vector3.ONE, 0.12)
 	if main and not main.stone_unlocked:
 		return 0
+	last_target_hit = harvest.register_hit(hit_pos)
 	hp -= damage
 	if hp <= 0.0:
+		var bonus := int(round(STONE_BREAK * (1.0 + harvest.ratio())))
+		harvest.clear()
 		_break()
-		return STONE_PER_HIT + STONE_BONUS_BREAK
+		return bonus
+	# nouvelle cible ailleurs sur le rocher
+	var a := randf() * TAU
+	var d := Vector3(cos(a), randf_range(0.15, 0.8), sin(a)).normalized()
+	harvest.ensure_spot(self, global_position + col_center + d * (col_radius + 0.04), d)
 	return STONE_PER_HIT
 
 

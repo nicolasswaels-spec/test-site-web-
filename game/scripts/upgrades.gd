@@ -16,13 +16,13 @@ const GEAR_COSTS := [
 	{"wood": 1500, "stone": 900, "coins": 20},
 ]
 ## Hache : la branche « bois » ne coûte que du bois, la branche « pierre » que de la pierre.
-const AXE_COSTS := [80, 160, 300, 500, 800, 1200, 1800, 2500]
+const AXE_COSTS := [250, 450, 700, 950, 1250, 1600, 2000, 2500]
 
 const ITEMS := {
 	"pistol": {"name": "PISTOLET", "branches": [
-		["rate", "Cadence de tir"], ["damage", "Dégâts par balle"], ["mag", "Chargeur"], ["defense", "Défense (arme en main)"]]},
+		["rate", "Cadence de tir"], ["damage", "Dégâts par balle"], ["mag", "Chargeur"], ["reload", "Vitesse de rechargement"], ["defense", "Défense (arme en main)"]]},
 	"rifle": {"name": "FUSIL D'ASSAUT", "branches": [
-		["rate", "Cadence de tir"], ["damage", "Dégâts par balle"], ["mag", "Chargeur"], ["defense", "Défense (arme en main)"]]},
+		["rate", "Cadence de tir"], ["damage", "Dégâts par balle"], ["mag", "Chargeur"], ["reload", "Vitesse de rechargement"], ["defense", "Défense (arme en main)"]]},
 	"axe": {"name": "HACHE", "branches": [
 		["wood", "Récolte de bois (payée en bois)"], ["stone", "Récolte de pierre (payée en pierre)"]]},
 	"wire": {"name": "BARBELÉS", "branches": [
@@ -71,6 +71,10 @@ static func mag_size(base: int, lvl: int) -> int:
 	return base + int(round(base * 0.15 * lvl))   # niveau 8 : ×2,2
 
 
+static func reload_mult(lvl: int) -> float:
+	return 1.0 - 0.07 * lvl          # niveau 8 : rechargement 44 % plus court
+
+
 static func defense(lvl: int) -> float:
 	return 0.05 * lvl                # niveau 8 : -40 % de dégâts subis
 
@@ -80,7 +84,7 @@ static func harvest_mult(lvl: int) -> float:
 
 
 static func wire_slow(lvl: int) -> float:
-	return maxf(0.30 - 0.025 * lvl, 0.10)   # vitesse restante des squelettes
+	return maxf(0.80 - 0.025 * lvl, 0.60)   # vitesse restante des squelettes : 80 % → 60 %
 
 
 static func wire_dps(lvl: int) -> float:
@@ -100,6 +104,8 @@ static func effect_text(item: String, branch: String, lvl: int, base_mag := 12) 
 			return "%d balles" % mag_size(base_mag, lvl)
 		"defense":
 			return "-%d %% de dégâts subis" % int(round(defense(lvl) * 100.0))
+		"reload":
+			return "rechargement -%d %%" % int(round((1.0 - reload_mult(lvl)) * 100.0))
 		"wood", "stone":
 			return "×%.2f par coup" % harvest_mult(lvl)
 		"slow":

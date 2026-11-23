@@ -736,7 +736,7 @@ func _start_reload() -> void:
 	if not _is_gun(weapon) or reloading or ammo >= gun_mag(weapon):
 		return
 	reloading = true
-	reload_t = GUNS[weapon]["reload"]
+	reload_t = GUNS[weapon]["reload"] * Upg.reload_mult(gun_lvl(weapon, "reload"))
 	Sfx.play("reload", -2.0)
 
 
@@ -828,22 +828,26 @@ func _axe_impact() -> void:
 	var c = r.collider
 	_shake(0.012)
 	if c and c.is_in_group("rock"):
-		var got: int = c.mine(AXE_TREE_DAMAGE)
+		var got: int = c.mine(AXE_TREE_DAMAGE, r.position)
 		got = int(round(got * Upg.harvest_mult(upgrades["axe"]["stone"])))
 		if got > 0:
 			stone = mini(stone + got, RES_MAX)
 			if hud:
 				hud.stone_gain(got)
+				if c.last_target_hit:
+					hud.hitmarker(true)
 		elif hud and main and not main.stone_unlocked:
 			hud.flash_message("La pierre se débloque à la vague %d" % main.STONE_WAVE)
 		main.spawn_impact(r.position, r.normal, Color(0.5, 0.5, 0.6), 10, 1.0)
 		_shake(0.02)
 	elif c and c.is_in_group("tree"):
-		var gained: int = c.chop(AXE_TREE_DAMAGE)
+		var gained: int = c.chop(AXE_TREE_DAMAGE, r.position)
 		gained = int(round(gained * Upg.harvest_mult(upgrades["axe"]["wood"])))
 		wood = mini(wood + gained, RES_MAX)
 		if hud and gained > 0:
 			hud.wood_gain(gained)
+		if hud and c.last_target_hit:
+			hud.hitmarker(true)
 		_shake(0.018)
 		main.spawn_impact(r.position, r.normal, Color(0.65, 0.45, 0.25), 10, 1.0)
 	elif c and c.is_in_group("structure"):
@@ -1017,7 +1021,7 @@ func collect_coin() -> void:
 		hud.coin_gain(1)
 		if first_coin:
 			first_coin = false
-			hud.show_notice("PIÈCE ramassée !\n2 pièces = des barbelés à poser sur un SOL (B / clic stick droit).\nLes squelettes y sont ralentis à 30 % et blessés.", 7.0)
+			hud.show_notice("PIÈCE ramassée !\n2 pièces = des barbelés à poser sur un SOL (B / clic stick droit).\nLes squelettes y avancent à 80 % de leur vitesse et sont blessés.", 7.0)
 
 
 func _try_trap() -> void:

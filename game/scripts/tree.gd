@@ -3,16 +3,20 @@ extends StaticBody3D
 
 const Nature = preload("res://scripts/nature.gd")
 
-const WOOD_PER_HIT := 10
-const WOOD_BONUS_FELL := 20
+const Harvest = preload("res://scripts/harvest.gd")
+
+const WOOD_PER_HIT := 15
+const WOOD_FELL := 40          # bois du dernier coup, multiplié par le bonus des cibles (jusqu'à ×2)
 
 var kind := 0
 var species := 0   # 0 sapin, 1 érable, 2 bouleau
 var tree_scale := 1.0
 var trunk_radius := 0.4
 var main
-var max_hp := 100.0
-var hp := 100.0
+var max_hp := 200.0          # ~8 coups de hache
+var hp := 200.0
+var harvest := Harvest.new()
+var last_target_hit := false
 var visual: Node3D
 var fallen := false
 
@@ -45,10 +49,11 @@ func _ready() -> void:
 	hp = max_hp
 
 
-## Appelé par la hache. Renvoie le bois gagné.
-func chop(damage: float) -> int:
+## Appelé par la hache (avec le point d'impact). Renvoie le bois gagné.
+func chop(damage: float, hit_pos := Vector3.INF) -> int:
 	if fallen:
 		return 0
+	last_target_hit = harvest.register_hit(hit_pos)
 	hp -= damage
 	Sfx.play_3d("chop", global_position + Vector3.UP, 2.0)
 	var tw := create_tween()
@@ -58,8 +63,14 @@ func chop(damage: float) -> int:
 	if main:
 		main.spawn_impact(global_position + Vector3.UP * 6.0, Vector3.DOWN, Color(0.15, 0.35, 0.35), 10, 1.0)
 	if hp <= 0.0:
+		var bonus := int(round(WOOD_FELL * (1.0 + harvest.ratio())))
+		harvest.clear()
 		_fall()
-		return WOOD_PER_HIT + WOOD_BONUS_FELL
+		return bonus
+	# nouvelle cible quelque part sur le tronc (pas forcément face au joueur)
+	var a := randf() * TAU
+	var n := Vector3(cos(a), 0.0, sin(a))
+	harvest.ensure_spot(self, global_position + n * (trunk_radius + 0.07) + Vector3.UP * randf_range(0.7, 2.0), n)
 	return WOOD_PER_HIT
 
 
@@ -74,6 +85,7 @@ func smash(damage: float) -> void:
 
 
 func _fall() -> void:
+	harvest.clear()
 	fallen = true
 	remove_from_group("tree")
 	collision_layer = 0

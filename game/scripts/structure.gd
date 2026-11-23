@@ -437,7 +437,7 @@ func can_have_trap() -> bool:
 	return piece == FLOOR and variant == 0 and trap == null
 
 
-## Barbelés : ralentissent fortement les squelettes (30 % de leur vitesse) et les blessent un peu.
+## Barbelés : ralentissent les squelettes (80 % de leur vitesse, 60 % une fois amélioré) et les blessent un peu.
 func add_trap() -> void:
 	if not can_have_trap():
 		return
