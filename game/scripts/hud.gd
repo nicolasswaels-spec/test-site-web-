@@ -45,15 +45,6 @@ class HitMarker extends Control:
 	var t := 0.0
 	var head := false
 	func _process(delta: float) -> void:
-	# écran scindé : bandeau du haut resserré pour ne pas passer sous la mini-carte
-	var w := get_viewport().get_visible_rect().size.x
-	if (w < 1300.0) != narrow:
-		narrow = w < 1300.0
-		top_box.offset_left = -300.0 if not narrow else -330.0 - 0.0
-		top_box.offset_right = 300.0 if not narrow else 210.0
-		top_box.anchor_left = 0.5 if not narrow else 0.45
-		top_box.anchor_right = 0.5 if not narrow else 0.45
-		wave_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if narrow else TextServer.AUTOWRAP_OFF
 		if t > 0.0:
 			t -= delta
 			queue_redraw()
@@ -414,6 +405,15 @@ func _overlay(title: String, sub: String, buttons: Array, callbacks: Array) -> C
 # ------------------------------------------------------------------ API utilisée par le jeu
 
 func _process(delta: float) -> void:
+	# écran scindé : bandeau du haut resserré pour ne pas passer sous la mini-carte
+	var w := get_viewport().get_visible_rect().size.x
+	if (w < 1300.0) != narrow:
+		narrow = w < 1300.0
+		top_box.offset_left = -300.0 if not narrow else -330.0
+		top_box.offset_right = 300.0 if not narrow else 210.0
+		top_box.anchor_left = 0.5 if not narrow else 0.45
+		top_box.anchor_right = 0.5 if not narrow else 0.45
+		wave_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if narrow else TextServer.AUTOWRAP_OFF
 	vignette_strength = maxf(vignette_strength - delta * 1.5, 0.0)
 	vignette_mat.set_shader_parameter("strength", vignette_strength)
 	if message_t > 0.0:
