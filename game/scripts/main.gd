@@ -210,6 +210,8 @@ func _ready() -> void:
 		_spawn_chest(Vector3.ZERO, MAP_RADIUS, false, 1)
 
 	refresh_mouse()
+	if Settings.test_mode:
+		hud.show_notice("MODE TEST : toutes les armes (inventaire pour choisir les 2 équipées)\net ressources illimitées.", 6.0)
 	hud.show_center("ZONE ZÉRO", "Coupe du bois (2), construis (3), puis active la sphère (E)", 4.0)
 
 
@@ -1261,6 +1263,8 @@ func add_player(use_kbm: bool, pad_id: int) -> Node:
 	p.position = orb.global_position + Vector3(idx * 2.0, 0.2, 8)
 	add_child(p)
 	p.died.connect(_on_player_died.bind(p))
+	if Settings.test_mode:
+		_apply_test_mode(p)
 	players.append(p)
 	huds.append(h)
 	hud.huds = huds
@@ -1278,6 +1282,18 @@ func add_player(use_kbm: bool, pad_id: int) -> Node:
 	if router and is_instance_valid(router):
 		move_child(router, get_child_count() - 1)
 	return p
+
+
+## Mode test : toutes les armes, ressources illimitées, pierre débloquée.
+func _apply_test_mode(p) -> void:
+	p.test_mode = true
+	stone_unlocked = true
+	rifle_craftable = true
+	p.unlock_rifle()
+	p.unlock_cryo()
+	p.set_loadout(0, p.W.PISTOL)
+	p.set_loadout(1, p.W.RIFLE)
+	p._select_weapon(p.W.PISTOL)
 
 
 func _layout_views() -> void:

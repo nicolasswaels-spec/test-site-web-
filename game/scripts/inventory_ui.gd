@@ -91,7 +91,13 @@ func show_page(i: int) -> void:
 		c.queue_free()
 	var first: Control = _build_summary() if page == 0 else _build_upgrades()
 	if first:
-		first.call_deferred("grab_focus")
+		call_deferred("_focus_if_valid", first)
+
+
+## Donne le focus plus tard, seulement si le bouton existe encore (la page a pu être reconstruite).
+func _focus_if_valid(b) -> void:
+	if is_instance_valid(b) and b.is_inside_tree() and b.is_visible_in_tree():
+		b.grab_focus()
 
 
 func next_page(dir: int) -> void:
@@ -193,6 +199,8 @@ func _cycle_slot(slot: int) -> void:
 	show_page(0)
 	# garder le focus sur le bouton de cet emplacement
 	await get_tree().process_frame
+	if not is_inside_tree() or not visible:
+		return   # inventaire refermé entre-temps
 	var btns := body.find_children("*", "Button", true, false)
 	var idx := slot + (1 if (p.main and p.main.rifle_craftable and not p.has_rifle) else 0)
 	if idx < btns.size():
@@ -205,6 +213,8 @@ func _items() -> Array:
 	var arr := ["pistol"]
 	if p.has_rifle:
 		arr.append("rifle")
+	if p.has_cryo:
+		arr.append("cryo")
 	arr.append_array(["axe", "wire"])
 	return arr
 

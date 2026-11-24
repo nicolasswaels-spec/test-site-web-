@@ -53,6 +53,8 @@ var vuln_t := 0.0
 const FROST_SPEED := 0.7
 const FROST_TIME := 3.0
 const VULN_MULT := 1.1
+var frost_speed := FROST_SPEED
+var frost_vuln := VULN_MULT
 static var _frost_mat: StandardMaterial3D
 ## Gardien de coffre : immobile jusqu'à ce qu'un joueur approche ou l'attaque, puis il le poursuit.
 var guard := false
@@ -253,7 +255,7 @@ func _physics_process(delta: float) -> void:
 				dmg *= 2.0 if is_boss else 0.5
 			attack_target.take_damage(dmg)
 	else:
-		var spd := speed * (_wire_slow() if traps > 0 else 1.0) * (FROST_SPEED if frost_t > 0.0 else 1.0)
+		var spd := speed * (_wire_slow() if traps > 0 else 1.0) * (frost_speed if frost_t > 0.0 else 1.0)
 		velocity.x = dir.x * spd
 		velocity.z = dir.z * spd
 	if traps > 0:
@@ -334,15 +336,18 @@ func _animate(delta: float) -> void:
 	if moving:
 		if anim.current_animation != ANIM_WALK:
 			anim.play(ANIM_WALK, 0.2)
-		anim.speed_scale = speed * (_wire_slow() if traps > 0 else 1.0) * (FROST_SPEED if frost_t > 0.0 else 1.0) / 2.2
+		anim.speed_scale = speed * (_wire_slow() if traps > 0 else 1.0) * (frost_speed if frost_t > 0.0 else 1.0) / 2.2
 	elif attack_anim <= 0.0 and anim.current_animation == ANIM_WALK:
 		anim.play("Idle_Combat" if anim.has_animation("Idle_Combat") else "Idle", 0.2)
 
 
 ## Touché par le rayon cryogénique (le minuteur repart à chaque coup).
-func apply_frost() -> void:
-	frost_t = FROST_TIME
-	vuln_t = FROST_TIME
+## Valeurs par défaut : 70 % de vitesse, +10 % de dégâts, 3 s (améliorables).
+func apply_frost(speed_mult := FROST_SPEED, vuln := VULN_MULT, duration := FROST_TIME) -> void:
+	frost_speed = speed_mult
+	frost_vuln = vuln
+	frost_t = duration
+	vuln_t = duration
 	if flash_t <= 0.0:
 		for mi in meshes:
 			mi.material_overlay = _frost()
@@ -374,7 +379,7 @@ func take_damage(amount: float, headshot := false) -> void:
 	if guard and not awake:
 		wake_up()
 	if vuln_t > 0.0:
-		amount *= VULN_MULT
+		amount *= frost_vuln
 	hp -= amount
 	flash_t = 0.08
 	for mi in meshes:

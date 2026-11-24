@@ -26,6 +26,7 @@ func _ready() -> void:
 	GameInput.set_builtin_ui_nav(true)
 	GameInput.setup_player(0, true, -2)
 	Settings.coop = false
+	Settings.test_mode = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	theme = UI.make_theme()
 
@@ -82,6 +83,16 @@ func _ready() -> void:
 		Settings.coop = true
 		_on_start())
 	vb.add_child(duo)
+
+	var test := Button.new()
+	test.text = "MODE TEST"
+	test.custom_minimum_size = Vector2(380, 50)
+	test.add_theme_font_size_override("font_size", 20)
+	test.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	test.pressed.connect(func():
+		Settings.test_mode = true
+		_on_start())
+	vb.add_child(test)
 
 	var quality := Button.new()
 	quality.custom_minimum_size = Vector2(380, 50)

@@ -16,6 +16,17 @@ const GEAR_COSTS := [
 	{"wood": 1500, "stone": 900, "coins": 20},
 ]
 ## Hache : la branche « bois » ne coûte que du bois, la branche « pierre » que de la pierre.
+## Canon cryogénique : très cher dès le premier niveau (arme rare).
+const CRYO_COSTS := [
+	{"wood": 800, "stone": 400, "coins": 10},
+	{"wood": 1200, "stone": 700, "coins": 15},
+	{"wood": 1700, "stone": 1000, "coins": 20},
+	{"wood": 2200, "stone": 1400, "coins": 25},
+	{"wood": 2800, "stone": 1800, "coins": 30},
+	{"wood": 3500, "stone": 2300, "coins": 40},
+	{"wood": 4300, "stone": 2900, "coins": 50},
+	{"wood": 5200, "stone": 3600, "coins": 60},
+]
 const AXE_COSTS := [300, 550, 850, 1150, 1500, 1900, 2400, 3000]
 
 const ITEMS := {
@@ -25,6 +36,8 @@ const ITEMS := {
 		["rate", "Cadence de tir"], ["damage", "Dégâts par balle"], ["mag", "Chargeur"], ["reload", "Vitesse de rechargement"], ["defense", "Défense (arme en main)"]]},
 	"axe": {"name": "HACHE", "branches": [
 		["wood", "Récolte de bois (payée en bois)"], ["stone", "Récolte de pierre (payée en pierre)"]]},
+	"cryo": {"name": "CANON CRYO", "branches": [
+		["slow", "Ralentissement"], ["damage", "Dégâts"], ["vuln", "Vulnérabilité"], ["duration", "Durée de l'effet"]]},
 	"wire": {"name": "BARBELÉS", "branches": [
 		["slow", "Ralentissement"], ["damage", "Dégâts"]]},
 }
@@ -43,6 +56,8 @@ static func cost(item: String, branch: String, level: int) -> Dictionary:
 	# level = niveau visé (1..8)
 	if item == "axe":
 		return {branch: AXE_COSTS[level - 1]}   # "wood" ou "stone"
+	if item == "cryo":
+		return CRYO_COSTS[level - 1]
 	return GEAR_COSTS[level - 1]
 
 
@@ -91,8 +106,38 @@ static func wire_dps(lvl: int) -> float:
 	return 6.0 * (1.0 + 0.3 * lvl)
 
 
+## Canon cryo : vitesse restante de la cible 70 % → 60 % (ralentissement 30 % → 40 %)
+static func cryo_speed(lvl: int) -> float:
+	return 0.70 - 0.0125 * lvl
+
+
+## Dégâts du rayon : +6 % par niveau (×1,48 au niveau 8, ça reste faible)
+static func cryo_damage_mult(lvl: int) -> float:
+	return 1.0 + 0.06 * lvl
+
+
+## Vulnérabilité : +10 % → +15 % de dégâts subis
+static func cryo_vuln(lvl: int) -> float:
+	return 1.10 + 0.00625 * lvl
+
+
+## Durée de l'effet : 3 s → 6 s
+static func cryo_duration(lvl: int) -> float:
+	return 3.0 + 0.375 * lvl
+
+
 ## Texte de l'effet d'une branche à un niveau donné (pour l'interface).
 static func effect_text(item: String, branch: String, lvl: int, base_mag := 12) -> String:
+	if item == "cryo":
+		match branch:
+			"slow":
+				return "ralentissement %d %%" % int(round((1.0 - cryo_speed(lvl)) * 100.0))
+			"damage":
+				return "%.1f dégâts / s" % (15.0 * cryo_damage_mult(lvl))
+			"vuln":
+				return "+%.1f %% de dégâts subis" % ((cryo_vuln(lvl) - 1.0) * 100.0)
+			"duration":
+				return "%.1f s" % cryo_duration(lvl)
 	match branch:
 		"rate":
 			return "+%d %% de cadence" % int(round((1.0 / fire_interval_mult(lvl) - 1.0) * 100.0))

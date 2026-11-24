@@ -68,6 +68,8 @@ var cryo_beam_t := 0.0
 var loadout := [W.PISTOL, -1]
 var upgrades := Upg.new_state()
 const GUN_KEYS := {W.PISTOL: "pistol", W.RIFLE: "rifle"}
+## Mode test : toutes les armes et ressources illimitées
+var test_mode := false
 var muzzle: Marker3D
 var muzzle_flash: MeshInstance3D
 var muzzle_light: OmniLight3D
@@ -602,6 +604,8 @@ func gun_damage(w: int) -> float:
 
 
 func can_afford(c: Dictionary) -> bool:
+	if test_mode:
+		return true
 	return wood >= c.get("wood", 0) and stone >= c.get("stone", 0) and coins >= c.get("coins", 0)
 
 
@@ -613,9 +617,10 @@ func buy_upgrade(item: String, branch: String) -> bool:
 	var c := Upg.cost(item, branch, lvl + 1)
 	if not can_afford(c):
 		return false
-	wood -= c.get("wood", 0)
-	stone -= c.get("stone", 0)
-	coins -= c.get("coins", 0)
+	if not test_mode:
+		wood -= c.get("wood", 0)
+		stone -= c.get("stone", 0)
+		coins -= c.get("coins", 0)
 	upgrades[item][branch] = lvl + 1
 	if branch == "mag":
 		for w in GUN_KEYS:
@@ -775,6 +780,10 @@ func _update_weapons(delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	if test_mode:
+		wood = RES_MAX
+		stone = RES_MAX
+		coins = RES_MAX
 	# Visée au stick droit (courbe quadratique pour la précision)
 	if not dead and not get_tree().paused and not input_blocked():
 		var look := Input.get_vector(a("look_left"), a("look_right"), a("look_up"), a("look_down"))
@@ -895,8 +904,9 @@ func _shoot_cryo() -> void:
 		end = r.position
 		var c = r.collider
 		if c and c.is_in_group("zombie"):
-			c.apply_frost()
-			c.take_damage(GUNS[W.CRYO]["damage"], false)
+			var cu: Dictionary = upgrades["cryo"]
+			c.apply_frost(Upg.cryo_speed(cu["slow"]), Upg.cryo_vuln(cu["vuln"]), Upg.cryo_duration(cu["duration"]))
+			c.take_damage(GUNS[W.CRYO]["damage"] * Upg.cryo_damage_mult(cu["damage"]), false)
 			if hud and randf() < 0.3:
 				hud.hitmarker(false)
 		if randf() < 0.5:
@@ -1137,6 +1147,8 @@ func _material_count(m: int) -> int:
 
 
 func _spend(m: int, amount: int) -> void:
+	if test_mode:
+		return
 	if m == 0:
 		wood -= amount
 	else:

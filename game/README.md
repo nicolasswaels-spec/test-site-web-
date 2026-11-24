@@ -12,6 +12,10 @@ lumineuse contre 10 vagues de zombies.
 
 Les modèles de nature viennent du pack CC0 de Quaternius (voir Crédits) ; le reste est généré par le code.
 
+## Mode test
+
+Bouton **MODE TEST** du menu : même partie, mais on commence avec toutes les armes (pistolet, fusil d'assaut, canon cryogénique ; on choisit les 2 équipées dans l'inventaire), des ressources illimitées (améliorations et constructions gratuites) et la pierre déjà débloquée.
+
 ## Jouer à deux (écran scindé)
 
 - Depuis le menu : **JOUER À DEUX** (avec 2 manettes : une par joueur ; avec 1 manette : clavier/souris pour le joueur 1, manette pour le joueur 2).
@@ -69,7 +73,7 @@ Dans les menus : croix directionnelle ou stick gauche pour se déplacer, A / Cro
 ## Règles
 
 - **Inventaire** (Select / I / Tab) : page **Résumé** (ressources, armes possédées, choix des 2 armes équipées ; la hache est toujours équipée) et page **Améliorations** (LB / RB pour changer de page).
-- **Améliorations** : pistolet et fusil (cadence, dégâts par balle, chargeur, vitesse de rechargement, défense quand l'arme est en main), hache (récolte de bois payée en bois, récolte de pierre payée en pierre), barbelés (ralentissement : 80 % de vitesse → 60 % au niveau 8, dégâts). 8 niveaux par branche, chaque niveau exige le précédent. Coûts : niveaux 1-2 en bois, 3-4 en pierre, 5-6 bois + pierre, 7-8 bois + pierre + pièces (valeurs dans `scripts/upgrades.gd`).
+- **Améliorations** : pistolet et fusil (cadence, dégâts par balle, chargeur, vitesse de rechargement, défense quand l'arme est en main), hache (récolte de bois payée en bois, récolte de pierre payée en pierre), barbelés (ralentissement : 80 % de vitesse → 60 % au niveau 8, dégâts), canon cryogénique s'il est obtenu (ralentissement 30 % → 40 %, dégâts jusqu'à +48 %, vulnérabilité +10 % → +15 %, durée 3 s → 6 s ; coûts élevés dès le niveau 1 : de 800 bois + 400 pierre + 10 pièces à 5200 bois + 3600 pierre + 60 pièces). 8 niveaux par branche, chaque niveau exige le précédent. Coûts : niveaux 1-2 en bois, 3-4 en pierre, 5-6 bois + pierre, 7-8 bois + pierre + pièces (valeurs dans `scripts/upgrades.gd`).
 - **Armes** : on commence avec un **pistolet** (12 balles, coup par coup). Le **fusil d'assaut** (30 balles, automatique) se fabrique à la fin de la 1re sphère (proposé à l'écran, ou depuis l'inventaire). Munitions illimitées, tirs à la tête ×2. Viser un ennemi affiche sa barre de vie.
 - **Hache** : un arbre tombe en ~8 coups ; chaque coup donne +15 bois et le dernier +40. Sur un rocher (à partir de la vague 5) : +10 pierre par coup et +30 au dernier. Après le 1er coup, une **cible turquoise** apparaît sur l'arbre ou le rocher ; la toucher donne +30 % de ressources sur ce coup et la fait réapparaître ailleurs, plus petite. Le bonus du dernier coup est multiplié par (1 + 2 × cibles touchées / cibles possibles) : jusqu'à ×3. La hache frappe aussi les ennemis.
 - **Construction** : grille de 4 m comme dans Fortnite, 10 bois (ou 10 pierres) par pièce. La pierre se débloque à la vague 5 et a 2× plus de PV que le bois. Les PV s'affichent au-dessus de chaque pièce. On peut l'escalader en avançant contre elle, la modifier (mur → porte → fenêtre, sol → trappe, rampe retournée ; les portes laissent passer le joueur mais pas les squelettes), la démolir à la hache, réparer la pièce visée (coût proportionnel aux dégâts) et l'améliorer jusqu'à 3 fois avec le même matériau : niveau 1 = PV ×3 (50), niveau 2 = PV ×2 (150), niveau 3 = PV ×4 (1000, avec confirmation). La réparation prend 5 s (symbole au-dessus de la pièce) et ne rend que les PV qui manquaient au début. Une pièce apparaît à 30 % de sa solidité et se renforce en 1,5 s. Fantôme bleu : placement possible, rouge : impossible.
