@@ -909,6 +909,7 @@ func _shoot_cryo() -> void:
 	var up := Vector3.UP if absf(dir.y) < 0.98 else Vector3.RIGHT
 	cryo_beam.look_at(end, up)
 	cryo_beam.scale = Vector3(1.0 + randf() * 0.4, 1.0 + randf() * 0.4, length)
+	cryo_beam.visible = true
 
 
 ## Canon cryogénique : corps blanc, réservoir de glace lumineux, ailettes émettrices.
