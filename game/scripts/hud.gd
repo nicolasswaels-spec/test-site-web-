@@ -454,7 +454,7 @@ func update_player(p) -> void:
 	else:
 		build_prompt.text = ""
 	var si: int = p.slot_index()
-	var short := {0: "PISTOLET", 1: "FUSIL"}
+	var short := {0: "PISTOLET", 1: "FUSIL", 4: "CRYO"}
 	for i in slots.size():
 		slots[i].add_theme_stylebox_override("panel", slot_on if i == si else slot_off)
 		if i < 2:
@@ -463,10 +463,14 @@ func update_player(p) -> void:
 			slots[i].modulate.a = 1.0 if w >= 0 else 0.35
 	var mode := 0
 	match p.weapon:
-		0, 1:
-			ammo_label.add_theme_color_override("font_color", Color.WHITE)
-			ammo_label.text = "RECHARGE..." if p.reloading else "%d / ∞" % p.ammo
-			info_label.text = ("Coup par coup · " if p.weapon == 0 else "") + "Clic G / RT : tirer · Clic D / LT : viser · R / X : recharger"
+		0, 1, 4:
+			ammo_label.add_theme_color_override("font_color", Color.WHITE if p.weapon != 4 else Color(0.6, 0.95, 1.0))
+			if p.weapon == 4:
+				ammo_label.text = "RAYON ∞"
+				info_label.text = "Rayon de glace : ralentit (70 % de vitesse) et rend vulnérable (+10 %) pendant 3 s"
+			else:
+				ammo_label.text = "RECHARGE..." if p.reloading else "%d / ∞" % p.ammo
+				info_label.text = ("Coup par coup · " if p.weapon == 0 else "") + "Clic G / RT : tirer · Clic D / LT : viser · R / X : recharger"
 			mode = 0
 			if p.aiming:
 				mode = 3

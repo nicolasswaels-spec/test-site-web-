@@ -6,8 +6,8 @@ const MAX_LEVEL := 8
 ## Coûts des niveaux 1 à 8 pour les armes et les barbelés :
 ## 1-2 : bois · 3-4 : pierre · 5-6 : bois + pierre · 7-8 : bois + pierre + pièces
 const GEAR_COSTS := [
-	{"wood": 100},
-	{"wood": 250},
+	{"wood": 300},
+	{"wood": 600},
 	{"stone": 100},
 	{"stone": 250},
 	{"wood": 400, "stone": 200},
@@ -16,7 +16,7 @@ const GEAR_COSTS := [
 	{"wood": 1500, "stone": 900, "coins": 20},
 ]
 ## Hache : la branche « bois » ne coûte que du bois, la branche « pierre » que de la pierre.
-const AXE_COSTS := [250, 450, 700, 950, 1250, 1600, 2000, 2500]
+const AXE_COSTS := [300, 550, 850, 1150, 1500, 1900, 2400, 3000]
 
 const ITEMS := {
 	"pistol": {"name": "PISTOLET", "branches": [
@@ -80,7 +80,7 @@ static func defense(lvl: int) -> float:
 
 
 static func harvest_mult(lvl: int) -> float:
-	return 1.0 + 0.25 * lvl          # niveau 8 : ×3 ressources par coup
+	return 1.0 + 0.375 * lvl         # niveau 8 : ×4 ressources par coup
 
 
 static func wire_slow(lvl: int) -> float:

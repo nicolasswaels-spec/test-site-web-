@@ -47,6 +47,17 @@ var meshes: Array[MeshInstance3D] = []
 var attack_anim_name := "Unarmed_Melee_Attack_Punch_A"
 var hit_t := 0.0
 var traps := 0          # nombre de barbelés traversés en ce moment
+## Arme cryogénique : ralenti (70 % de la vitesse) et vulnérable (+10 % de dégâts) pendant 3 s
+var frost_t := 0.0
+var vuln_t := 0.0
+const FROST_SPEED := 0.7
+const FROST_TIME := 3.0
+const VULN_MULT := 1.1
+static var _frost_mat: StandardMaterial3D
+## Gardien de coffre : immobile jusqu'à ce qu'un joueur approche ou l'attaque, puis il le poursuit.
+var guard := false
+var awake := true
+const GUARD_WAKE_RANGE := 9.0
 var waypoint := Vector3.ZERO   # point de passage choisi (là où la base est la moins défendue)
 var has_waypoint := false
 var route_t := 0.0
@@ -106,7 +117,12 @@ func _build_model(s: float) -> void:
 	if is_boss:
 		attack_anim_name = "2H_Melee_Attack_Chop"
 	rise_t = anim.get_animation(ANIM_SPAWN).length / SPAWN_SPEED
-	anim.play(ANIM_SPAWN, -1, SPAWN_SPEED)
+	if guard:
+		awake = false
+		rise_t = 0.0
+		anim.play("Skeletons_Inactive_Standing_Pose" if anim.has_animation("Skeletons_Inactive_Standing_Pose") else "Idle")
+	else:
+		anim.play(ANIM_SPAWN, -1, SPAWN_SPEED)
 
 
 func _eye_material() -> StandardMaterial3D:
@@ -142,16 +158,38 @@ func _physics_process(delta: float) -> void:
 		velocity.y -= GRAVITY * delta
 	else:
 		velocity.y = -0.5
+	frost_t = maxf(frost_t - delta, 0.0)
+	vuln_t = maxf(vuln_t - delta, 0.0)
+	if frost_t <= 0.0 and flash_t <= 0.0 and meshes.size() > 0 and meshes[0].material_overlay == _frost():
+		for mi in meshes:
+			mi.material_overlay = null
+
+	# Gardien endormi : il attend qu'on approche
+	if guard and not awake:
+		var near = main.nearest_player(global_position) if main else null
+		if near and not near.dead and near.global_position.distance_to(global_position) < GUARD_WAKE_RANGE:
+			wake_up()
+		velocity.x = 0.0
+		velocity.z = 0.0
+		move_and_slide()
+		return
 
 	# Choix de la cible : le joueur le plus proche s'il est assez près, sinon la sphère.
 	if main and main.has_method("nearest_player"):
 		player = main.nearest_player(global_position)
+	# un gardien sans joueur vivant à poursuivre reste sur place
+	if guard and (player == null or player.dead):
+		velocity.x = 0.0
+		velocity.z = 0.0
+		move_and_slide()
+		_animate(delta)
+		return
 	var target = orb
 	var target_pos: Vector3 = orb.global_position
 	var reach := 1.5 + 0.4 * size_mult   # sphère plus petite
-	if player and not player.dead and kind != "boss":
+	if player and not player.dead and (kind != "boss" or guard):
 		var dp: float = player.global_position.distance_to(global_position)
-		if dp < _chase_range():
+		if guard or dp < _chase_range():
 			target = player
 			target_pos = player.global_position
 			reach = 1.3 + 0.4 * size_mult
@@ -215,7 +253,7 @@ func _physics_process(delta: float) -> void:
 				dmg *= 2.0 if is_boss else 0.5
 			attack_target.take_damage(dmg)
 	else:
-		var spd := speed * (_wire_slow() if traps > 0 else 1.0)
+		var spd := speed * (_wire_slow() if traps > 0 else 1.0) * (FROST_SPEED if frost_t > 0.0 else 1.0)
 		velocity.x = dir.x * spd
 		velocity.z = dir.z * spd
 	if traps > 0:
@@ -288,7 +326,7 @@ func _animate(delta: float) -> void:
 		flash_t -= delta
 		if flash_t <= 0.0:
 			for mi in meshes:
-				mi.material_overlay = null
+				mi.material_overlay = _frost() if frost_t > 0.0 else null
 	# L'attaque ou la réaction au coup se termine avant de reprendre la marche
 	if anim.is_playing() and anim.current_animation != ANIM_WALK and (attack_anim > 0.0 or hit_t > 0.0):
 		return
@@ -296,14 +334,47 @@ func _animate(delta: float) -> void:
 	if moving:
 		if anim.current_animation != ANIM_WALK:
 			anim.play(ANIM_WALK, 0.2)
-		anim.speed_scale = speed * (_wire_slow() if traps > 0 else 1.0) / 2.2
+		anim.speed_scale = speed * (_wire_slow() if traps > 0 else 1.0) * (FROST_SPEED if frost_t > 0.0 else 1.0) / 2.2
 	elif attack_anim <= 0.0 and anim.current_animation == ANIM_WALK:
 		anim.play("Idle_Combat" if anim.has_animation("Idle_Combat") else "Idle", 0.2)
+
+
+## Touché par le rayon cryogénique (le minuteur repart à chaque coup).
+func apply_frost() -> void:
+	frost_t = FROST_TIME
+	vuln_t = FROST_TIME
+	if flash_t <= 0.0:
+		for mi in meshes:
+			mi.material_overlay = _frost()
+
+
+static func _frost() -> StandardMaterial3D:
+	if _frost_mat == null:
+		_frost_mat = StandardMaterial3D.new()
+		_frost_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_frost_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_frost_mat.albedo_color = Color(0.45, 0.85, 1.0, 0.4)
+	return _frost_mat
+
+
+func wake_up() -> void:
+	if awake:
+		return
+	awake = true
+	attack_cd = 0.6
+	if anim.has_animation("Skeletons_Awaken_Standing"):
+		rise_t = 0.8
+		anim.play("Skeletons_Awaken_Standing", 0.1, 1.8)
+	Sfx.play_3d("groan", global_position + Vector3.UP * 1.5, 0.0, 0.9)
 
 
 func take_damage(amount: float, headshot := false) -> void:
 	if dead:
 		return
+	if guard and not awake:
+		wake_up()
+	if vuln_t > 0.0:
+		amount *= VULN_MULT
 	hp -= amount
 	flash_t = 0.08
 	for mi in meshes:

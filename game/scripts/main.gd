@@ -14,6 +14,8 @@ const HudScript = preload("res://scripts/hud.gd")
 const HudGroup = preload("res://scripts/hud_group.gd")
 const RouterScript = preload("res://scripts/input_router.gd")
 const DropScript = preload("res://scripts/resource_drop.gd")
+const ChestScript = preload("res://scripts/chest.gd")
+const CHESTS_PER_ZONE := 2
 
 const MAP_RADIUS := 70.0
 const SPAWN_RADIUS := 63.0
@@ -204,6 +206,8 @@ func _ready() -> void:
 
 	for i in PICKUPS_PER_ZONE:
 		spawn_pickup(1)
+	for i in CHESTS_PER_ZONE:
+		_spawn_chest(Vector3.ZERO, MAP_RADIUS, false, 1)
 
 	refresh_mouse()
 	hud.show_center("ZONE ZÉRO", "Coupe du bois (2), construis (3), puis active la sphère (E)", 4.0)
@@ -568,6 +572,41 @@ func _random_free_spot(min_r: float, center := Vector3.ZERO, radius := MAP_RADIU
 	return center + Vector3(cos(a2), 0, sin(a2)) * rng.randf_range(min_r, radius - 5.0)
 
 
+## Coffre au trésor + gardiens squelettes immobiles qui chargent quand on approche ou qu'on les attaque.
+func _spawn_chest(center: Vector3, radius: float, gold: bool, z: int) -> void:
+	var pos := center
+	for attempt in 40:
+		pos = _random_free_spot(25.0, center, radius)
+		var ok := true
+		for other in get_tree().get_nodes_in_group("chest"):
+			if other.global_position.distance_to(pos) < 25.0:
+				ok = false
+				break
+		if ok:
+			break
+	var ch := ChestScript.new()
+	ch.main = self
+	ch.gold = gold
+	ch.position = pos
+	ch.rotation.y = rng.randf() * TAU
+	add_child(ch)
+	var n := 3 if z == 1 else 4
+	for i in n:
+		var g := ZombieScript.new()
+		g.guard = true
+		g.max_hp = 90.0 if z == 1 else 220.0
+		g.hp = g.max_hp
+		g.speed = 2.6 if z == 1 else 3.2
+		g.damage = 10.0 if z == 1 else 16.0
+		g.main = self
+		g.orb = orb
+		var a := TAU * i / n + rng.randf_range(-0.3, 0.3)
+		g.position = pos + Vector3(cos(a), 0, sin(a)) * rng.randf_range(3.0, 4.5) + Vector3(0, 0.05, 0)
+		g.rotation.y = a + PI * 0.5
+		add_child(g)
+	call_deferred("rebuild_obstacles")
+
+
 func spawn_rock(pos: Vector3, z := 1) -> void:
 	var rk := RockScript.new()
 	rk.set_meta("zone", z)
@@ -599,6 +638,9 @@ func rebuild_obstacles() -> void:
 	for t in get_tree().get_nodes_in_group("tree"):
 		obstacle_pos.append(t.global_position)
 		obstacle_rad.append(t.trunk_radius + 1.4)
+	for ch in get_tree().get_nodes_in_group("chest"):
+		obstacle_pos.append(ch.global_position)
+		obstacle_rad.append(2.4)
 	for r in rocks:
 		if is_instance_valid(r) and r.is_inside_tree():
 			obstacle_pos.append(r.global_position)
@@ -808,7 +850,10 @@ func _process(delta: float) -> void:
 				_start_wave(wave + 1)
 		"wave":
 			_update_spawning(delta)
-			var alive := get_tree().get_nodes_in_group("zombie").size()
+			var alive := 0
+			for zz in get_tree().get_nodes_in_group("zombie"):
+				if not zz.guard:
+					alive += 1
 			var remaining := alive + to_spawn + bosses_left
 			hud.set_wave("%sVAGUE %d/%d" % ["" if zone == 1 else "SPHÈRE 2 · ", wave, TOTAL_WAVES], "Squelettes restants : %d" % remaining)
 			if remaining == 0:
@@ -828,6 +873,14 @@ func _process(delta: float) -> void:
 	for i in players.size():
 		var p = players[i]
 		var pr := prompt if (not p.dead and p.global_position.distance_to(orb.global_position) < 5.5) else ""
+		# coffres
+		if not p.dead:
+			for ch in get_tree().get_nodes_in_group("chest"):
+				if not ch.opened and p.global_position.distance_to(ch.global_position) < 2.8:
+					pr = "[E / X] OUVRIR LE COFFRE"
+					if Input.is_action_just_pressed(p.a("interact")) and not p.input_blocked():
+						ch.open(p)
+					break
 		if p.dead and state != "lost":
 			p.respawn_t -= delta
 			pr = "Réapparition dans %d..." % int(ceil(p.respawn_t))
@@ -1141,6 +1194,8 @@ func _build_zone2() -> void:
 		rebuild_obstacles()
 	for i in PICKUPS_PER_ZONE:
 		spawn_pickup(2)
+	for i in CHESTS_PER_ZONE:
+		_spawn_chest(c, ZONE2_RADIUS, true, 2)
 
 	# Végétation : herbe mauve, plantes dorées, buissons violets (zone 2) + herbe du couloir
 	var grass2 := Nature.grass_material(Color(0.04, 0.01, 0.05), Color(0.40, 0.14, 0.34), Color(0.55, 0.22, 0.30))

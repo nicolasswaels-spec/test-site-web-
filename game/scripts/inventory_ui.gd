@@ -148,10 +148,15 @@ func _build_summary() -> Control:
 			p.drop_resource(k, _drop_value(k))
 			show_page(0))
 	_label(body, "ARMES POSSÉDÉES", 18, Color(0.75, 0.8, 1.0))
-	for w in [p.W.PISTOL, p.W.RIFLE]:
+	var guns := [p.W.PISTOL, p.W.RIFLE]
+	if p.has_cryo:
+		guns.append(p.W.CRYO)
+	for w in guns:
 		var owned: bool = p.owned_guns().has(w)
 		var txt := "%s  —  " % p.WEAPON_NAMES[w]
-		if owned:
+		if w == p.W.CRYO:
+			txt += "rayon de glace continu · ralentit à 70 % · +10 % de dégâts subis (3 s) · dégâts très faibles"
+		elif owned:
 			txt += "%d balles · %.1f tirs/s · %.0f dégâts%s" % [p.gun_mag(w), 1.0 / p.gun_interval(w), p.gun_damage(w), " · coup par coup" if w == p.W.PISTOL else " · automatique"]
 		else:
 			txt += "verrouillé (se fabrique à la fin de la 1re sphère)"

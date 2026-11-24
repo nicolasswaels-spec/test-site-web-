@@ -58,7 +58,7 @@ func mine(damage: float, hit_pos := Vector3.INF) -> int:
 	last_target_hit = harvest.register_hit(hit_pos)
 	hp -= damage
 	if hp <= 0.0:
-		var bonus := int(round(STONE_BREAK * (1.0 + harvest.ratio())))
+		var bonus := int(round(STONE_BREAK * harvest.final_mult()))
 		harvest.clear()
 		_break()
 		return bonus
@@ -66,7 +66,7 @@ func mine(damage: float, hit_pos := Vector3.INF) -> int:
 	var a := randf() * TAU
 	var d := Vector3(cos(a), randf_range(0.15, 0.8), sin(a)).normalized()
 	harvest.ensure_spot(self, global_position + col_center + d * (col_radius + 0.04), d)
-	return STONE_PER_HIT
+	return int(round(STONE_PER_HIT * (harvest.HIT_BONUS if last_target_hit else 1.0)))
 
 
 ## Frappé par un squelette bloqué.

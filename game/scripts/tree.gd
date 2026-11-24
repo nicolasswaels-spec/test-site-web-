@@ -6,7 +6,7 @@ const Nature = preload("res://scripts/nature.gd")
 const Harvest = preload("res://scripts/harvest.gd")
 
 const WOOD_PER_HIT := 15
-const WOOD_FELL := 40          # bois du dernier coup, multiplié par le bonus des cibles (jusqu'à ×2)
+const WOOD_FELL := 40          # bois du dernier coup, multiplié par le bonus des cibles (jusqu'à ×3)
 
 var kind := 0
 var species := 0   # 0 sapin, 1 érable, 2 bouleau
@@ -63,7 +63,7 @@ func chop(damage: float, hit_pos := Vector3.INF) -> int:
 	if main:
 		main.spawn_impact(global_position + Vector3.UP * 6.0, Vector3.DOWN, Color(0.15, 0.35, 0.35), 10, 1.0)
 	if hp <= 0.0:
-		var bonus := int(round(WOOD_FELL * (1.0 + harvest.ratio())))
+		var bonus := int(round(WOOD_FELL * harvest.final_mult()))
 		harvest.clear()
 		_fall()
 		return bonus
@@ -71,7 +71,7 @@ func chop(damage: float, hit_pos := Vector3.INF) -> int:
 	var a := randf() * TAU
 	var n := Vector3(cos(a), 0.0, sin(a))
 	harvest.ensure_spot(self, global_position + n * (trunk_radius + 0.07) + Vector3.UP * randf_range(0.7, 2.0), n)
-	return WOOD_PER_HIT
+	return int(round(WOOD_PER_HIT * (harvest.HIT_BONUS if last_target_hit else 1.0)))
 
 
 ## Frappé par un squelette qui était bloqué : l'arbre finit par tomber (sans bois pour le joueur).

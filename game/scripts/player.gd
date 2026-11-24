@@ -7,8 +7,8 @@ const Upg = preload("res://scripts/upgrades.gd")
 
 signal died
 
-enum W { PISTOL, RIFLE, AXE, BUILD }
-const WEAPON_NAMES := ["PISTOLET", "FUSIL D'ASSAUT", "HACHE", "CONSTRUCTION"]
+enum W { PISTOL, RIFLE, AXE, BUILD, CRYO }
+const WEAPON_NAMES := ["PISTOLET", "FUSIL D'ASSAUT", "HACHE", "CONSTRUCTION", "CANON CRYOGÉNIQUE"]
 const RES_MAX := 9999
 const PIECE_NAMES := ["MUR", "SOL", "RAMPE"]
 
@@ -21,6 +21,8 @@ const MOUSE_SENS := 0.0025
 const GUNS := {
 	W.PISTOL: {"mag": 12, "interval": 0.2, "damage": 34.0, "reload": 1.2, "auto": false, "spread": 0.012, "kick": 0.02},
 	W.RIFLE: {"mag": 30, "interval": 0.1, "damage": 24.0, "reload": 1.6, "auto": true, "spread": 0.022, "kick": 0.011},
+	# rayon de glace continu : très faibles dégâts, ralentit (70 % de vitesse) et rend vulnérable (+10 %) pendant 3 s
+	W.CRYO: {"mag": 0, "interval": 0.1, "damage": 1.5, "reload": 0.0, "auto": true, "spread": 0.0, "kick": 0.0},
 }
 const MAG_SIZE := 30
 const FIRE_INTERVAL := 0.1
@@ -58,7 +60,10 @@ var viewmodel: Node3D
 var rifle: Node3D          # arme à feu actuellement en main (pistolet ou fusil)
 var gun_data := {}         # W -> {node, muzzle, flash, light, crystal, glow, hip, ads}
 var has_rifle := false
-var mags := {W.PISTOL: 12, W.RIFLE: 30}
+var has_cryo := false
+var mags := {W.PISTOL: 12, W.RIFLE: 30, W.CRYO: 0}
+var cryo_beam: MeshInstance3D
+var cryo_beam_t := 0.0
 ## Deux armes à feu équipées (choisies dans l'inventaire) ; la hache est toujours là.
 var loadout := [W.PISTOL, -1]
 var upgrades := Upg.new_state()
@@ -158,6 +163,7 @@ func _ready() -> void:
 
 	_build_rifle()
 	_build_pistol()
+	_build_cryo()
 	_build_axe()
 	_build_ghost()
 	_build_avatar()
@@ -513,7 +519,7 @@ func _pick_piece(p: int) -> void:
 
 
 func _is_gun(w: int) -> bool:
-	return w == W.PISTOL or w == W.RIFLE
+	return w == W.PISTOL or w == W.RIFLE or w == W.CRYO
 
 
 func _cycle_weapon(dir: int) -> void:
@@ -532,6 +538,8 @@ func owned_guns() -> Array:
 	var arr := [W.PISTOL]
 	if has_rifle:
 		arr.append(W.RIFLE)
+	if has_cryo:
+		arr.append(W.CRYO)
 	return arr
 
 
@@ -557,6 +565,14 @@ func slot_index() -> int:
 	return loadout.find(weapon)
 
 
+func unlock_cryo() -> void:
+	has_cryo = true
+	if loadout[1] < 0:
+		loadout[1] = W.CRYO
+	if hud:
+		hud.flash_message("Équipe-le dans l'inventaire (emplacement 1 ou 2)" if not loadout.has(W.CRYO) else "Touche %d pour l'équiper" % (loadout.find(W.CRYO) + 1))
+
+
 func unlock_rifle() -> void:
 	has_rifle = true
 	mags[W.RIFLE] = gun_mag(W.RIFLE)
@@ -568,6 +584,8 @@ func unlock_rifle() -> void:
 # ------------------------------------------------------------------ caractéristiques améliorées
 
 func gun_lvl(w: int, branch: String) -> int:
+	if not GUN_KEYS.has(w):
+		return 0   # le canon cryogénique n'a pas (encore) d'arbre d'amélioration
 	return upgrades[GUN_KEYS[w]][branch]
 
 
@@ -720,6 +738,12 @@ func _update_weapons(delta: float) -> void:
 
 	var firing := Input.is_action_pressed(a("fire")) and (captured or not (kbm and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)))
 	match weapon:
+		W.CRYO:
+			cryo_beam_t -= delta
+			if firing and fire_cd <= 0.0:
+				_shoot_cryo()
+			cryo_beam.visible = cryo_beam_t > 0.0
+			trigger_held = firing
 		W.PISTOL, W.RIFLE:
 			# pistolet : coup par coup (une pression = un tir) ; fusil : automatique
 			var trigger := firing if GUNS[weapon]["auto"] else (firing and not trigger_held)
@@ -809,7 +833,7 @@ func _process(delta: float) -> void:
 # ------------------------------------------------------------------ fusil
 
 func _start_reload() -> void:
-	if not _is_gun(weapon) or reloading or ammo >= gun_mag(weapon):
+	if not _is_gun(weapon) or weapon == W.CRYO or reloading or ammo >= gun_mag(weapon):
 		return
 	reloading = true
 	reload_t = GUNS[weapon]["reload"] * Upg.reload_mult(gun_lvl(weapon, "reload"))
@@ -853,6 +877,102 @@ func _shoot() -> void:
 
 	head.rotation.x = clampf(head.rotation.x + (0.005 if aiming else gs["kick"]), -1.5, 1.5)
 	rotate_y(randf_range(-0.004, 0.004))
+
+
+## Rayon de glace : touche ce qui est sous le viseur à chaque tic (10 / s).
+func _shoot_cryo() -> void:
+	fire_cd = GUNS[W.CRYO]["interval"]
+	cryo_beam_t = 0.12
+	if randf() < 0.3:
+		Sfx.play("orb_hit", -16.0, 2.2)
+	var from := cam.global_position
+	var to := from - cam.global_transform.basis.z * 45.0
+	var q := PhysicsRayQueryParameters3D.create(from, to, MASK_SHOOT)
+	q.exclude = [get_rid()]
+	var r := get_world_3d().direct_space_state.intersect_ray(q)
+	var end := to
+	if not r.is_empty():
+		end = r.position
+		var c = r.collider
+		if c and c.is_in_group("zombie"):
+			c.apply_frost()
+			c.take_damage(GUNS[W.CRYO]["damage"], false)
+			if hud and randf() < 0.3:
+				hud.hitmarker(false)
+		if randf() < 0.5:
+			main.spawn_impact(end, r.normal, Color(0.6, 0.95, 1.0), 4, 0.5)
+	# rayon visible du canon au point d'impact
+	var a: Vector3 = muzzle.global_position
+	var length := a.distance_to(end)
+	cryo_beam.global_position = (a + end) * 0.5
+	var dir := (end - a).normalized()
+	var up := Vector3.UP if absf(dir.y) < 0.98 else Vector3.RIGHT
+	cryo_beam.look_at(end, up)
+	cryo_beam.scale = Vector3(1.0 + randf() * 0.4, 1.0 + randf() * 0.4, length)
+
+
+## Canon cryogénique : corps blanc, réservoir de glace lumineux, ailettes émettrices.
+func _build_cryo() -> void:
+	var g := Node3D.new()
+	g.position = HIP_POS
+	g.scale = Vector3.ONE * 0.82
+	g.visible = false
+	viewmodel.add_child(g)
+	var shell := StandardMaterial3D.new()
+	shell.albedo_color = Color(0.86, 0.9, 0.96)
+	shell.metallic = 0.3
+	shell.roughness = 0.35
+	var dark := Mats.col(Color(0.12, 0.14, 0.2), 0.5)
+	var ice := StandardMaterial3D.new()
+	ice.albedo_color = Color(0.55, 0.92, 1.0, 0.85)
+	ice.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	ice.emission_enabled = true
+	ice.emission = Color(0.4, 0.85, 1.0)
+	ice.emission_energy_multiplier = 3.0
+	Mats.box(g, Vector3(0.1, 0.12, 0.42), shell, Vector3(0, 0, 0))
+	Mats.cylinder(g, 0.055, 0.055, 0.22, ice, Vector3(0, 0.1, -0.02), Vector3(90, 0, 0), 12)
+	Mats.cylinder(g, 0.062, 0.062, 0.02, dark, Vector3(0, 0.1, 0.1), Vector3(90, 0, 0), 12)
+	Mats.cylinder(g, 0.062, 0.062, 0.02, dark, Vector3(0, 0.1, -0.14), Vector3(90, 0, 0), 12)
+	Mats.cylinder(g, 0.03, 0.05, 0.3, shell, Vector3(0, 0, -0.36), Vector3(90, 0, 0), 10)
+	for i in 3:
+		var a := TAU * i / 3.0
+		Mats.box(g, Vector3(0.015, 0.07, 0.12), dark, Vector3(cos(a) * 0.055, sin(a) * 0.055, -0.5), Vector3(0, 0, rad_to_deg(a)))
+	Mats.sphere(g, 0.035, ice, Vector3(0, 0, -0.53), 10)
+	Mats.box(g, Vector3(0.05, 0.14, 0.06), dark, Vector3(0, -0.11, 0.1), Vector3(-15, 0, 0))
+	Mats.box(g, Vector3(0.07, 0.1, 0.2), shell, Vector3(0, -0.02, 0.28))
+	var glow := OmniLight3D.new()
+	glow.light_color = Color(0.4, 0.85, 1.0)
+	glow.light_energy = 0.4
+	glow.omni_range = 0.6
+	glow.position = Vector3(0, 0.1, 0)
+	g.add_child(glow)
+	var m := Marker3D.new()
+	m.position = Vector3(0, 0, -0.56)
+	g.add_child(m)
+	var fl := Mats.sphere(m, 0.06, ice, Vector3.ZERO, 6)
+	fl.visible = false
+	var li := OmniLight3D.new()
+	li.light_color = Color(0.5, 0.9, 1.0)
+	li.omni_range = 5.0
+	li.light_energy = 0.0
+	m.add_child(li)
+	gun_data[W.CRYO] = {"node": g, "muzzle": m, "flash": fl, "light": li, "crystal": ice, "glow": glow,
+		"hip": HIP_POS, "ads": ADS_POS, "rest": Vector3(0, deg_to_rad(6.0), 0)}
+	# le rayon (dans le monde, pas dans la main) : boîte fine étirée le long de son axe Z
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.06, 0.06, 1.0)
+	var beam_mat := StandardMaterial3D.new()
+	beam_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	beam_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	beam_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	beam_mat.albedo_color = Color(0.5, 0.95, 1.0, 0.9)
+	cryo_beam = MeshInstance3D.new()
+	cryo_beam.mesh = bm
+	cryo_beam.material_override = beam_mat
+	cryo_beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	cryo_beam.top_level = true
+	cryo_beam.visible = false
+	add_child(cryo_beam)
 
 
 # ------------------------------------------------------------------ hache
@@ -1206,7 +1326,7 @@ func respawn(pos: Vector3) -> void:
 	dead = false
 	invuln_t = 3.0
 	hp = MAX_HP
-	mags = {W.PISTOL: gun_mag(W.PISTOL), W.RIFLE: gun_mag(W.RIFLE)}
+	mags = {W.PISTOL: gun_mag(W.PISTOL), W.RIFLE: gun_mag(W.RIFLE), W.CRYO: 0}
 	ammo = gun_mag(weapon) if _is_gun(weapon) else ammo
 	reloading = false
 	position = pos
