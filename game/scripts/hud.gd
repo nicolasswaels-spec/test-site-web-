@@ -620,11 +620,17 @@ func handle_input(ev: InputEvent) -> bool:
 			set_paused(false)
 			return true
 	# navigation dans le menu ouvert
-	if _act(ev, "nav_up") or _act(ev, "nav_left"):
-		_nav_move(-1)
+	if _act(ev, "nav_up"):
+		_nav_dir(Vector2.UP)
 		return true
-	if _act(ev, "nav_down") or _act(ev, "nav_right"):
-		_nav_move(1)
+	if _act(ev, "nav_down"):
+		_nav_dir(Vector2.DOWN)
+		return true
+	if _act(ev, "nav_left"):
+		_nav_dir(Vector2.LEFT)
+		return true
+	if _act(ev, "nav_right"):
+		_nav_dir(Vector2.RIGHT)
 		return true
 	if _act(ev, "nav_accept"):
 		var f := get_viewport().gui_get_focus_owner()
@@ -651,6 +657,49 @@ func _nav_buttons() -> Array:
 		if b.is_visible_in_tree() and not b.disabled and b.focus_mode != Control.FOCUS_NONE:
 			out.append(b)
 	return out
+
+
+## Navigation spatiale : va au bouton le plus proche dans la direction demandée
+## (haut/bas restent dans la colonne, gauche/droite passent d'une colonne à l'autre).
+func _nav_dir(d: Vector2) -> void:
+	var btns := _nav_buttons()
+	if btns.is_empty():
+		return
+	var cur = get_viewport().gui_get_focus_owner()
+	if not btns.has(cur):
+		(btns[0] as Button).grab_focus()
+		return
+	var cr: Rect2 = (cur as Control).get_global_rect()
+	var cc := cr.get_center()
+	var best = null
+	var best_score := INF
+	for b in btns:
+		if b == cur:
+			continue
+		var r: Rect2 = (b as Control).get_global_rect()
+		var v := r.get_center() - cc
+		var along := v.dot(d)
+		if along <= 4.0:
+			continue
+		var perp := absf(v.dot(Vector2(-d.y, d.x)))
+		if d.y != 0.0:
+			# vers le haut / le bas : on reste de préférence dans la même colonne
+			var overlap := minf(cr.end.x, r.end.x) - maxf(cr.position.x, r.position.x)
+			if overlap <= 0.0:
+				continue      # haut / bas : uniquement dans la même colonne
+			perp = 0.0
+		else:
+			# vers la gauche / la droite : on reste de préférence sur la même ligne
+			var overlap_y := minf(cr.end.y, r.end.y) - maxf(cr.position.y, r.position.y)
+			if overlap_y > 0.0:
+				perp = 0.0
+			perp *= 1.5
+		var score := along + perp
+		if score < best_score:
+			best_score = score
+			best = b
+	if best:
+		(best as Button).grab_focus()
 
 
 func _nav_move(dir: int) -> void:
