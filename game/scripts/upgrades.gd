@@ -37,7 +37,7 @@ const ITEMS := {
 	"axe": {"name": "HACHE", "branches": [
 		["wood", "Récolte de bois (payée en bois)"], ["stone", "Récolte de pierre (payée en pierre)"]]},
 	"cryo": {"name": "CANON CRYO", "branches": [
-		["slow", "Ralentissement"], ["damage", "Dégâts"], ["vuln", "Vulnérabilité"], ["duration", "Durée de l'effet"]]},
+		["slow", "Ralentissement (à 10 statuts)"], ["damage", "Dégâts"], ["vuln", "Vulnérabilité (à 10 statuts)"], ["duration", "Durée d'un statut de glace"]]},
 	"wire": {"name": "BARBELÉS", "branches": [
 		["slow", "Ralentissement"], ["damage", "Dégâts"]]},
 }
@@ -106,24 +106,30 @@ static func wire_dps(lvl: int) -> float:
 	return 6.0 * (1.0 + 0.3 * lvl)
 
 
-## Canon cryo : vitesse restante de la cible 70 % → 60 % (ralentissement 30 % → 40 %)
-static func cryo_speed(lvl: int) -> float:
-	return 0.70 - 0.0125 * lvl
+## Canon cryo : statut de glace de 0 à 10, gagné en touchant la cible (0,35 par tic de 0,1 s :
+## ~3 s de rayon continu pour atteindre 10). Les effets ci-dessous sont les valeurs à 10 statuts.
+const CRYO_STACKS_PER_TICK := 0.35
+const CRYO_BASE_DPS := 20.0
 
 
-## Dégâts du rayon : +6 % par niveau (×1,48 au niveau 8, ça reste faible)
+## Ralentissement à 10 statuts : 30 % → 40 %
+static func cryo_max_slow(lvl: int) -> float:
+	return 0.30 + 0.0125 * lvl
+
+
+## Dégâts du rayon : 20 / s → 35 / s
 static func cryo_damage_mult(lvl: int) -> float:
-	return 1.0 + 0.06 * lvl
+	return 1.0 + 0.09375 * lvl
 
 
-## Vulnérabilité : +10 % → +15 % de dégâts subis
-static func cryo_vuln(lvl: int) -> float:
-	return 1.10 + 0.00625 * lvl
+## Vulnérabilité à 10 statuts : +10 % → +30 %
+static func cryo_max_vuln(lvl: int) -> float:
+	return 0.10 + 0.025 * lvl
 
 
-## Durée de l'effet : 3 s → 6 s
-static func cryo_duration(lvl: int) -> float:
-	return 3.0 + 0.375 * lvl
+## Durée d'un statut (on en perd un à chaque fois) : 1 s → 3 s
+static func cryo_stack_time(lvl: int) -> float:
+	return 1.0 + 0.25 * lvl
 
 
 ## Texte de l'effet d'une branche à un niveau donné (pour l'interface).
@@ -131,13 +137,13 @@ static func effect_text(item: String, branch: String, lvl: int, base_mag := 12) 
 	if item == "cryo":
 		match branch:
 			"slow":
-				return "ralentissement %d %%" % int(round((1.0 - cryo_speed(lvl)) * 100.0))
+				return "ralentissement max %.1f %%" % (cryo_max_slow(lvl) * 100.0)
 			"damage":
-				return "%.1f dégâts / s" % (15.0 * cryo_damage_mult(lvl))
+				return "%.1f dégâts / s" % (CRYO_BASE_DPS * cryo_damage_mult(lvl))
 			"vuln":
-				return "+%.1f %% de dégâts subis" % ((cryo_vuln(lvl) - 1.0) * 100.0)
+				return "vulnérabilité max +%.1f %%" % (cryo_max_vuln(lvl) * 100.0)
 			"duration":
-				return "%.1f s" % cryo_duration(lvl)
+				return "1 statut perdu / %.2f s" % cryo_stack_time(lvl)
 	match branch:
 		"rate":
 			return "+%d %% de cadence" % int(round((1.0 / fire_interval_mult(lvl) - 1.0) * 100.0))

@@ -474,7 +474,7 @@ func update_player(p) -> void:
 			ammo_label.add_theme_color_override("font_color", Color.WHITE if p.weapon != 4 else Color(0.6, 0.95, 1.0))
 			if p.weapon == 4:
 				ammo_label.text = "RAYON ∞"
-				info_label.text = "Rayon de glace : ralentit (70 % de vitesse) et rend vulnérable (+10 %) pendant 3 s"
+				info_label.text = "Rayon de glace : ajoute des statuts de glace (1 à 10) ; plus il y en a, plus la cible est lente et vulnérable"
 			else:
 				ammo_label.text = "RECHARGE..." if p.reloading else "%d / ∞" % p.ammo
 				info_label.text = ("Coup par coup · " if p.weapon == 0 else "") + "Clic G / RT : tirer · Clic D / LT : viser · R / X : recharger"
@@ -702,6 +702,8 @@ func set_enemy(z) -> void:
 	enemy_box.visible = true
 	var names := {"minion": "SQUELETTE", "rogue": "SQUELETTE À CAPUCHE", "boss": "BOSS"}
 	enemy_name.text = "%s  %d / %d" % [names.get(z.kind, "SQUELETTE"), int(ceil(maxf(z.hp, 0.0))), int(z.max_hp)]
+	if z.is_frozen():
+		enemy_name.text += "   GLACE %d" % z.frost_level()
 	enemy_bar.max_value = z.max_hp
 	enemy_bar.value = maxf(z.hp, 0.0)
 	enemy_fill.bg_color = Color(1.0, 0.75, 0.15) if z.kind == "boss" else Color(0.95, 0.25, 0.2)

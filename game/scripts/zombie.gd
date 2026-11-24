@@ -48,13 +48,15 @@ var attack_anim_name := "Unarmed_Melee_Attack_Punch_A"
 var hit_t := 0.0
 var traps := 0          # nombre de barbelés traversés en ce moment
 ## Arme cryogénique : ralenti (70 % de la vitesse) et vulnérable (+10 % de dégâts) pendant 3 s
-var frost_t := 0.0
-var vuln_t := 0.0
-const FROST_SPEED := 0.7
-const FROST_TIME := 3.0
-const VULN_MULT := 1.1
-var frost_speed := FROST_SPEED
-var frost_vuln := VULN_MULT
+## Statut de glace (canon cryo) : de 0 à 10. Chaque tic du rayon en ajoute, et on en perd
+## un toutes les `frost_step` secondes. Ralentissement et vulnérabilité sont proportionnels
+## au nombre de statuts (maximum à 10).
+const FROST_MAX_STACKS := 10.0
+var frost_stacks := 0.0
+var frost_decay_t := 0.0
+var frost_step := 1.0          # durée d'un statut (s)
+var frost_max_slow := 0.30     # ralentissement à 10 statuts
+var frost_max_vuln := 0.10     # vulnérabilité à 10 statuts
 static var _frost_mat: StandardMaterial3D
 ## Gardien de coffre : immobile jusqu'à ce qu'un joueur approche ou l'attaque, puis il le poursuit.
 var guard := false
@@ -163,9 +165,12 @@ func _physics_process(delta: float) -> void:
 		velocity.y -= GRAVITY * delta
 	else:
 		velocity.y = -0.5
-	frost_t = maxf(frost_t - delta, 0.0)
-	vuln_t = maxf(vuln_t - delta, 0.0)
-	if frost_t <= 0.0 and flash_t <= 0.0 and meshes.size() > 0 and meshes[0].material_overlay == _frost():
+	if frost_stacks > 0.0:
+		frost_decay_t -= delta
+		if frost_decay_t <= 0.0:
+			frost_stacks = maxf(floorf(frost_stacks) - 1.0, 0.0)   # un statut de perdu
+			frost_decay_t = frost_step
+	if not is_frozen() and flash_t <= 0.0 and meshes.size() > 0 and meshes[0].material_overlay == _frost():
 		for mi in meshes:
 			mi.material_overlay = null
 
@@ -258,7 +263,7 @@ func _physics_process(delta: float) -> void:
 				dmg *= 2.0 if is_boss else 0.5
 			attack_target.take_damage(dmg)
 	else:
-		var spd := speed * (_wire_slow() if traps > 0 else 1.0) * (frost_speed if frost_t > 0.0 else 1.0)
+		var spd := speed * (_wire_slow() if traps > 0 else 1.0) * frost_speed_mult()
 		velocity.x = dir.x * spd
 		velocity.z = dir.z * spd
 	if traps > 0:
@@ -331,7 +336,7 @@ func _animate(delta: float) -> void:
 		flash_t -= delta
 		if flash_t <= 0.0:
 			for mi in meshes:
-				mi.material_overlay = _frost() if frost_t > 0.0 else null
+				mi.material_overlay = _frost() if is_frozen() else null
 	# L'attaque ou la réaction au coup se termine avant de reprendre la marche
 	if anim.is_playing() and anim.current_animation != ANIM_WALK and (attack_anim > 0.0 or hit_t > 0.0):
 		return
@@ -339,19 +344,37 @@ func _animate(delta: float) -> void:
 	if moving:
 		if anim.current_animation != ANIM_WALK:
 			anim.play(ANIM_WALK, 0.2)
-		anim.speed_scale = speed * (_wire_slow() if traps > 0 else 1.0) * (frost_speed if frost_t > 0.0 else 1.0) / 2.2
+		anim.speed_scale = speed * (_wire_slow() if traps > 0 else 1.0) * frost_speed_mult() / 2.2
 	elif attack_anim <= 0.0 and anim.current_animation == ANIM_WALK:
 		anim.play("Idle_Combat" if anim.has_animation("Idle_Combat") else "Idle", 0.2)
 
 
-## Touché par le rayon cryogénique (le minuteur repart à chaque coup).
-## Valeurs par défaut : 70 % de vitesse, +10 % de dégâts, 3 s (améliorables).
-func apply_frost(speed_mult := FROST_SPEED, vuln := VULN_MULT, duration := FROST_TIME) -> void:
-	frost_speed = speed_mult
-	frost_vuln = vuln
-	frost_t = duration
-	vuln_t = duration
-	if flash_t <= 0.0:
+func is_frozen() -> bool:
+	return frost_stacks >= 1.0
+
+
+func frost_level() -> int:
+	return int(floorf(frost_stacks))
+
+
+## Vitesse restante selon le nombre de statuts (ex. 10 statuts, ralentissement 30 % -> 70 %).
+func frost_speed_mult() -> float:
+	return 1.0 - frost_max_slow * frost_level() / FROST_MAX_STACKS
+
+
+func vuln_mult() -> float:
+	return 1.0 + frost_max_vuln * frost_level() / FROST_MAX_STACKS
+
+
+## Touché par un tic du rayon cryogénique : ajoute du statut de glace (max 10) et
+## relance le compte à rebours du statut. Les valeurs max dépendent des améliorations du tireur.
+func apply_frost(stack_gain: float, max_slow: float, max_vuln: float, step: float) -> void:
+	frost_stacks = minf(frost_stacks + stack_gain, FROST_MAX_STACKS)
+	frost_max_slow = max_slow
+	frost_max_vuln = max_vuln
+	frost_step = step
+	frost_decay_t = step
+	if is_frozen() and flash_t <= 0.0:
 		for mi in meshes:
 			mi.material_overlay = _frost()
 
@@ -390,8 +413,8 @@ func take_damage(amount: float, headshot := false) -> void:
 		return
 	if guard and not charging and main and main.has_method("alert_guards"):
 		main.alert_guards(guard_group)
-	if vuln_t > 0.0:
-		amount *= frost_vuln
+	if is_frozen():
+		amount *= vuln_mult()
 	hp -= amount
 	flash_t = 0.08
 	for mi in meshes:

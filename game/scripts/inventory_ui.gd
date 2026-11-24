@@ -161,7 +161,7 @@ func _build_summary() -> Control:
 		var owned: bool = p.owned_guns().has(w)
 		var txt := "%s  —  " % p.WEAPON_NAMES[w]
 		if w == p.W.CRYO:
-			txt += "rayon de glace continu · ralentit à 70 % · +10 % de dégâts subis (3 s) · dégâts très faibles"
+			txt += "rayon de glace continu · statuts de glace 1 à 10 : ralentit et rend vulnérable"
 		elif owned:
 			txt += "%d balles · %.1f tirs/s · %.0f dégâts%s" % [p.gun_mag(w), 1.0 / p.gun_interval(w), p.gun_damage(w), " · coup par coup" if w == p.W.PISTOL else " · automatique"]
 		else:
