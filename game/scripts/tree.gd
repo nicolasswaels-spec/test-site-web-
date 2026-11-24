@@ -70,7 +70,7 @@ func chop(damage: float, hit_pos := Vector3.INF) -> int:
 	# nouvelle cible quelque part sur le tronc (pas forcément face au joueur)
 	var a := randf() * TAU
 	var n := Vector3(cos(a), 0.0, sin(a))
-	harvest.ensure_spot(self, global_position + n * (trunk_radius + 0.07) + Vector3.UP * randf_range(0.7, 2.0), n)
+	harvest.ensure_spot(self, global_position + n * (trunk_radius + 0.16) + Vector3.UP * randf_range(0.7, 2.0), n)
 	return int(round(WOOD_PER_HIT * (harvest.HIT_BONUS if last_target_hit else 1.0)))
 
 

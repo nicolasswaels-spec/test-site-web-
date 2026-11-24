@@ -169,9 +169,39 @@ func _ready() -> void:
 	_build_axe()
 	_build_ghost()
 	_build_avatar()
+	_build_arms()
 	_select_weapon(W.PISTOL, true)
 	_apply_layers(viewmodel, view_layer())
 	_apply_layers(ghost, view_layer())
+
+
+## Bras à la 1re personne : main (gant) posée sur l'arme + avant-bras (manche) vers le coude.
+func _add_arm(parent: Node3D, hand: Vector3, elbow: Vector3) -> void:
+	var sleeve := Mats.col(SLEEVE_COLORS[index % 2], 0.85)
+	var glove := Mats.col(Color(0.30, 0.19, 0.11), 0.8)
+	Mats.box(parent, Vector3(0.075, 0.085, 0.1), glove, hand)
+	var dir := elbow - hand
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.085, 0.085, dir.length())
+	mi.mesh = bm
+	mi.material_override = sleeve
+	var up := Vector3.UP if absf(dir.normalized().y) < 0.95 else Vector3.RIGHT
+	mi.transform = Transform3D(Basis.looking_at(dir.normalized(), up), hand + dir * 0.5)
+	parent.add_child(mi)
+
+
+func _build_arms() -> void:
+	_add_arm(rifle, Vector3(0, -0.12, 0.13), Vector3(0.15, -0.42, 0.45))
+	_add_arm(rifle, Vector3(0, -0.06, -0.3), Vector3(-0.22, -0.4, 0.0))
+	var pg: Node3D = gun_data[W.PISTOL]["node"]
+	_add_arm(pg, Vector3(0, -0.1, 0.07), Vector3(0.1, -0.42, 0.35))
+	_add_arm(pg, Vector3(-0.035, -0.12, 0.05), Vector3(-0.2, -0.42, 0.25))
+	var cg: Node3D = gun_data[W.CRYO]["node"]
+	_add_arm(cg, Vector3(0, -0.13, 0.1), Vector3(0.15, -0.42, 0.42))
+	_add_arm(cg, Vector3(0, -0.06, -0.3), Vector3(-0.22, -0.4, 0.0))
+	var h: Node3D = axe_pivot.get_child(0)
+	_add_arm(h, Vector3(0, -0.04, 0), Vector3(0.06, -0.42, 0.18))
 
 
 func _apply_layers(n: Node, mask: int) -> void:
@@ -182,21 +212,29 @@ func _apply_layers(n: Node, mask: int) -> void:
 
 
 ## Petit personnage visible par l'autre joueur (couleur du joueur, étiquette J1 / J2).
+const AVATAR_MODELS := [preload("res://assets/characters/Rogue_Hooded.glb"), preload("res://assets/characters/Barbarian.glb")]
+const SLEEVE_COLORS := [Color(0.22, 0.34, 0.24), Color(0.48, 0.22, 0.14)]
+var avatar_anim: AnimationPlayer
+
+
+## Personnage (pack KayKit Adventurers, CC0) visible par l'autre joueur :
+## J1 = voleur encapuchonné, J2 = barbare. Les accessoires (armes, bouclier…) sont masqués.
 func _build_avatar() -> void:
 	avatar = Node3D.new()
 	add_child(avatar)
 	var col: Color = PLAYER_COLORS[index % 2]
-	var suit := Mats.col(col, 0.6)
-	var dark := Mats.col(col.darkened(0.55), 0.8)
-	var skin := Mats.col(Color(0.95, 0.78, 0.62), 0.7)
-	Mats.box(avatar, Vector3(0.22, 0.8, 0.26), dark, Vector3(-0.14, 0.4, 0))
-	Mats.box(avatar, Vector3(0.22, 0.8, 0.26), dark, Vector3(0.14, 0.4, 0))
-	Mats.box(avatar, Vector3(0.6, 0.7, 0.34), suit, Vector3(0, 1.15, 0))
-	Mats.box(avatar, Vector3(0.4, 0.45, 0.18), dark, Vector3(0, 1.15, 0.24))   # sac à dos
-	Mats.box(avatar, Vector3(0.18, 0.65, 0.2), suit, Vector3(-0.4, 1.15, -0.05))
-	Mats.box(avatar, Vector3(0.18, 0.65, 0.2), suit, Vector3(0.4, 1.15, -0.05))
-	Mats.sphere(avatar, 0.21, skin, Vector3(0, 1.72, 0), 12)
-	Mats.box(avatar, Vector3(0.46, 0.12, 0.46), suit, Vector3(0, 1.88, 0))     # bonnet
+	var model: Node3D = AVATAR_MODELS[index % 2].instantiate()
+	model.rotation.y = PI          # le modèle regarde vers +Z, le joueur vers -Z
+	model.scale = Vector3.ONE * 0.8
+	avatar.add_child(model)
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var keep: bool = mi.get_parent() is Skeleton3D or mi.name.ends_with("_Cape") or mi.name.ends_with("_Hat")
+		mi.visible = keep
+	avatar_anim = model.find_child("AnimationPlayer", true, false)
+	for an in ["Idle", "Walking_A", "Running_A", "Jump_Idle"]:
+		if avatar_anim.has_animation(an):
+			avatar_anim.get_animation(an).loop_mode = Animation.LOOP_LINEAR
+	avatar_anim.play("Idle")
 	var tag := Label3D.new()
 	tag.text = "J%d" % (index + 1)
 	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -206,7 +244,7 @@ func _build_avatar() -> void:
 	tag.outline_size = 12
 	tag.modulate = col.lightened(0.3)
 	tag.no_depth_test = true
-	tag.position = Vector3(0, 2.3, 0)
+	tag.position = Vector3(0, 2.15, 0)
 	avatar.add_child(tag)
 	_apply_layers(avatar, body_layer())
 
@@ -790,7 +828,25 @@ func _update_weapons(delta: float) -> void:
 				_place()
 
 
+func _animate_avatar() -> void:
+	if avatar_anim == null:
+		return
+	var want := "Idle"
+	var spd := Vector2(velocity.x, velocity.z).length()
+	if dead:
+		want = "Death_A"
+	elif not is_on_floor():
+		want = "Jump_Idle"
+	elif spd > 7.5:
+		want = "Running_A"
+	elif spd > 0.6:
+		want = "Walking_A"
+	if avatar_anim.current_animation != want:
+		avatar_anim.play(want, 0.2)
+
+
 func _process(delta: float) -> void:
+	_animate_avatar()
 	if test_mode:
 		wood = RES_MAX
 		stone = RES_MAX
@@ -979,7 +1035,7 @@ func _build_cryo() -> void:
 	li.light_energy = 0.0
 	m.add_child(li)
 	gun_data[W.CRYO] = {"node": g, "muzzle": m, "flash": fl, "light": li, "crystal": ice, "glow": glow,
-		"hip": HIP_POS, "ads": ADS_POS, "rest": Vector3(0, deg_to_rad(6.0), 0)}
+		"hip": HIP_POS, "ads": Vector3(0.0, -0.21, -0.5), "rest": Vector3(0, deg_to_rad(6.0), 0)}
 	# le rayon (dans le monde, pas dans la main) : boîte fine étirée le long de son axe Z
 	var bm := BoxMesh.new()
 	bm.size = Vector3(0.06, 0.06, 1.0)
@@ -1002,7 +1058,7 @@ func _build_cryo() -> void:
 ## Coup de hache en 4 temps : armé (on lève la hache en arrière), frappe rapide en arc,
 ## impact (petit arrêt + tremblement), puis retour en position.
 func _swing() -> void:
-	swing_cd = 0.62
+	swing_cd = 1.15    # cadence réduite : viser les cibles devient plus rentable que taper vite
 	swinging = true
 	if swing_tween and swing_tween.is_valid():
 		swing_tween.kill()

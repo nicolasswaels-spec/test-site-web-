@@ -32,6 +32,9 @@ const CORRIDOR_Z := Vector2(-104.0, -66.0)   # z min / z max du couloir
 const ZONE2_DIFFICULTY_OFFSET := 7           # vague 1 de la sphère 2 = vague 8 de la sphère 1
 const ZONE2_TREE_COUNT := 95
 const PICKUPS_PER_ZONE := 30
+## Les sphères sont au centre d'une case de construction (grille de 4 m) :
+## un sol posé au pied de la sphère la centre, et 4 murs suffisent à l'entourer.
+const ORB_OFFSET := Vector3(2, 0, 2)
 
 const GROUND_SHADER := """
 shader_type spatial;
@@ -168,6 +171,7 @@ func _ready() -> void:
 		rebuild_obstacles()
 
 	orb = OrbScript.new()
+	orb.position = ORB_OFFSET
 	add_child(orb)
 	orb.damaged.connect(_on_orb_damaged)
 	orb.destroyed.connect(_on_orb_destroyed)
@@ -1072,7 +1076,7 @@ func _unlock_zone2() -> void:
 	_build_zone2()
 	# la 2e sphère devient la seule cible des squelettes
 	orb2 = OrbScript.new()
-	orb2.position = ZONE2_CENTER
+	orb2.position = ZONE2_CENTER + ORB_OFFSET
 	add_child(orb2)
 	orb2.damaged.connect(_on_orb_damaged)
 	orb2.destroyed.connect(_on_orb_destroyed)
@@ -1082,7 +1086,7 @@ func _unlock_zone2() -> void:
 	zone = 2
 	wave = 0
 	orb2_beacon = _make_beacon()
-	orb2_beacon.position = ZONE2_CENTER
+	orb2_beacon.position = ZONE2_CENTER + ORB_OFFSET
 	add_child(orb2_beacon)
 	rebuild_obstacles()
 	hud.show_notice("NOUVELLE ZONE : la forêt d'érables pourpres.\nUne 2e sphère t'attend au nord (suis la colonne de lumière).\nConstruis autour d'elle, puis lance ses vagues avec E / X.\nLes squelettes n'attaqueront plus que cette sphère.", 10.0)

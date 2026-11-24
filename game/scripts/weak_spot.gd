@@ -28,6 +28,8 @@ func _ready() -> void:
 		_ring_mat.emission_enabled = true
 		_ring_mat.emission = Color(0.35, 1.0, 0.95)
 		_ring_mat.emission_energy_multiplier = 3.0
+		_ring_mat.no_depth_test = true       # toujours visible, même si elle frôle la surface
+		_ring_mat.render_priority = 5
 		_core_mat = _ring_mat.duplicate()
 		_core_mat.albedo_color = Color(1.0, 1.0, 1.0)
 		_core_mat.emission = Color(0.8, 1.0, 1.0)
@@ -66,7 +68,7 @@ func _process(delta: float) -> void:
 
 ## Vrai si le point d'impact tombe sur la cible.
 func is_hit(p: Vector3) -> bool:
-	return p.distance_to(global_position) < radius * 1.45
+	return p.distance_to(global_position) < radius * 1.5 + 0.08
 
 
 func pop() -> void:

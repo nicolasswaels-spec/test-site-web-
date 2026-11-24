@@ -33,14 +33,17 @@ func _ready() -> void:
 	visual.add_child(m)
 	var ab: AABB = m.mesh.get_aabb()
 	radius = maxf(ab.size.x, ab.size.z) * 0.5 * rock_scale
+	# collision = enveloppe convexe du rocher (suit sa vraie forme : coups et cibles sur la surface)
 	var cs := CollisionShape3D.new()
-	var ss := SphereShape3D.new()
-	ss.radius = radius * 0.8
-	cs.shape = ss
-	cs.position.y = ab.size.y * rock_scale * 0.3
+	var hull := m.mesh.create_convex_shape(true, true) as ConvexPolygonShape3D
+	var pts := PackedVector3Array()
+	for v in hull.points:
+		pts.append(v * rock_scale)
+	hull.points = pts
+	cs.shape = hull
 	add_child(cs)
-	col_center = cs.position
-	col_radius = ss.radius
+	col_center = Vector3(0, ab.size.y * rock_scale * 0.4, 0)
+	col_radius = radius
 	max_hp = 120.0 * rock_scale
 	hp = max_hp
 
@@ -62,10 +65,16 @@ func mine(damage: float, hit_pos := Vector3.INF) -> int:
 		harvest.clear()
 		_break()
 		return bonus
-	# nouvelle cible ailleurs sur le rocher
-	var a := randf() * TAU
-	var d := Vector3(cos(a), randf_range(0.15, 0.8), sin(a)).normalized()
-	harvest.ensure_spot(self, global_position + col_center + d * (col_radius + 0.04), d)
+	# nouvelle cible ailleurs sur le rocher, posée sur sa surface réelle (lancer de rayon)
+	var center := global_position + col_center
+	for attempt in 8:
+		var a := randf() * TAU
+		var d := Vector3(cos(a), randf_range(0.1, 0.7), sin(a)).normalized()
+		var q := PhysicsRayQueryParameters3D.create(center + d * (col_radius * 3.0 + 2.0), center, 16)
+		var r := get_world_3d().direct_space_state.intersect_ray(q)
+		if not r.is_empty() and r.collider == self:
+			harvest.ensure_spot(self, r.position + r.normal * 0.05, r.normal)
+			break
 	return int(round(STONE_PER_HIT * (harvest.HIT_BONUS if last_target_hit else 1.0)))
 
 

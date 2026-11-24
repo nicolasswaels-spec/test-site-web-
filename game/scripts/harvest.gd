@@ -1,7 +1,7 @@
 extends RefCounted
 ## Logique commune des cibles de récolte (arbres et rochers).
-## Coup sur une cible : +30 % de ressources sur ce coup.
-## Bonus final × (1 + 2 × cibles touchées / cibles possibles) : toutes touchées = bonus ×3.
+## Coup sur une cible : +50 % de ressources sur ce coup.
+## Bonus final × (1 + 3 × cibles touchées / cibles possibles) : toutes touchées = bonus ×4.
 
 const WeakSpot = preload("res://scripts/weak_spot.gd")
 const START_RADIUS := 0.32
@@ -40,8 +40,8 @@ func ensure_spot(parent: Node3D, pos: Vector3, normal: Vector3) -> void:
 
 ## Part des cibles touchées parmi toutes celles qu'on aurait pu toucher
 ## (chaque coup après le premier est une occasion).
-const HIT_BONUS := 1.3
-const FINAL_MAX_BONUS := 2.0   # +200 % si toutes les cibles sont touchées
+const HIT_BONUS := 1.5         # +50 % sur un coup qui touche la cible
+const FINAL_MAX_BONUS := 3.0   # +300 % si toutes les cibles sont touchées (×4)
 
 
 func final_mult() -> float:
