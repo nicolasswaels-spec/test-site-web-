@@ -592,10 +592,11 @@ func _spawn_chest(center: Vector3, radius: float, gold: bool, z: int) -> void:
 	ch.position = pos
 	ch.rotation.y = rng.randf() * TAU
 	add_child(ch)
-	var n := 3 if z == 1 else 4
+	var n := rng.randi_range(5, 8)
 	for i in n:
 		var g := ZombieScript.new()
 		g.guard = true
+		g.guard_group = ch
 		g.max_hp = 90.0 if z == 1 else 220.0
 		g.hp = g.max_hp
 		g.speed = 2.6 if z == 1 else 3.2
@@ -603,10 +604,17 @@ func _spawn_chest(center: Vector3, radius: float, gold: bool, z: int) -> void:
 		g.main = self
 		g.orb = orb
 		var a := TAU * i / n + rng.randf_range(-0.3, 0.3)
-		g.position = pos + Vector3(cos(a), 0, sin(a)) * rng.randf_range(3.0, 4.5) + Vector3(0, 0.05, 0)
+		g.position = pos + Vector3(cos(a), 0, sin(a)) * rng.randf_range(3.0, 6.0) + Vector3(0, 0.05, 0)
 		g.rotation.y = a + PI * 0.5
 		add_child(g)
 	call_deferred("rebuild_obstacles")
+
+
+## Un gardien a été touché : tout son groupe charge le joueur à vitesse maximale.
+func alert_guards(group) -> void:
+	for g in get_tree().get_nodes_in_group("zombie"):
+		if g.guard and g.guard_group == group and not g.dead:
+			g.charge()
 
 
 func spawn_rock(pos: Vector3, z := 1) -> void:

@@ -502,7 +502,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if weapon == W.BUILD:
 			_toggle_material()
 		else:
-			_select_weapon(W.AXE if _is_gun(weapon) else last_gun)
+			_cycle_hand_weapons()
 	elif event.is_action_pressed(a("build_toggle")):
 		_select_weapon(last_gun if weapon == W.BUILD else W.BUILD)
 	elif event.is_action_pressed(a("piece_next")):
@@ -534,6 +534,17 @@ func _cycle_weapon(dir: int) -> void:
 		if order[i] >= 0:
 			_select_weapon(order[i])
 			return
+
+
+## Y / Triangle : arme 1 → arme 2 → hache → arme 1 (emplacements vides sautés).
+func _cycle_hand_weapons() -> void:
+	var order := []
+	for w in loadout:
+		if w >= 0:
+			order.append(w)
+	order.append(W.AXE)
+	var i := order.find(weapon)
+	_select_weapon(order[(i + 1) % order.size()] if i >= 0 else order[0])
 
 
 func owned_guns() -> Array:

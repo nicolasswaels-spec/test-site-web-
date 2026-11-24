@@ -35,7 +35,7 @@ func _ready() -> void:
 	l.position = Vector3(0, 1.5, 0.8)
 	add_child(l)
 	label = Label3D.new()
-	label.text = "COFFRE"
+	label.text = ""
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.fixed_size = true
 	label.pixel_size = 0.0008

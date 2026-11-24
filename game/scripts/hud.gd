@@ -64,6 +64,17 @@ class Minimap extends Control:
 	const SCALE := 1.5          # pixels par mètre
 	func _process(_d: float) -> void:
 		queue_redraw()
+	## Cercle tracé seulement à l'intérieur du radar (rayon lim autour de c).
+	func _clipped_circle(c: Vector2, lim: float, center: Vector2, radius: float, col: Color) -> void:
+		var n := 128
+		var prev := center + Vector2(radius, 0)
+		for i in range(1, n + 1):
+			var a := TAU * i / n
+			var pt := center + Vector2(cos(a), sin(a)) * radius
+			if prev.distance_to(c) < lim and pt.distance_to(c) < lim:
+				draw_line(prev, pt, col, 2.0)
+			prev = pt
+
 	func _w2m(c: Vector2, origin: Vector3, w: Vector3) -> Vector2:
 		return c + Vector2(w.x - origin.x, w.z - origin.z) * SCALE
 	func _draw() -> void:
@@ -73,14 +84,10 @@ class Minimap extends Control:
 		var r := size.x * 0.5
 		draw_circle(c, r, Color(0.05, 0.04, 0.12, 0.72))
 		var o: Vector3 = player.global_position
-		# limites des zones
-		var z1 := _w2m(c, o, Vector3.ZERO)
-		draw_arc(z1, main.MAP_RADIUS * SCALE, 0, TAU, 96, Color(0.45, 0.5, 1.0, 0.7), 2.0)
-		if main.zone2_unlocked:
-			draw_arc(_w2m(c, o, main.ZONE2_CENTER), main.ZONE2_RADIUS * SCALE, 0, TAU, 96, Color(0.45, 0.5, 1.0, 0.7), 2.0)
-			var a := _w2m(c, o, Vector3(-main.CORRIDOR_HALF, 0, main.CORRIDOR_Z.x))
-			var b := _w2m(c, o, Vector3(main.CORRIDOR_HALF, 0, main.CORRIDOR_Z.y))
-			draw_rect(Rect2(a, b - a), Color(0.45, 0.5, 1.0, 0.25))
+		# limite de la zone en cours uniquement, coupée au bord du radar
+		var zc: Vector3 = Vector3.ZERO if main.zone == 1 else main.ZONE2_CENTER
+		var zr: float = main.MAP_RADIUS if main.zone == 1 else main.ZONE2_RADIUS
+		_clipped_circle(c, r - 2.0, _w2m(c, o, zc), zr * SCALE, Color(0.45, 0.5, 1.0, 0.7))
 		# constructions
 		for st in main.structures.values():
 			if is_instance_valid(st):

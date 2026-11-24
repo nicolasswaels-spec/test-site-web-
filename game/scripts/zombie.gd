@@ -58,6 +58,9 @@ var frost_vuln := VULN_MULT
 static var _frost_mat: StandardMaterial3D
 ## Gardien de coffre : immobile jusqu'à ce qu'un joueur approche ou l'attaque, puis il le poursuit.
 var guard := false
+var guard_group = null     # coffre gardé (les gardiens d'un même coffre réagissent ensemble)
+var charging := false
+const GUARD_CHARGE_SPEED := 5.5
 var awake := true
 const GUARD_WAKE_RANGE := 9.0
 var waypoint := Vector3.ZERO   # point de passage choisi (là où la base est la moins défendue)
@@ -362,6 +365,15 @@ static func _frost() -> StandardMaterial3D:
 	return _frost_mat
 
 
+## Charge à vitesse maximale (tout le groupe quand l'un d'eux est touché).
+func charge() -> void:
+	if charging:
+		return
+	charging = true
+	speed = maxf(speed, GUARD_CHARGE_SPEED)
+	wake_up()
+
+
 func wake_up() -> void:
 	if awake:
 		return
@@ -376,8 +388,8 @@ func wake_up() -> void:
 func take_damage(amount: float, headshot := false) -> void:
 	if dead:
 		return
-	if guard and not awake:
-		wake_up()
+	if guard and not charging and main and main.has_method("alert_guards"):
+		main.alert_guards(guard_group)
 	if vuln_t > 0.0:
 		amount *= frost_vuln
 	hp -= amount
