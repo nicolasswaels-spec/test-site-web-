@@ -1280,6 +1280,14 @@ func try_join(ev: InputEvent) -> bool:
 	return false
 
 
+## Donne une manette à un joueur (en gardant son clavier/souris s'il en avait un).
+func assign_pad(index: int, pad_id: int) -> void:
+	var p = players[index]
+	p.pad = pad_id
+	GameInput.setup_player(index, p.kbm, pad_id)
+	p.hud.flash_message("Manette connectée au joueur %d" % (index + 1))
+
+
 func _reassign_p1(use_kbm: bool, pad_id: int) -> void:
 	var p1 = players[0]
 	p1.kbm = use_kbm

@@ -23,22 +23,31 @@ func owner_of(ev: InputEvent) -> int:
 
 
 func _unhandled_input(ev: InputEvent) -> void:
-	if main == null:
+	if main == null or not is_inside_tree():
 		return
+	# on garde la vue : un bouton « Menu principal » peut nous retirer de l'arbre pendant le traitement
+	var vp := get_viewport()
 	# arrivée du joueur 2
 	if main.players.size() == 1 and main.state != "lost" and main.state != "won" and not get_tree().paused:
 		if main.try_join(ev):
-			get_viewport().set_input_as_handled()
+			vp.set_input_as_handled()
 			return
 	var idx := owner_of(ev)
+	# manette encore libre : on la donne au joueur qui n'en a pas (le joueur 1 en priorité)
+	if idx < 0 and ev is InputEventJoypadButton and ev.pressed:
+		for p in main.players:
+			if p.pad == -1:
+				main.assign_pad(p.index, ev.device)
+				vp.set_input_as_handled()
+				return
 	if idx < 0:
 		if main.players.size() > 1 and (ev is InputEventJoypadButton or ev is InputEventJoypadMotion):
-			get_viewport().set_input_as_handled()   # manette non attribuée : ignorée
+			vp.set_input_as_handled()   # manette non attribuée : ignorée
 		return
 	var hud = main.huds[idx]
 	if hud.handle_input(ev):
-		get_viewport().set_input_as_handled()
+		vp.set_input_as_handled()
 		return
 	# en pause, seul le joueur qui a mis pause pilote le menu ; les autres entrées sont absorbées
 	if get_tree().paused:
-		get_viewport().set_input_as_handled()
+		vp.set_input_as_handled()
