@@ -66,6 +66,15 @@ varying vec3 lp;
 void vertex() { lp = (to_local * MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 float hash(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
 float hash2(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+float vnoise(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), f.x), mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float cloud_h(vec2 p) {
+	float big = vnoise(p) * 0.55 + vnoise(p * 2.1 + 3.7) * 0.28 + vnoise(p * 4.3 + 9.1) * 0.12;
+	float balls = smoothstep(0.45, 0.8, vnoise(p * 1.3 + 1.3)) + smoothstep(0.5, 0.85, vnoise(p * 2.6 + 7.7)) * 0.5;
+	return big * 0.75 + balls * 0.3;
+}
 void fragment() {
 	float coord = axis == 0 ? lp.y : lp.x;
 	float along = axis == 0 ? lp.x : lp.z;
@@ -96,11 +105,16 @@ void fragment() {
 		EMISSION = vec3(0.10, 0.85, 0.45) * moss * 0.25 * (0.7 + 0.3 * sin(TIME * 1.5 + along));
 	}
 	if (cloud == 1) {
-		// nuage : blanc cotonneux, légers reflets bleutés, gros « moutons » qui ondulent
-		float puff = hash2(floor(vec2(along, coord) * 2.2)) * 0.5 + hash2(floor(vec2(along, coord) * 5.0 + 3.0)) * 0.3;
-		float wob = 0.5 + 0.5 * sin(along * 3.0 + coord * 2.0 + TIME * 0.8);
-		c = mix(vec3(0.62, 0.70, 0.90), vec3(0.95, 0.96, 1.0), clamp(puff + wob * 0.3, 0.0, 1.0));
-		EMISSION = vec3(0.08, 0.09, 0.13) * (0.4 + 0.3 * wob);
+		// nuage : boules cotonneuses en relief (ombres bleutées dans les creux), qui dérivent doucement
+		vec2 q = vec2(along, coord) * 1.0 + vec2(TIME * 0.05, TIME * 0.02);
+		float h = cloud_h(q);
+		float e = 0.04;
+		float gx = (cloud_h(q + vec2(e, 0.0)) - h) / e;
+		float gy = (cloud_h(q + vec2(0.0, e)) - h) / e;
+		float light = clamp(0.78 - gx * 0.18 + gy * 0.28, 0.45, 1.15);   // lumière venant d'en haut
+		vec3 base = mix(vec3(0.55, 0.61, 0.84), vec3(0.98, 0.98, 1.0), smoothstep(0.25, 0.8, h));
+		c = base * light;
+		EMISSION = vec3(0.07, 0.08, 0.12) * (0.4 + h);
 	}
 	// fissures avec les dégâts
 	float crack = step(0.985 - damage * 0.12, hash2(floor(vec2(along, coord) * 9.0)));
@@ -307,6 +321,9 @@ func _rebuild_visual() -> void:
 	if is_magic():
 		frame = Mats.col(Color(0.16, 0.42, 0.20), 0.9, 0.25)
 	var hx := size.x * 0.5
+	if family() == 2:
+		_cloud_trim(size)
+		return
 	if piece == WALL:
 		var hy := size.y * 0.5
 		Mats.box(visual, Vector3(size.x, 0.22, 0.3), frame, Vector3(0, hy - 0.11, 0))
@@ -582,3 +599,37 @@ func _break() -> void:
 		main.spawn_impact(global_position, Vector3.UP, c, 24, 2.0)
 	Sfx.play_3d("break", global_position, 2.0)
 	queue_free()
+
+
+## Pièce en nuage : bords en boules cotonneuses au lieu du cadre (les niveaux restent visibles par la barre).
+func _cloud_trim(size: Vector3) -> void:
+	var puff := Mats.col(Color(0.92, 0.94, 1.0), 1.0, 0.12)
+	var shade := Mats.col(Color(0.78, 0.82, 0.96), 1.0, 0.08)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(key)
+	var hx := size.x * 0.5
+	if piece == WALL:
+		var hy := size.y * 0.5
+		var pts: Array[Vector3] = []
+		for i in 9:
+			var t := -hx + i * size.x / 8.0
+			pts.append(Vector3(t, hy, 0))
+			if variant != 1:
+				pts.append(Vector3(t, -hy, 0))
+		for i in range(1, 8):
+			var t := -hy + i * size.y / 8.0
+			pts.append(Vector3(hx, t, 0))
+			pts.append(Vector3(-hx, t, 0))
+		for pt in pts:
+			var r := rng.randf_range(0.28, 0.42)
+			Mats.sphere(visual, r, puff if rng.randf() < 0.7 else shade, pt + Vector3(0, 0, rng.randf_range(-0.05, 0.05)), 8)
+	else:
+		var hz := size.z * 0.5
+		for i in 9:
+			var t := -hx + i * size.x / 8.0
+			for z in [-hz, hz]:
+				Mats.sphere(visual, rng.randf_range(0.22, 0.34), puff if rng.randf() < 0.7 else shade, Vector3(t, 0.05, z), 8)
+		for i in range(1, 8):
+			var t := -hz + i * size.z / 8.0
+			for x in [-hx, hx]:
+				Mats.sphere(visual, rng.randf_range(0.22, 0.34), puff if rng.randf() < 0.7 else shade, Vector3(x, 0.05, t), 8)

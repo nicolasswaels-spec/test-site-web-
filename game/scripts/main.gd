@@ -127,11 +127,34 @@ float noise(vec2 p) {
 	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
 	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
 }
+float fbm(vec2 p) {
+	float v = 0.0; float a = 0.5;
+	for (int i = 0; i < 5; i++) { v += a * noise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; }
+	return v;
+}
+// « hauteur » du nuage : gros bourrelets arrondis + petites boules, qui dérivent lentement
+float puffy(vec2 p) {
+	vec2 w = vec2(fbm(p * 0.6 + TIME * 0.015), fbm(p * 0.6 + vec2(5.2, 1.3) - TIME * 0.012));
+	float big = fbm(p * 0.55 + w * 1.4);
+	float balls = 1.0 - abs(noise(p * 2.2 + w * 2.0) * 2.0 - 1.0);
+	return big * 0.75 + balls * balls * 0.35;
+}
 void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
-	float n = noise(wp.xz * 0.15 + TIME * 0.03) * 0.6 + noise(wp.xz * 0.6) * 0.4;
-	ALBEDO = mix(vec3(0.62, 0.68, 0.86), vec3(0.88, 0.90, 0.98), n);
-	EMISSION = vec3(0.10, 0.11, 0.16) * (0.6 + 0.4 * n);
+	vec2 p = wp.xz * 0.16;
+	float h = puffy(p);
+	float e = 0.05;
+	float hx = puffy(p + vec2(e, 0.0));
+	float hz = puffy(p + vec2(0.0, e));
+	// relief simulé : la normale suit les bosses du nuage
+	vec3 n = normalize(vec3(-(hx - h) / e * 0.9, 1.0, -(hz - h) / e * 0.9));
+	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
+	vec3 hollow = vec3(0.52, 0.58, 0.82);   // creux bleutés / lavande
+	vec3 top = vec3(0.98, 0.97, 1.0);
+	vec3 c = mix(hollow, top, smoothstep(0.32, 0.78, h));
+	c = mix(c, vec3(1.0, 0.95, 0.9), smoothstep(0.7, 0.95, h) * 0.35);   // reflets chauds sur les sommets
+	ALBEDO = c;
+	EMISSION = vec3(0.06, 0.07, 0.11) * (0.5 + h);
 	ROUGHNESS = 1.0;
 }
 """
@@ -1929,6 +1952,32 @@ func _build_sky() -> void:
 		var r := SKY_RADIUS + rng.randf_range(-1.0, 2.5)
 		var sz := rng.randf_range(2.0, 3.8)
 		Mats.sphere(island, sz, cmat, SKY_CENTER + Vector3(cos(a) * r, rng.randf_range(-2.5, 0.2), sin(a) * r), 10).scale = Vector3(1, 0.65, 1)
+	# petits « moutons » posés sur le sol (décor, sans collision)
+	var puff := SphereMesh.new()
+	puff.radius = 1.0
+	puff.height = 2.0
+	puff.radial_segments = 12
+	puff.rings = 6
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = puff
+	var xf: Array[Transform3D] = []
+	for i in 260:
+		var a := rng.randf() * TAU
+		var r := sqrt(rng.randf_range(0.0, 1.0)) * (SKY_RADIUS - 2.0)
+		if r < 9.0:
+			continue   # dégagé autour de la sphère
+		var sc := rng.randf_range(0.5, 1.4)
+		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc * rng.randf_range(1.0, 1.8), sc * 0.45, sc))
+		xf.append(Transform3D(b, SKY_CENTER + Vector3(cos(a) * r, -0.15, sin(a) * r)))
+	mm.instance_count = xf.size()
+	for i in xf.size():
+		mm.set_instance_transform(i, xf[i])
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.material_override = cmat
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	island.add_child(mmi)
 	for i in 26:   # dessous bombé
 		var a := rng.randf() * TAU
 		var r := rng.randf_range(0.0, SKY_RADIUS - 8.0)
