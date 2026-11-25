@@ -16,6 +16,7 @@ const RouterScript = preload("res://scripts/input_router.gd")
 const DropScript = preload("res://scripts/resource_drop.gd")
 const ChestScript = preload("res://scripts/chest.gd")
 const TitanScript = preload("res://scripts/titan.gd")
+const SkyTitanScript = preload("res://scripts/sky_titan.gd")
 const CloudResScript = preload("res://scripts/cloud_res.gd")
 const CHESTS_PER_ZONE := 2
 
@@ -683,7 +684,7 @@ func zone_radius(z: int) -> float:
 
 ## Ce que la mini-carte montre comme objectif : la sphère défendue, ou le titan.
 func objective_pos() -> Vector3:
-	if zone == 3 and titan and is_instance_valid(titan):
+	if (zone == 3 or (zone == 5 and orb4 == null)) and titan and is_instance_valid(titan):
 		return titan.global_position
 	return orb.global_position
 
@@ -1042,8 +1043,8 @@ func _process(delta: float) -> void:
 	fireflies.global_position = player.global_position + Vector3(0, 1.5, 0)
 	for i in players.size():
 		huds[i].update_player(players[i])
-	if zone == 3 and titan and is_instance_valid(titan) and titan.awake:
-		hud.set_orb(titan.hp, titan.max_hp, "TITAN")
+	if (state == "boss" or state == "to_boss") and titan and is_instance_valid(titan) and titan.awake:
+		hud.set_orb(titan.hp, titan.max_hp, "COLOSSE" if zone == 5 else "TITAN")
 	else:
 		hud.set_orb(orb.hp, orb.max_hp)
 	_update_biome(delta)
@@ -1106,11 +1107,14 @@ func _process(delta: float) -> void:
 					orb2_beacon = null
 				_start_wave(1)
 		"to_boss":
+			var sky_boss := zone == 5
+			var bname := "COLOSSE DES NUÉES" if sky_boss else "TITAN DE LAVE"
+			var bhint := "Monte l'escalier de nuages au nord du volcan, puis la passerelle" if sky_boss else "Rejoins la zone volcanique, à l'ouest de la 2e sphère (suis la lueur rouge)"
 			if Settings.test_mode:
-				hud.set_wave("TITAN DE LAVE", "La terre s'est ouverte à l'ouest de la 2e sphère : approche-toi du titan pour le réveiller")
+				hud.set_wave(bname, bhint + " : approche-toi pour le réveiller")
 			else:
 				countdown -= delta
-				hud.set_wave("LE TITAN SE RÉVEILLE DANS %d s" % int(ceil(countdown)), "Rejoins la zone volcanique, à l'ouest de la 2e sphère (suis la lueur rouge)")
+				hud.set_wave("%s SE RÉVEILLE DANS %d s" % ["LE COLOSSE" if sky_boss else "LE TITAN", int(ceil(countdown))], bhint)
 			var wake := zone3_unlocked and not Settings.test_mode and countdown <= 0.0
 			if zone3_unlocked and titan and is_instance_valid(titan):
 				for p in players:
@@ -1121,7 +1125,10 @@ func _process(delta: float) -> void:
 			if wake:
 				_start_boss()
 		"boss":
-			hud.set_wave("TITAN DE LAVE", "Boules de feu : abrite-toi · Onde de choc : saute · Cercles rouges : bouge !")
+			if zone == 5:
+				hud.set_wave("COLOSSE DES NUÉES", "Grêle : décale-toi · Cercles bleus : bouge · Bourrasque : abrite-toi derrière un mur")
+			else:
+				hud.set_wave("TITAN DE LAVE", "Boules de feu : abrite-toi · Onde de choc : saute · Cercles rouges : bouge !")
 		"free":
 			hud.set_wave("FORÊT LIBÉRÉE", "Les quatre sphères sont sauves. Explore librement !")
 
@@ -1744,7 +1751,7 @@ func _build_zone3() -> void:
 	titan.main = self
 	titan.position = c
 	if players.size() > 1:
-		titan.max_hp = TitanScript.BASE_HP * TitanScript.COOP_HP_MULT
+		titan.max_hp *= TitanScript.COOP_HP_MULT
 		titan.hp = titan.max_hp
 	add_child(titan)
 	titan.defeated.connect(_on_titan_defeated)
@@ -1762,13 +1769,18 @@ func _start_boss() -> void:
 	if titan and is_instance_valid(titan):
 		titan.wake()
 	Music.play("boss", "battle")
-	hud.show_center("TITAN DE LAVE", "Il ne bouge pas, mais il frappe fort et de loin.", 3.5)
+	if zone == 5:
+		hud.show_center("COLOSSE DES NUÉES", "Il ne bouge pas, mais la foudre et le vent lui obéissent.", 3.5)
+	else:
+		hud.show_center("TITAN DE LAVE", "Il ne bouge pas, mais il frappe fort et de loin.", 3.5)
 
 
 func _on_titan_defeated() -> void:
 	state = "titan_down"
-	hud.set_wave("TITAN VAINCU !", "Une 3e sphère va apparaître à sa place...")
-	hud.show_center("TITAN VAINCU !", "+300 bois · +150 pierre · +3 jetons de compétence", 4.0)
+	var sky_boss := zone == 5
+	var title := "COLOSSE VAINCU !" if sky_boss else "TITAN VAINCU !"
+	hud.set_wave(title, ("Une 4e sphère va apparaître à sa place..." if sky_boss else "Une 3e sphère va apparaître à sa place..."))
+	hud.show_center(title, "+300 bois · +150 pierre · +3 jetons de compétence" + (" · 3 tas d'os" if sky_boss else ""), 4.0)
 	for p in players:
 		p.gain_tokens(3)
 	Music.play("game")
@@ -1777,7 +1789,7 @@ func _on_titan_defeated() -> void:
 		p.stone = mini(p.stone + 150, p.RES_MAX)
 		if not p.dead:
 			p.hp = p.max_hp()
-	get_tree().create_timer(4.5, false).timeout.connect(_start_zone4)
+	get_tree().create_timer(4.5, false).timeout.connect(_start_sky_defense if sky_boss else _start_zone4)
 
 
 ## 3e sphère, à l'emplacement du titan : 3 min (+ report éventuel) avant la 1re vague.
@@ -1812,7 +1824,8 @@ func _start_zone4() -> void:
 # ------------------------------------------------------------------ zone céleste (4e sphère)
 
 func _complete_zone4() -> void:
-	state = "explore"
+	state = "to_boss"
+	countdown = BOSS_TRAVEL_TIME   # le report éventuel est gardé pour la 4e sphère
 	Music.play("game")
 	Sfx.play("win")
 	for p in players:
@@ -1828,7 +1841,30 @@ func _unlock_sky() -> void:
 		return
 	sky_unlocked = true
 	_build_sky()
-	# la 4e sphère, au centre de l'île
+	zone = 5
+	wave = 0
+	# le colosse des nuées, au centre de l'île (la 4e sphère apparaîtra à sa place)
+	titan = SkyTitanScript.new()
+	titan.main = self
+	titan.position = SKY_CENTER
+	if players.size() > 1:
+		titan.max_hp *= TitanScript.COOP_HP_MULT
+		titan.hp = titan.max_hp
+	add_child(titan)
+	titan.defeated.connect(_on_titan_defeated)
+	if orb2_beacon and is_instance_valid(orb2_beacon):
+		orb2_beacon.queue_free()
+	orb2_beacon = _make_beacon(Color(0.7, 0.85, 1.0, 0.4))
+	orb2_beacon.position = SKY_CENTER
+	add_child(orb2_beacon)
+	rebuild_obstacles()
+	hud.show_notice("NOUVELLE ZONE : l'île de nuages, dans le ciel au nord du volcan.\nMonte l'escalier de nuages, puis la passerelle. Le COLOSSE DES NUÉES s'y dresse :\nil se réveille dans 1 min, ou dès que tu approches. La 4e sphère apparaîtra à sa place.\nNouvelle ressource : les NUAGES (petits nuages à briser à la hache, on passe au travers).", 12.0)
+
+
+## Colosse vaincu : la 4e sphère apparaît au centre de l'île ; défense dans 2 min 30 (+ report).
+func _start_sky_defense() -> void:
+	if orb4 != null:
+		return
 	orb4 = OrbScript.new()
 	orb4.position = SKY_CENTER + ORB_OFFSET
 	add_child(orb4)
@@ -1838,8 +1874,8 @@ func _unlock_sky() -> void:
 		orb.damaged.disconnect(_on_orb_damaged)
 		orb.destroyed.disconnect(_on_orb_destroyed)
 	orb = orb4
-	zone = 5
 	wave = 0
+	state = "explore"
 	countdown = SKY_TIME + carry_time
 	carry_time = 0.0
 	if orb2_beacon and is_instance_valid(orb2_beacon):
@@ -1848,7 +1884,7 @@ func _unlock_sky() -> void:
 	orb2_beacon.position = SKY_CENTER + ORB_OFFSET
 	add_child(orb2_beacon)
 	rebuild_obstacles()
-	hud.show_notice("NOUVELLE ZONE : l'île de nuages, dans le ciel au nord du volcan.\nMonte l'escalier de nuages, puis la passerelle. Défense de la 4e sphère dans 2 min 30.\nNouvelle ressource : les NUAGES (petits nuages à briser à la hache, on passe au travers).\nMurs en nuage : 3× plus solides que la pierre. Attention aux anges squelettes !", 12.0)
+	hud.show_notice("4e SPHÈRE : défends-la contre 10 vagues, dont des anges squelettes volants.\nLa défense commence dans 2 min 30 (ou plus tôt depuis le menu de la sphère).\nMurs en nuage : 3× plus solides que la pierre.", 9.0)
 
 
 func _cloud_material(alpha := 1.0) -> StandardMaterial3D:
@@ -2127,6 +2163,11 @@ func skip_zone() -> void:
 			_end_wave()
 			_teleport_players(SKY_CENTER + Vector3(0, 0.6, 20))
 		5:
+			if orb4 == null:
+				if titan and is_instance_valid(titan) and not titan.dead:
+					titan.die()
+				_teleport_players(SKY_CENTER + Vector3(0, 0.6, 16))
+				return
 			wave = TOTAL_WAVES
 			state = "wave"
 			_end_wave()

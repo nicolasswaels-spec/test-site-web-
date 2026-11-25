@@ -1115,7 +1115,7 @@ func _shoot_shock() -> void:
 		if absf(d.y) > 3.5:
 			continue
 		d.y = 0.0
-		var reach := rng + (2.0 if z.kind == "titan" else 0.4)
+		var reach := rng + (2.0 if z.is_in_group("titan") else 0.4)
 		if d.length() > reach:
 			continue
 		if d.length() > 0.8 and d.normalized().dot(fwd) < cos_lim:
@@ -1410,7 +1410,7 @@ func register_kill(c, src: String) -> void:
 		"axe": add_stat("kills_axe")
 		"shock": add_stat("kills_shock")
 		"fire": add_stat("kills_fire")
-	if c.is_boss and c.kind != "titan":
+	if c.is_boss and not c.is_in_group("titan"):
 		add_stat("boss_kills")
 
 
@@ -1465,10 +1465,10 @@ class Fireball extends Node3D:
 		for z in get_tree().get_nodes_in_group("zombie"):
 			if z.dead:
 				continue
-			var c: Vector3 = z.global_position + Vector3.UP * (1.0 if z.kind != "titan" else 5.0)
+			var c: Vector3 = z.global_position + Vector3.UP * (5.0 if z.is_in_group("titan") else 1.0)
 			var ab := to - from
 			var t := clampf((c - from).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
-			if (from + ab * t).distance_to(c) < (1.0 if z.kind != "titan" else 2.5):
+			if (from + ab * t).distance_to(c) < (2.5 if z.is_in_group("titan") else 1.0):
 				hit = z
 				break
 		var q := PhysicsRayQueryParameters3D.create(from, to, 1 | 8 | 16)

@@ -842,14 +842,14 @@ func set_enemy(z) -> void:
 		enemy_box.visible = false
 		return
 	enemy_box.visible = true
-	var names := {"minion": "SQUELETTE", "rogue": "SQUELETTE À CAPUCHE", "boss": "BOSS", "titan": "TITAN DE LAVE", "archer": "SQUELETTE ARCHER", "angel": "ANGE SQUELETTE"}
-	var lv: String = ("  NIV %d" % z.level) if z.get("level") != null and z.kind != "titan" else ""
+	var names := {"minion": "SQUELETTE", "rogue": "SQUELETTE À CAPUCHE", "boss": "BOSS", "titan": "TITAN DE LAVE", "sky_titan": "COLOSSE DES NUÉES", "archer": "SQUELETTE ARCHER", "angel": "ANGE SQUELETTE"}
+	var lv: String = ("  NIV %d" % z.level) if z.get("level") != null and not z.is_in_group("titan") else ""
 	enemy_name.text = "%s%s  %d / %d" % [names.get(z.kind, "SQUELETTE"), lv, int(ceil(maxf(z.hp, 0.0))), int(z.max_hp)]
 	if z.is_frozen():
 		enemy_name.text += "   GLACE %d" % z.frost_level()
 	enemy_bar.max_value = z.max_hp
 	enemy_bar.value = maxf(z.hp, 0.0)
-	enemy_fill.bg_color = Color(1.0, 0.75, 0.15) if z.kind == "boss" or z.kind == "titan" else Color(0.95, 0.25, 0.2)
+	enemy_fill.bg_color = Color(1.0, 0.75, 0.15) if z.kind == "boss" or z.is_in_group("titan") else Color(0.95, 0.25, 0.2)
 
 
 # ------------------------------------------------------------------ fenêtre de confirmation

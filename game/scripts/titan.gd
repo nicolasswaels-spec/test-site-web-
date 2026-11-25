@@ -86,10 +86,15 @@ func _ready() -> void:
 			anim.get_animation(n).loop_mode = Animation.LOOP_LINEAR
 	for mi in model.find_children("*", "MeshInstance3D", true, false):
 		meshes.append(mi)
-		mi.material_overlay = _lava()
+		mi.material_overlay = _skin()
 		if mi.name.ends_with("_Eyes"):
-			mi.material_override = Mats.col(Color(1.0, 0.5, 0.1), 0.3, 8.0)
+			mi.material_override = Mats.col(_eye_color(), 0.3, 8.0)
 	anim.play("Skeleton_Inactive_Standing_Pose" if anim.has_animation("Skeleton_Inactive_Standing_Pose") else "Idle")
+	_decorate(model)
+
+
+## Socle, lumière et particules (le titan de lave : basalte fissuré et braises).
+func _decorate(_model: Node3D) -> void:
 	# socle de basalte fissuré + lueur
 	var rock := Mats.col(Color(0.12, 0.09, 0.09), 1.0)
 	Mats.cylinder(self, 3.6, 4.6, 0.8, rock, Vector3(0, 0.1, 0), Vector3.ZERO, 10)
@@ -121,6 +126,20 @@ func _ready() -> void:
 	q.material = pm
 	p.mesh = q
 	add_child(p)
+
+
+## Couche de « peau » ajoutée sur le modèle (lave ici ; nuage pour le colosse des nuées).
+func _skin() -> StandardMaterial3D:
+	return _lava()
+
+
+func _eye_color() -> Color:
+	return Color(1.0, 0.5, 0.1)
+
+
+## Couleur des projectiles et des impacts.
+func _tint() -> Color:
+	return Color(1.0, 0.45, 0.1)
 
 
 static func _lava() -> StandardMaterial3D:
@@ -164,7 +183,7 @@ func _process(delta: float) -> void:
 		flash_t -= delta
 		if flash_t <= 0.0:
 			for mi in meshes:
-				mi.material_overlay = _lava()
+				mi.material_overlay = _skin()
 	if frost_stacks > 0.0:
 		frost_decay_t -= delta
 		if frost_decay_t <= 0.0:
@@ -266,6 +285,7 @@ func _launch_fireball() -> void:
 	aim += Vector3(randf_range(-0.6, 0.6), randf_range(-0.2, 0.4), randf_range(-0.6, 0.6))
 	var fb := Fireball.new()
 	fb.main = main
+	fb.tint = _tint()
 	fb.velocity = (aim - from).normalized() * FIREBALL_SPEED
 	main.add_child(fb)
 	fb.global_position = from
@@ -274,23 +294,24 @@ func _launch_fireball() -> void:
 
 class Fireball extends Node3D:
 	var main
+	var tint := Color(1.0, 0.45, 0.1)
 	var velocity := Vector3.ZERO
 	var life := 10.0
 
 	func _ready() -> void:
-		Mats.sphere(self, 0.55, Mats.col(Color(1.0, 0.45, 0.1), 0.5, 6.0), Vector3.ZERO, 10)
-		Mats.sphere(self, 0.85, _halo(), Vector3.ZERO, 10)
+		Mats.sphere(self, 0.55, Mats.col(tint, 0.5, 6.0), Vector3.ZERO, 10)
+		Mats.sphere(self, 0.85, _halo(tint), Vector3.ZERO, 10)
 		var l := OmniLight3D.new()
-		l.light_color = Color(1.0, 0.5, 0.15)
+		l.light_color = tint.lightened(0.1)
 		l.light_energy = 3.0
 		l.omni_range = 7.0
 		add_child(l)
 
-	static func _halo() -> StandardMaterial3D:
+	static func _halo(c: Color) -> StandardMaterial3D:
 		var m := StandardMaterial3D.new()
 		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-		m.albedo_color = Color(0.6, 0.18, 0.03)
+		m.albedo_color = c * 0.55
 		return m
 
 	func _physics_process(delta: float) -> void:
@@ -327,7 +348,7 @@ class Fireball extends Node3D:
 		for p in main.players:
 			if not p.dead and p.global_position.distance_to(pos) < 2.6:
 				p.take_damage(FIREBALL_DAMAGE * 0.5)
-		main.spawn_impact(pos, Vector3.UP, Color(1.0, 0.45, 0.1), 18, 1.6)
+		main.spawn_impact(pos, Vector3.UP, tint, 18, 1.6)
 		Sfx.play_3d("break", pos, 0.0, 1.5)
 		queue_free()
 
@@ -422,18 +443,26 @@ func _eruptions() -> void:
 				var a := randf() * TAU
 				off = Vector3(cos(a), 0, sin(a)) * randf_range(3.0, 7.0)
 			var pos: Vector3 = p.global_position + off
-			pos.y = 0.0
 			if Vector2(pos.x - global_position.x, pos.z - global_position.z).length() < 5.0:
 				continue
-			var e := Eruption.new()
-			e.main = main
-			e.delay = ERUPT_WARN + i * 0.15
-			main.add_child(e)
-			e.global_position = main.clamp_to_area(pos)
+			_make_eruption(pos, ERUPT_WARN + i * 0.15)
+
+
+## Cercle d'alerte puis frappe (lave pour le titan, éclair pour le colosse des nuées).
+func _make_eruption(pos: Vector3, delay: float, lightning := false) -> void:
+	pos.y = main._floor_y(pos)
+	var e := Eruption.new()
+	e.main = main
+	e.delay = delay
+	e.lightning = lightning
+	main.add_child(e)
+	var c: Vector3 = main.clamp_to_area(pos)
+	e.global_position = Vector3(c.x, pos.y, c.z)
 
 
 class Eruption extends Node3D:
 	var main
+	var lightning := false
 	var delay := 1.6
 	var t := 0.0
 	var warn: MeshInstance3D
@@ -444,7 +473,7 @@ class Eruption extends Node3D:
 		warn_mat = StandardMaterial3D.new()
 		warn_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		warn_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		warn_mat.albedo_color = Color(1.0, 0.15, 0.05, 0.35)
+		warn_mat.albedo_color = Color(0.3, 0.6, 1.0, 0.35) if lightning else Color(1.0, 0.15, 0.05, 0.35)
 		warn = Mats.cylinder(self, ERUPT_RADIUS, ERUPT_RADIUS, 0.05, warn_mat, Vector3(0, 0.06, 0), Vector3.ZERO, 24)
 		warn.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
@@ -460,7 +489,18 @@ class Eruption extends Node3D:
 	func _erupt() -> void:
 		done = true
 		warn.visible = false
-		var col := Mats.cylinder(self, ERUPT_RADIUS * 0.7, ERUPT_RADIUS, 9.0, Mats.col(Color(1.0, 0.4, 0.05), 0.5, 5.0), Vector3(0, 4.5, 0), Vector3.ZERO, 12)
+		var col: MeshInstance3D
+		if lightning:
+			# éclair : colonne fine et très lumineuse qui tombe du ciel
+			col = Mats.cylinder(self, 0.35, 0.6, 40.0, Mats.col(Color(0.75, 0.9, 1.0), 0.3, 9.0), Vector3(0, 20.0, 0), Vector3.ZERO, 8)
+			var fl := OmniLight3D.new()
+			fl.light_color = Color(0.7, 0.85, 1.0)
+			fl.light_energy = 6.0
+			fl.omni_range = 12.0
+			fl.position.y = 2.0
+			add_child(fl)
+		else:
+			col = Mats.cylinder(self, ERUPT_RADIUS * 0.7, ERUPT_RADIUS, 9.0, Mats.col(Color(1.0, 0.4, 0.05), 0.5, 5.0), Vector3(0, 4.5, 0), Vector3.ZERO, 12)
 		col.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		col.scale = Vector3(1, 0.05, 1)
 		var tw := create_tween()
@@ -472,13 +512,13 @@ class Eruption extends Node3D:
 			if p.dead:
 				continue
 			var d := Vector2(p.global_position.x - pos.x, p.global_position.z - pos.z).length()
-			if d < ERUPT_RADIUS and p.global_position.y < 3.5:
+			if d < ERUPT_RADIUS and p.global_position.y - pos.y < 3.5:
 				p.take_damage(ERUPT_DAMAGE)
 				p.velocity.y = 9.0
 		for st in main.structures.values():
 			if is_instance_valid(st) and st.global_position.distance_to(pos + Vector3.UP) < ERUPT_RADIUS + 1.5:
 				st.take_damage(ERUPT_STRUCT_DAMAGE)
-		main.spawn_impact(pos + Vector3.UP * 0.5, Vector3.UP, Color(1.0, 0.45, 0.1), 26, 2.2)
+		main.spawn_impact(pos + Vector3.UP * 0.5, Vector3.UP, Color(0.75, 0.9, 1.0) if lightning else Color(1.0, 0.45, 0.1), 26, 2.2)
 		Sfx.play_3d("break", pos, 3.0, 0.6)
 
 
@@ -569,9 +609,9 @@ func die() -> void:
 	collision_layer = 0
 	_kill_summons()
 	if main:
-		main.spawn_resource_drop("bone_pile", 1, global_position + Vector3(6.0, 0, 0), null)
+		_drop_loot()
 	for mi in meshes:
-		mi.material_overlay = _lava()
+		mi.material_overlay = _skin()
 	anim.play("Death_A" if anim.has_animation("Death_A") else "Death_C_Skeletons", 0.1, 0.6)
 	Sfx.play("win")
 	var tw := create_tween()
@@ -582,3 +622,8 @@ func die() -> void:
 	tw.tween_property(visual, "position:y", -HEIGHT * 0.6, 2.0)
 	tw.tween_callback(queue_free)
 	defeated.emit()
+
+
+## Butin à la mort : un tas d'os imposant (le colosse des nuées en laisse 3).
+func _drop_loot() -> void:
+	main.spawn_resource_drop("bone_pile", 1, global_position + Vector3(6.0, 0, 0), null)
