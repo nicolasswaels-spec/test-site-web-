@@ -34,7 +34,7 @@ func _skin() -> StandardMaterial3D:
 		_cloud_skin = StandardMaterial3D.new()
 		_cloud_skin.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		_cloud_skin.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-		_cloud_skin.albedo_color = Color(0.22, 0.28, 0.42)
+		_cloud_skin.albedo_color = Color(0.06, 0.09, 0.18)
 	return _cloud_skin
 
 
@@ -48,29 +48,30 @@ func _tint() -> Color:
 
 ## Socle de nuage, nuages accrochés au corps (épaules, tête, cage thoracique), brume et lumière froide.
 func _decorate(model: Node3D) -> void:
-	var cm := Mats.col(Color(0.9, 0.93, 1.0), 1.0, 0.25)
-	var shade := Mats.col(Color(0.72, 0.78, 0.95), 1.0, 0.15)
+	var cm := Mats.col(Color(0.86, 0.9, 1.0), 1.0, 0.12)
+	var shade := Mats.col(Color(0.55, 0.62, 0.86), 1.0, 0.08)
 	for i in 10:
 		var a := TAU * i / 10.0
 		Mats.sphere(self, randf_range(1.4, 2.2), cm if i % 3 else shade, Vector3(cos(a) * 3.6, 0.2, sin(a) * 3.6), 10).scale = Vector3(1, 0.6, 1)
 	var sk := model.find_child("Skeleton3D", true, false) as Skeleton3D
 	if sk:
-		for bone in [["chest", 0.55, 5], ["head", 0.45, 4], ["upperarm.l", 0.35, 3], ["upperarm.r", 0.35, 3], ["hips", 0.4, 3]]:
+		# (tailles en unités du modèle, agrandi ~5× : de petits nuages dans la cage thoracique et sur les os)
+		for bone in [["chest", 0.2, 6], ["head", 0.14, 4], ["upperarm.l", 0.12, 3], ["upperarm.r", 0.12, 3], ["hips", 0.15, 3], ["lowerarm.l", 0.1, 2], ["lowerarm.r", 0.1, 2]]:
 			var ba := BoneAttachment3D.new()
 			ba.bone_name = bone[0]
 			sk.add_child(ba)
 			for k in bone[2]:
-				var off := Vector3(randf_range(-0.25, 0.25), randf_range(-0.1, 0.35), randf_range(-0.2, 0.2))
+				var off := Vector3(randf_range(-0.18, 0.18), randf_range(-0.05, 0.3), randf_range(-0.15, 0.15))
 				Mats.sphere(ba, bone[1] * randf_range(0.6, 1.0), cm if k % 2 == 0 else shade, off, 8)
 	var l := OmniLight3D.new()
 	l.light_color = Color(0.7, 0.85, 1.0)
-	l.light_energy = 3.0
-	l.omni_range = 24.0
-	l.position = Vector3(0, 7.0, 2.0)
+	l.light_energy = 1.2
+	l.omni_range = 20.0
+	l.position = Vector3(0, 6.0, 5.0)
 	add_child(l)
 	# brume qui s'échappe du corps
 	var p := CPUParticles3D.new()
-	p.amount = 50
+	p.amount = 24
 	p.lifetime = 3.0
 	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
 	p.emission_box_extents = Vector3(1.8, HEIGHT * 0.4, 1.2)
@@ -80,15 +81,15 @@ func _decorate(model: Node3D) -> void:
 	p.gravity = Vector3(0, 0.4, 0)
 	p.initial_velocity_min = 0.3
 	p.initial_velocity_max = 1.0
-	p.scale_amount_min = 2.0
-	p.scale_amount_max = 4.0
+	p.scale_amount_min = 1.0
+	p.scale_amount_max = 2.0
 	var q := QuadMesh.new()
 	q.size = Vector2(0.4, 0.4)
 	var pm := StandardMaterial3D.new()
 	pm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	pm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 	pm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	pm.albedo_color = Color(0.92, 0.95, 1.0, 0.5)
+	pm.albedo_color = Color(0.92, 0.95, 1.0, 0.3)
 	q.material = pm
 	p.mesh = q
 	add_child(p)
