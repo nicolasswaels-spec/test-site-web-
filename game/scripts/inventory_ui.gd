@@ -530,8 +530,9 @@ func _build_skills() -> Control:
 				show_page(2)
 			var b := _tile(canvas, "s:" + id, "", sk["name"], Vector2(node_w, node_h), bg, pick, st == "need_parent")
 			b.icon = null
-			b.add_theme_font_size_override("font_size", 11 if (sk["name"] as String).length() > 10 else 12)
+			b.add_theme_font_size_override("font_size", 10 if (sk["name"] as String).length() > 9 else 12)
 			b.autowrap_mode = TextServer.AUTOWRAP_WORD
+			b.clip_text = false
 			var border := UI.YELLOW if id == sel_skill else (Color(0.5, 1.0, 0.5) if st == "ready" else Color(1, 1, 1, 0.2))
 			b.add_theme_stylebox_override("normal", _flat(bg, border, 3 if id == sel_skill or st == "ready" else 2))
 			var pos: Vector2 = sk["pos"]
