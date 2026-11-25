@@ -1,58 +1,54 @@
 extends RefCounted
 ## Logique commune des cibles de récolte (arbres et rochers).
-## Coup sur une cible : +50 % de ressources sur ce coup.
-## Bonus final × (1 + 3 × cibles touchées / cibles possibles) : toutes touchées = bonus ×4.
+## Au 1er coup de hache, 3 cibles apparaissent en même temps sur la ressource.
+## Coup sur une cible : +50 % de ressources sur ce coup (la cible disparaît).
+## Ressource terminée : gain final +60 % par cible touchée (3 cibles = +180 %, soit ×2,8).
 
 const WeakSpot = preload("res://scripts/weak_spot.gd")
-const START_RADIUS := 0.32
-const SHRINK := 0.85
-const MIN_RADIUS := 0.13
+const SPOT_COUNT := 3
+const SPOT_RADIUS := 0.26
+const HIT_BONUS := 1.5         # +50 % sur un coup qui touche une cible
+const FINAL_PER_HIT := 0.6     # +60 % sur le gain final par cible touchée
 
-var spot: Node3D = null
-var shown := 0
+var spots: Array = []
 var hits := 0
-var swings := 0     # coups de hache reçus (le 1er fait apparaître la 1re cible)
-var radius := START_RADIUS
+var spawned := false
 
 
-## À appeler à chaque coup de hache, avec le point d'impact. Renvoie vrai si la cible est touchée.
+## À appeler à chaque coup de hache, avec le point d'impact. Renvoie vrai si une cible est touchée.
 func register_hit(hit_pos: Vector3) -> bool:
-	swings += 1
-	if spot and is_instance_valid(spot) and hit_pos != Vector3.INF and spot.is_hit(hit_pos):
-		hits += 1
-		spot.pop()
-		spot = null
-		Sfx.play_3d("headshot", hit_pos, 2.0, 1.2)
-		return true
+	if hit_pos == Vector3.INF:
+		return false
+	for s in spots:
+		if is_instance_valid(s) and s.is_hit(hit_pos):
+			hits += 1
+			spots.erase(s)
+			s.pop()
+			Sfx.play_3d("headshot", hit_pos, 2.0, 1.2)
+			return true
 	return false
 
 
-## Fait apparaître une nouvelle cible (plus petite) si aucune n'est active.
-func ensure_spot(parent: Node3D, pos: Vector3, normal: Vector3) -> void:
-	if spot and is_instance_valid(spot):
-		return
-	spot = WeakSpot.new()
-	parent.add_child(spot)
-	spot.setup(pos, normal, radius)
-	shown += 1
-	radius = maxf(radius * SHRINK, MIN_RADIUS)
+## Vrai tant que les cibles n'ont pas encore été posées (1er coup).
+func needs_spots() -> bool:
+	return not spawned
 
 
-## Part des cibles touchées parmi toutes celles qu'on aurait pu toucher
-## (chaque coup après le premier est une occasion).
-const HIT_BONUS := 1.5         # +50 % sur un coup qui touche la cible
-const FINAL_MAX_BONUS := 3.0   # +300 % si toutes les cibles sont touchées (×4)
+## Pose une cible (pos sur la surface, normal vers l'extérieur).
+func add_spot(parent: Node3D, pos: Vector3, normal: Vector3) -> void:
+	spawned = true
+	var s := WeakSpot.new()
+	parent.add_child(s)
+	s.setup(pos, normal, SPOT_RADIUS)
+	spots.append(s)
 
 
 func final_mult() -> float:
-	return 1.0 + FINAL_MAX_BONUS * ratio()
-
-
-func ratio() -> float:
-	return clampf(float(hits) / float(swings - 1), 0.0, 1.0) if swings > 1 else 0.0
+	return 1.0 + FINAL_PER_HIT * hits
 
 
 func clear() -> void:
-	if spot and is_instance_valid(spot):
-		spot.queue_free()
-	spot = null
+	for s in spots:
+		if is_instance_valid(s):
+			s.queue_free()
+	spots.clear()

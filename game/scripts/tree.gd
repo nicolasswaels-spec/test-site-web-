@@ -6,7 +6,7 @@ const Nature = preload("res://scripts/nature.gd")
 const Harvest = preload("res://scripts/harvest.gd")
 
 const WOOD_PER_HIT := 15
-const WOOD_FELL := 40          # bois du dernier coup, multiplié par le bonus des cibles (jusqu'à ×3)
+const WOOD_FELL := 40          # bois du dernier coup, +60 % par cible touchée (jusqu'à ×2,8)
 
 var kind := 0
 var species := 0   # 0 sapin, 1 érable, 2 bouleau
@@ -67,10 +67,18 @@ func chop(damage: float, hit_pos := Vector3.INF) -> int:
 		harvest.clear()
 		_fall()
 		return bonus
-	# nouvelle cible quelque part sur le tronc (pas forcément face au joueur)
-	var a := randf() * TAU
-	var n := Vector3(cos(a), 0.0, sin(a))
-	harvest.ensure_spot(self, global_position + n * (trunk_radius + 0.16) + Vector3.UP * randf_range(0.7, 2.0), n)
+	# 1er coup : 3 cibles d'un coup, réparties autour du tronc (une vers le joueur, deux sur les côtés)
+	if harvest.needs_spots():
+		var base := randf() * TAU
+		if hit_pos != Vector3.INF:
+			var d := hit_pos - global_position
+			base = atan2(d.z, d.x)
+		var heights := [randf_range(0.6, 1.0), randf_range(1.2, 1.6), randf_range(1.8, 2.3)]
+		heights.shuffle()
+		for k in harvest.SPOT_COUNT:
+			var a := base + deg_to_rad([0.0, -75.0, 75.0][k] + randf_range(-15.0, 15.0))
+			var n := Vector3(cos(a), 0.0, sin(a))
+			harvest.add_spot(self, global_position + n * (trunk_radius + 0.16) + Vector3.UP * heights[k], n)
 	return int(round(WOOD_PER_HIT * (harvest.HIT_BONUS if last_target_hit else 1.0)))
 
 

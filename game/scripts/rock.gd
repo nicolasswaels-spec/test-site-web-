@@ -5,7 +5,7 @@ const Nature = preload("res://scripts/nature.gd")
 const Harvest = preload("res://scripts/harvest.gd")
 
 const STONE_PER_HIT := 10
-const STONE_BREAK := 30       # pierre du dernier coup, multipliée par le bonus des cibles (jusqu'à ×2)
+const STONE_BREAK := 30       # pierre du dernier coup, multipliée par le bonus des cibles (+60 % par cible touchée, jusqu'à ×2,8)
 
 var variant := 1
 var rock_scale := 2.0
@@ -65,16 +65,22 @@ func mine(damage: float, hit_pos := Vector3.INF) -> int:
 		harvest.clear()
 		_break()
 		return bonus
-	# nouvelle cible ailleurs sur le rocher, posée sur sa surface réelle (lancer de rayon)
-	var center := global_position + col_center
-	for attempt in 8:
-		var a := randf() * TAU
-		var d := Vector3(cos(a), randf_range(0.1, 0.7), sin(a)).normalized()
-		var q := PhysicsRayQueryParameters3D.create(center + d * (col_radius * 3.0 + 2.0), center, 16)
-		var r := get_world_3d().direct_space_state.intersect_ray(q)
-		if not r.is_empty() and r.collider == self:
-			harvest.ensure_spot(self, r.position + r.normal * 0.05, r.normal)
-			break
+	# 1er coup : 3 cibles d'un coup, posées sur la surface réelle du rocher (lancers de rayon)
+	if harvest.needs_spots():
+		var center := global_position + col_center
+		var base := randf() * TAU
+		if hit_pos != Vector3.INF:
+			var hd := hit_pos - center
+			base = atan2(hd.z, hd.x)
+		for k in harvest.SPOT_COUNT:
+			for attempt in 8:
+				var a := base + deg_to_rad([0.0, -70.0, 70.0][k] + randf_range(-20.0, 20.0))
+				var d := Vector3(cos(a), randf_range(0.1, 0.7), sin(a)).normalized()
+				var q := PhysicsRayQueryParameters3D.create(center + d * (col_radius * 3.0 + 2.0), center, 16)
+				var r := get_world_3d().direct_space_state.intersect_ray(q)
+				if not r.is_empty() and r.collider == self:
+					harvest.add_spot(self, r.position + r.normal * 0.05, r.normal)
+					break
 	return int(round(STONE_PER_HIT * (harvest.HIT_BONUS if last_target_hit else 1.0)))
 
 

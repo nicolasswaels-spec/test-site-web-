@@ -30,8 +30,8 @@ The Pathless).
 - Zone 1 : une sphère à défendre, 1 min 30 de préparation puis 10 vagues de squelettes
   (pause de 60 s entre les vagues, lancer en avance reporte 50 % du temps restant).
 - Après la 10ᵉ vague : un couloir s'ouvre au nord vers la zone 2 (autre biome, 2ᵉ sphère,
-  10 vagues plus dures).
-- Récolte : bois (arbres) et pierre (rochers, dès la vague 5) avec des cibles bonus à viser ;
+  10 vagues plus dures, qui démarrent seules au bout de 2 min).
+- Récolte : bois (arbres) et pierre (rochers, dès la vague 5) avec 3 cibles bonus qui apparaissent au 1er coup (+50 % sur le coup, +60 % du gain final par cible) ;
   pièces métalliques au sol (barbelés).
 - Construction grille 4 m : murs, sols, rampes, en bois ou pierre ; réparation, 3 niveaux
   d'amélioration, modifications (porte, fenêtre, trappe), barbelés.
@@ -65,7 +65,7 @@ scripts/
   inventory_ui.gd      inventaire (pages Résumé / Améliorations)
   menu.gd              menu principal
   orb.gd               sphère à défendre
-  tree.gd, rock.gd     ressources à la hache ; harvest.gd = bonus des cibles ; weak_spot.gd = cible
+  tree.gd, rock.gd     ressources à la hache ; harvest.gd = cibles et bonus (HIT_BONUS, FINAL_PER_HIT) ; weak_spot.gd = cible
   chest.gd             coffres et tirage du butin
   pickup.gd            pièces métalliques ; resource_drop.gd = ressources lâchées au sol
   nature.gd            placement des modèles de nature
@@ -81,7 +81,7 @@ assets/                modèles 3D CC0 : nature (Quaternius), skeletons, chests,
 
 ## Où régler l'équilibrage
 
-- `scripts/main.gd` (en tête) : durées (START_TIME 90 s, BREAK_TIME 60 s, CARRY_RATIO 0,5),
+- `scripts/main.gd` (en tête) : durées (START_TIME 90 s, BREAK_TIME 60 s, ZONE2_TIME 120 s, CARRY_RATIO 0,5),
   vies (OUT_WAIT_BASE, OUT_WAIT_STEP, REVIVE_INVULN, OUT_RESPAWN_DIST), taille des zones,
   nombre de vagues ; `difficulty()`, `_start_wave`, `_spawn_zombie` : nombre, PV, vitesse ennemis.
 - `scripts/player.gd` : GUNS (chargeur, cadence, dégâts), cadence de la hache (`swing_cd`),

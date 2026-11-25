@@ -143,6 +143,7 @@ var spawn_interval := 1.0
 var countdown := 0.0
 var carry_time := 0.0   # temps de préparation non utilisé, reporté à la pause suivante
 const START_TIME := 90.0       # mode classique : la défense démarre seule au bout de 1 min 30
+const ZONE2_TIME := 120.0      # temps entre les 2 sphères (+ report éventuel)
 const CARRY_RATIO := 0.5       # part du temps restant reportée quand on lance la vague en avance
 const REVIVE_INVULN := 5.0
 const OUT_WAIT_BASE := 5.0     # sans vie : attente de base, +2 s à chaque nouvelle mort
@@ -888,14 +889,24 @@ func _process(delta: float) -> void:
 			if remaining == 0:
 				_end_wave()
 		"explore":
-			hud.set_wave("EXPLORATION", "La forêt s'est ouverte au nord : rejoins la 2e sphère (suis la lumière)")
-			if near_orb:
+			var go := false
+			if Settings.test_mode:
+				hud.set_wave("EXPLORATION", "La forêt s'est ouverte au nord : rejoins la 2e sphère (suis la lumière)")
+			else:
+				countdown -= delta
+				hud.set_wave("2e SPHÈRE : DÉFENSE DANS %d s" % int(ceil(countdown)), "La forêt s'est ouverte au nord : rejoins la 2e sphère (suis la lumière)")
+				go = countdown <= 0.0 and zone2_unlocked
+			if near_orb and zone == 2:
 				prompt = "[E / X] LANCER LE COMBAT (2e SPHÈRE)"
 				if interact:
-					if orb2_beacon:
-						orb2_beacon.queue_free()
-						orb2_beacon = null
-					_start_wave(1)
+					if not Settings.test_mode:
+						_carry_over(countdown)
+					go = true
+			if go:
+				if orb2_beacon:
+					orb2_beacon.queue_free()
+					orb2_beacon = null
+				_start_wave(1)
 		"free":
 			hud.set_wave("FORÊT LIBÉRÉE", "Les deux sphères sont sauves. Explore librement !")
 
@@ -1078,6 +1089,9 @@ func _end_wave() -> void:
 
 func _complete_zone1() -> void:
 	state = "explore"
+	countdown = ZONE2_TIME + carry_time
+	carry_time = 0.0
+	Music.play("game")
 	Sfx.play("win")
 	for p in players:
 		p.wood = mini(p.wood + 100, p.RES_MAX)
@@ -1118,7 +1132,7 @@ func _unlock_zone2() -> void:
 	orb2_beacon.position = ZONE2_CENTER + ORB_OFFSET
 	add_child(orb2_beacon)
 	rebuild_obstacles()
-	hud.show_notice("NOUVELLE ZONE : la forêt d'érables pourpres.\nUne 2e sphère t'attend au nord (suis la colonne de lumière).\nConstruis autour d'elle, puis lance ses vagues avec E / X.\nLes squelettes n'attaqueront plus que cette sphère.", 10.0)
+	hud.show_notice("NOUVELLE ZONE : la forêt d'érables pourpres.\nUne 2e sphère t'attend au nord (suis la colonne de lumière).\nLes vagues démarrent seules au bout de 2 min (ou plus tôt avec E / X).\nLes squelettes n'attaqueront plus que cette sphère.", 10.0)
 
 
 func craft_rifle() -> void:
