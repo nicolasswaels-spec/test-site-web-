@@ -434,7 +434,7 @@ func _process(delta: float) -> void:
 
 func update_player(p) -> void:
 	hp_bar.value = p.hp
-	hp_label.text = "%d PV" % int(ceil(p.hp))
+	hp_label.text = "%d PV      VIES %d" % [int(ceil(p.hp)), p.lives]
 	wood_label.text = "BOIS %d" % p.wood
 	stone_label.text = ("   PIERRE %d" % p.stone) if (p.main and p.main.stone_unlocked) else ""
 	coin_label.text = ("   PIÈCES %d" % p.coins) if (p.coins > 0 or not p.first_coin) else ""

@@ -142,6 +142,12 @@ var spawn_timer := 0.0
 var spawn_interval := 1.0
 var countdown := 0.0
 var carry_time := 0.0   # temps de préparation non utilisé, reporté à la pause suivante
+const START_TIME := 90.0       # mode classique : la défense démarre seule au bout de 1 min 30
+const CARRY_RATIO := 0.5       # part du temps restant reportée quand on lance la vague en avance
+const REVIVE_INVULN := 5.0
+const OUT_WAIT_BASE := 5.0     # sans vie : attente de base, +2 s à chaque nouvelle mort
+const OUT_WAIT_STEP := 2.0
+const OUT_RESPAWN_DIST := 25.0
 var rifle_craftable := false
 var respawn_t := 0.0
 var spawn_angles: Array[float] = []
@@ -214,6 +220,8 @@ func _ready() -> void:
 		_spawn_chest(Vector3.ZERO, MAP_RADIUS, false, 1)
 
 	refresh_mouse()
+	countdown = START_TIME
+	Music.play("game")
 	if Settings.test_mode:
 		hud.show_notice("MODE TEST : toutes les armes (inventaire pour choisir les 2 équipées)\net ressources illimitées.", 6.0)
 	hud.show_center("ZONE ZÉRO", "Coupe du bois (2), construis (3), puis active la sphère (E)", 4.0)
@@ -845,10 +853,19 @@ func _process(delta: float) -> void:
 	var prompt := ""
 	match state:
 		"idle":
-			hud.set_wave("PRÉPARATION", "Approche-toi de la sphère et appuie sur E pour lancer le combat")
-			if near_orb:
+			if Settings.test_mode:
+				hud.set_wave("PRÉPARATION", "Approche-toi de la sphère et appuie sur E pour lancer le combat")
+			else:
+				# mode classique : la défense se lance seule au bout de 1 min 30
+				countdown -= delta
+				hud.set_wave("DÉFENSE DANS %d s" % int(ceil(countdown)), "Coupe du bois, construis autour de la sphère (E pour lancer plus tôt)")
+				if countdown <= 0.0:
+					_start_wave(1)
+			if near_orb and state == "idle":
 				prompt = "[E / X] LANCER LE COMBAT"
 				if interact:
+					if not Settings.test_mode:
+						_carry_over(countdown)
 					_start_wave(1)
 		"break":
 			countdown -= delta
@@ -856,10 +873,8 @@ func _process(delta: float) -> void:
 			if near_orb:
 				prompt = "[E / X] LANCER LA VAGUE SUIVANTE"
 				if interact:
-					carry_time = countdown
+					_carry_over(countdown)
 					countdown = 0.0
-					if carry_time > 1.0:
-						hud.flash_message("%d s de préparation reportées à la prochaine pause" % int(carry_time))
 			if countdown <= 0.0:
 				_start_wave(wave + 1)
 		"wave":
@@ -896,10 +911,22 @@ func _process(delta: float) -> void:
 						ch.open(p)
 					break
 		if p.dead and state != "lost":
-			p.respawn_t -= delta
-			pr = "Réapparition dans %d..." % int(ceil(p.respawn_t))
-			if p.respawn_t <= 0.0:
-				p.respawn(orb.global_position + Vector3(rng.randf_range(-2, 2) + i * 1.5, 0.5, 6.0))
+			if p.can_revive:
+				# il reste des vies : retour immédiat sur place (X / E)
+				pr = "[E / X] REVENIR ICI   (%d vie%s)" % [p.lives, "s" if p.lives > 1 else ""]
+				if Input.is_action_just_pressed(p.a("interact")) and not p.input_blocked():
+					p.lives -= 1
+					var spot: Vector3 = p.global_position
+					p.respawn(Vector3(spot.x, maxf(spot.y, 0.0) + 0.3, spot.z), REVIVE_INVULN)
+					knockback_around(spot, 7.0, 10.0)
+					p.hud.show_center("DE RETOUR !", "Invulnérable 5 s · %d vie%s restante%s" % [p.lives, "s" if p.lives > 1 else "", "s" if p.lives > 1 else ""], 2.0)
+			else:
+				p.respawn_t -= delta
+				pr = "Plus de vie · réapparition dans %d..." % int(ceil(p.respawn_t))
+				if p.respawn_t <= 0.0:
+					var a := rng.randf() * TAU
+					var spot := clamp_to_area(orb.global_position + Vector3(cos(a), 0, sin(a)) * OUT_RESPAWN_DIST)
+					p.respawn(Vector3(spot.x, 0.5, spot.z))
 		huds[i].set_prompt(pr)
 
 	orb_alert_t -= delta
@@ -922,6 +949,7 @@ func _spawn_radius() -> float:
 func _start_wave(n: int) -> void:
 	wave = n
 	state = "wave"
+	Music.play("battle")
 	var d := difficulty()
 	# zone 1 (au pistolet) : beaucoup moins de squelettes ; zone 2 : comme avant
 	to_spawn = (3 + (d - 1) * 2) if zone == 1 else (5 + (d - 1) * 3)
@@ -1035,6 +1063,7 @@ func _end_wave() -> void:
 			hud.show_center("VICTOIRE !", "La 2e sphère est sauve. La forêt t'appartient.", 5.0)
 		return
 	state = "break"
+	Music.play("game")
 	countdown = BREAK_TIME + carry_time
 	carry_time = 0.0
 	for p in players:
@@ -1233,8 +1262,33 @@ func _on_orb_destroyed() -> void:
 
 
 func _on_player_died(p) -> void:
-	p.respawn_t = RESPAWN_TIME
-	p.hud.show_center("ÉLIMINÉ", "La sphère tient toujours... pour l'instant.", 2.0)
+	if p.lives > 0:
+		p.can_revive = true
+		p.hud.show_center("ÉLIMINÉ", "Appuie sur E / X pour revenir ici (%d vie%s)" % [p.lives, "s" if p.lives > 1 else ""], 2.5)
+	else:
+		p.can_revive = false
+		p.respawn_t = OUT_WAIT_BASE + OUT_WAIT_STEP * p.out_deaths
+		p.out_deaths += 1
+		p.hud.show_center("ÉLIMINÉ", "Plus de vie : réapparition plus loin dans %d s" % int(p.respawn_t), 2.5)
+
+
+## Lancer la vague en avance : la moitié du temps restant est reportée à la pause suivante.
+func _carry_over(remaining: float) -> void:
+	carry_time = remaining * CARRY_RATIO
+	if carry_time > 1.0:
+		hud.flash_message("%d s de préparation reportées à la prochaine pause" % int(carry_time))
+
+
+## Repousse les squelettes autour d'un point (retour d'un joueur).
+func knockback_around(pos: Vector3, radius: float, strength: float) -> void:
+	for z in get_tree().get_nodes_in_group("zombie"):
+		var d: Vector3 = z.global_position - pos
+		d.y = 0.0
+		if d.length() < radius:
+			var dir := d.normalized() if d.length() > 0.1 else Vector3(1, 0, 0)
+			z.knockback(dir * strength * (1.0 - d.length() / radius * 0.5))
+	spawn_impact(pos + Vector3.UP, Vector3.UP, Color(0.6, 0.9, 1.0), 30, 2.5)
+	Sfx.play_3d("break", pos, 2.0, 1.4)
 
 
 # ------------------------------------------------------------------ joueurs et écran scindé

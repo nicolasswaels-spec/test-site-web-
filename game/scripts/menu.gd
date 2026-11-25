@@ -24,6 +24,7 @@ func _ready() -> void:
 	get_tree().paused = false
 	get_viewport().disable_3d = false
 	GameInput.set_builtin_ui_nav(true)
+	Music.play("menu")
 	GameInput.setup_player(0, true, -2)
 	Settings.coop = false
 	Settings.test_mode = false

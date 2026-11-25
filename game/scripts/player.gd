@@ -51,6 +51,11 @@ var index := 0
 var kbm := true          # clavier + souris
 var pad := -2            # -2 toutes les manettes, -1 aucune, sinon numéro de manette
 var respawn_t := 0.0
+## Vies : avec une vie, on revient sur place (X / E) ; sans vie, attente qui s'allonge.
+const START_LIVES := 5
+var lives := START_LIVES
+var can_revive := false
+var out_deaths := 0
 var avatar: Node3D
 const PLAYER_COLORS := [Color(0.25, 0.55, 1.0), Color(1.0, 0.55, 0.15)]
 
@@ -1058,7 +1063,7 @@ func _build_cryo() -> void:
 ## Coup de hache en 4 temps : armé (on lève la hache en arrière), frappe rapide en arc,
 ## impact (petit arrêt + tremblement), puis retour en position.
 func _swing() -> void:
-	swing_cd = 1.15    # cadence réduite : viser les cibles devient plus rentable que taper vite
+	swing_cd = 0.9     # cadence réduite : viser les cibles devient plus rentable que taper vite
 	swinging = true
 	if swing_tween and swing_tween.is_valid():
 		swing_tween.kill()
@@ -1402,9 +1407,10 @@ func take_damage(amount: float) -> void:
 		died.emit()
 
 
-func respawn(pos: Vector3) -> void:
+func respawn(pos: Vector3, invuln := 3.0) -> void:
 	dead = false
-	invuln_t = 3.0
+	can_revive = false
+	invuln_t = invuln
 	hp = MAX_HP
 	mags = {W.PISTOL: gun_mag(W.PISTOL), W.RIFLE: gun_mag(W.RIFLE), W.CRYO: 0}
 	ammo = gun_mag(weapon) if _is_gun(weapon) else ammo

@@ -70,6 +70,8 @@ var has_waypoint := false
 var route_t := 0.0
 var route_noise := 0.0
 var stuck_t := 0.0
+var knock_t := 0.0
+var knock_vel := Vector3.ZERO
 var stuck_check_pos := Vector3.ZERO
 var stuck_obstacle = null
 const TRAP_SLOW := 0.8
@@ -173,6 +175,15 @@ func _physics_process(delta: float) -> void:
 	if not is_frozen() and flash_t <= 0.0 and meshes.size() > 0 and meshes[0].material_overlay == _frost():
 		for mi in meshes:
 			mi.material_overlay = null
+
+	# repoussé (retour d'un joueur) : on glisse en arrière sans rien faire d'autre
+	if knock_t > 0.0:
+		knock_t -= delta
+		velocity.x = knock_vel.x
+		velocity.z = knock_vel.z
+		knock_vel *= 0.9
+		move_and_slide()
+		return
 
 	# Gardien endormi : il attend qu'on approche
 	if guard and not awake:
@@ -437,6 +448,11 @@ func _wire_dps() -> float:
 	if main and main.has_method("wire_level"):
 		return Upg.wire_dps(main.wire_level("damage"))
 	return TRAP_DPS
+
+
+func knockback(v: Vector3) -> void:
+	knock_vel = v
+	knock_t = 0.45 if not is_boss else 0.2
 
 
 func trap_enter() -> void:
