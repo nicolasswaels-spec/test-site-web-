@@ -555,6 +555,8 @@ func die() -> void:
 	remove_from_group("zombie")
 	collision_layer = 0
 	_kill_summons()
+	if main:
+		main.spawn_resource_drop("bone_pile", 1, global_position + Vector3(6.0, 0, 0), null)
 	for mi in meshes:
 		mi.material_overlay = _lava()
 	anim.play("Death_A" if anim.has_animation("Death_A") else "Death_C_Skeletons", 0.1, 0.6)

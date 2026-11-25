@@ -109,6 +109,14 @@ var coins := 0
 var magic_wood := 0
 var magic_stone := 0
 const MAGIC_MAX := 99
+# os (visibles seulement dans l'inventaire) : leur usage viendra plus tard
+var bones := 0
+var big_bones := 0
+var arrow_bones := 0
+var bone_piles := 0
+## Type de ressource -> propriété du joueur
+const RES_PROPS := {"wood": "wood", "stone": "stone", "coins": "coins", "magic_wood": "magic_wood", "magic_stone": "magic_stone",
+	"bone": "bones", "big_bone": "big_bones", "arrow_bone": "arrow_bones", "bone_pile": "bone_piles"}
 var first_coin := true
 var build_mat := 0   # 0 bois, 1 pierre, 2 bois magique, 3 pierre magique
 var build_target = null
@@ -1342,35 +1350,21 @@ func _try_repair() -> void:
 
 ## Ajoute des ressources (bois, pierre, pièces) dans la limite du maximum. Renvoie la quantité prise.
 func add_resource(kind: String, amount: int) -> int:
-	var have: int = {"wood": wood, "stone": stone, "coins": coins, "magic_wood": magic_wood, "magic_stone": magic_stone}[kind]
+	var prop: String = RES_PROPS[kind]
+	var have: int = get(prop)
 	var take := mini(amount, (MAGIC_MAX if kind.begins_with("magic") else RES_MAX) - have)
-	match kind:
-		"wood":
-			wood += take
-		"stone":
-			stone += take
-		"coins":
-			coins += take
-		"magic_wood":
-			magic_wood += take
-		"magic_stone":
-			magic_stone += take
+	set(prop, have + take)
 	return take
 
 
 ## Dépose au sol, devant soi, une quantité d'une ressource.
 func drop_resource(kind: String, amount: int) -> void:
-	var have: int = {"wood": wood, "stone": stone, "coins": coins}[kind]
+	var prop: String = RES_PROPS[kind]
+	var have: int = get(prop)
 	amount = mini(amount, have)
 	if amount <= 0 or main == null:
 		return
-	match kind:
-		"wood":
-			wood -= amount
-		"stone":
-			stone -= amount
-		"coins":
-			coins -= amount
+	set(prop, have - amount)
 	var fwd := -global_transform.basis.z
 	main.spawn_resource_drop(kind, amount, global_position + Vector3(fwd.x, 0, fwd.z).normalized() * 1.6, self)
 
@@ -1385,6 +1379,21 @@ func _gain_magic(kind: String) -> void:
 		hud.show_notice(("+1 BOIS MAGIQUE !\nIl permet de construire 1 pièce (mur, sol ou rampe) couverte de mousse,\n5× plus solide qu'une pièce en bois améliorée au maximum." if wood_k else
 			"+1 PIERRE MAGIQUE !\nElle permet de construire 1 pièce (mur, sol ou rampe) couverte de mousse,\n5× plus solide qu'une pièce en pierre améliorée au maximum.") +
 			"\nChoisis-la en mode construction (V / Y). Réparation : jusqu'à 1000 %s." % ("bois" if wood_k else "pierre"), 8.0)
+
+
+func res_count(kind: String) -> int:
+	return get(RES_PROPS[kind])
+
+
+## Tas d'os imposant : se transforme en 6 os imposants + 10 os.
+func use_bone_pile() -> bool:
+	if bone_piles <= 0:
+		return false
+	bone_piles -= 1
+	add_resource("big_bone", 6)
+	add_resource("bone", 10)
+	Sfx.play("coin", 0.0, 0.6)
+	return true
 
 
 func collect_coin() -> void:

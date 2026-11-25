@@ -158,7 +158,6 @@ var ammo_label: Label
 var info_label: Label
 const RES_KINDS := ["wood", "magic_wood", "stone", "magic_stone", "coins"]
 var res_rows := {}     # type de ressource -> {row, label, pop}
-static var _icons := {}
 var build_prompt: Label
 var notice_label: Label
 var notice_t := 0.0
@@ -575,20 +574,8 @@ func hitmarker(head: bool) -> void:
 	hit.queue_redraw()
 
 
-## Icône de ressource (assets/ui/<type>.png) ; chargée brute si l'éditeur ne l'a pas encore importée.
 static func load_icon(kind: String) -> Texture2D:
-	if _icons.has(kind):
-		return _icons[kind]
-	var path := "res://assets/ui/%s.png" % kind
-	var tex: Texture2D = null
-	if ResourceLoader.exists(path):
-		tex = load(path)
-	else:
-		var img := Image.load_from_file(path)
-		if img:
-			tex = ImageTexture.create_from_image(img)
-	_icons[kind] = tex
-	return tex
+	return UI.icon(kind)
 
 
 ## Petit « +N » à gauche de la quantité qui vient d'augmenter.

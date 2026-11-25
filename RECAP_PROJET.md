@@ -47,6 +47,8 @@ The Pathless).
 - Vies : 5 par joueur, retour instantané sur place avec E / X ; sans vie, attente croissante
   (5 s, +2 s par mort) et réapparition à ~25 m de la sphère.
 - Coop local à 2 en écran scindé (clavier/souris + manette, ou deux manettes).
+- Os : os (50 % par squelette), os imposant (boss), os en flèche (archer), tas d'os imposant (titan) ;
+  visibles seulement dans l'inventaire, usage à définir.
 - Musique : fichiers à déposer dans `game/assets/music/` (`menu`, `game`, `battle` en mp3/ogg/wav).
 
 ## Organisation du code (`game/`)
@@ -67,7 +69,7 @@ scripts/
   upgrades.gd          TOUS les coûts et effets des améliorations
   hud.gd               interface d'un joueur (barres, minimap, pause, fin, navigation manette)
   hud_group.gd         diffuse les messages généraux aux HUD des deux joueurs
-  inventory_ui.gd      inventaire (pages Résumé / Améliorations)
+  inventory_ui.gd      inventaire en cases (ressources, os, armes + fiche d'actions) et page Améliorations
   menu.gd              menu principal
   titan.gd             titan de lave (boss de la zone volcanique : boules de feu, onde de choc, éruptions)
   orb.gd               sphère à défendre

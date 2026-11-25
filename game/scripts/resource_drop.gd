@@ -2,7 +2,8 @@ extends Node3D
 ## Ressources déposées au sol (bois, pierre ou pièces). N'importe quel joueur peut les ramasser.
 
 const Mats = preload("res://scripts/mats.gd")
-const NAMES := {"wood": "BOIS", "stone": "PIERRE", "coins": "PIÈCES"}
+const NAMES := {"wood": "BOIS", "stone": "PIERRE", "coins": "PIÈCES", "magic_wood": "BOIS MAGIQUE", "magic_stone": "PIERRE MAGIQUE",
+	"bone": "OS", "big_bone": "OS IMPOSANT", "arrow_bone": "OS EN FLÈCHE", "bone_pile": "TAS D'OS IMPOSANT"}
 
 var main
 var kind := "wood"
@@ -32,6 +33,8 @@ func _ready() -> void:
 			Mats.sphere(model, 0.18, st, Vector3(-0.12, 0.15, 0), 6)
 			Mats.sphere(model, 0.15, st, Vector3(0.14, 0.13, 0.05), 6)
 			Mats.sphere(model, 0.13, st, Vector3(0.0, 0.32, -0.02), 6)
+		"bone", "big_bone", "arrow_bone", "bone_pile":
+			_bone_model()
 		_:
 			var sack := Mats.col(Color(0.55, 0.42, 0.25))
 			var gold := Mats.col(Color(0.85, 0.65, 0.3), 0.3, 0.5)
@@ -48,6 +51,37 @@ func _ready() -> void:
 	label.position = Vector3(0, 0.95, 0)
 	add_child(label)
 	_update_label()
+
+
+## Os au sol : petits os blancs (plus gros / en tas selon le type), légère lueur pour les repérer.
+func _bone_model() -> void:
+	var bone := Mats.col(Color(0.93, 0.89, 0.78), 0.6, 0.25)
+	var sc: float = {"bone": 1.0, "big_bone": 1.7, "arrow_bone": 1.0, "bone_pile": 1.3}[kind]
+	var n := 4 if kind == "bone_pile" else 1
+	for i in n:
+		var a := i * 1.3
+		var b := Node3D.new()
+		var off := 0.18 if i > 0 else 0.0
+		b.position = Vector3(cos(a) * off, 0.12 + i * 0.08, sin(a) * off)
+		b.rotation = Vector3(0, a, PI * 0.5)
+		b.scale = Vector3.ONE * sc
+		model.add_child(b)
+		Mats.cylinder(b, 0.045, 0.045, 0.5, bone, Vector3.ZERO, Vector3.ZERO, 6)
+		for y in [-0.25, 0.25]:
+			for x in [-0.04, 0.04]:
+				Mats.sphere(b, 0.06, bone, Vector3(x, y, 0), 6)
+		if kind == "arrow_bone":
+			Mats.cylinder(b, 0.0, 0.07, 0.16, bone, Vector3(0, 0.33, 0), Vector3.ZERO, 4)
+	if kind == "bone_pile":
+		Mats.sphere(model, 0.2, bone, Vector3(0, 0.45, 0), 10)
+	if kind == "bone" or kind == "arrow_bone":
+		return   # pas de lumière pour les petits os (il peut y en avoir beaucoup)
+	var l := OmniLight3D.new()
+	l.light_color = Color(1.0, 0.85, 0.6)
+	l.light_energy = 1.6
+	l.omni_range = 2.5
+	l.position.y = 0.6
+	model.add_child(l)
 
 
 func _update_label() -> void:

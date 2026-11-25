@@ -1968,6 +1968,21 @@ func wire_level(branch: String) -> int:
 	return lvl
 
 
+## Os laissés par un squelette : 50 % de chance d'un os ; boss de vague : os imposant ;
+## archer : os en flèche. (Le titan laisse un tas d'os imposant.)
+const BONE_CHANCE := 0.5
+func drop_bones(z) -> void:
+	var kind := ""
+	if z.is_boss:
+		kind = "big_bone"
+	elif z.archer:
+		kind = "arrow_bone"
+	elif rng.randf() < BONE_CHANCE:
+		kind = "bone"
+	if kind != "":
+		spawn_resource_drop(kind, 1, z.global_position, null)
+
+
 func spawn_resource_drop(kind: String, amount: int, pos: Vector3, from_player) -> void:
 	var d := DropScript.new()
 	d.main = self

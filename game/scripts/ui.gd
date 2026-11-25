@@ -59,3 +59,21 @@ static func make_theme() -> Theme:
 	t.set_constant("outline_size", "Label", 6)
 	t.set_stylebox("panel", "PanelContainer", box(Color(0.05, 0.05, 0.15, 0.7), 10, 14.0, 10.0))
 	return t
+
+
+static var _icons := {}
+
+## Icône d'interface (assets/ui/<nom>.png) ; chargée brute si l'éditeur ne l'a pas encore importée.
+static func icon(name: String) -> Texture2D:
+	if _icons.has(name):
+		return _icons[name]
+	var path := "res://assets/ui/%s.png" % name
+	var tex: Texture2D = null
+	if ResourceLoader.exists(path):
+		tex = load(path)
+	else:
+		var img := Image.load_from_file(path)
+		if img:
+			tex = ImageTexture.create_from_image(img)
+	_icons[name] = tex
+	return tex

@@ -628,6 +628,8 @@ func _die() -> void:
 	for mi in meshes:
 		mi.material_overlay = null
 	died.emit(self)
+	if main and main.has_method("drop_bones"):
+		main.drop_bones(self)
 	Sfx.play_3d("zdie", global_position + Vector3.UP, 0.0, 0.7 if is_boss else 1.0)
 	anim.speed_scale = 1.0
 	anim.play(ANIM_DEATH, 0.1, 1.4)
