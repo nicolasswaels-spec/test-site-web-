@@ -7,8 +7,8 @@ const Upg = preload("res://scripts/upgrades.gd")
 
 signal died
 
-enum W { PISTOL, RIFLE, AXE, BUILD, CRYO }
-const WEAPON_NAMES := ["PISTOLET", "FUSIL D'ASSAUT", "HACHE", "CONSTRUCTION", "CANON CRYOGÉNIQUE"]
+enum W { PISTOL, RIFLE, AXE, BUILD, CRYO, SHOCK }
+const WEAPON_NAMES := ["PISTOLET", "FUSIL D'ASSAUT", "HACHE", "CONSTRUCTION", "CANON CRYOGÉNIQUE", "ONDE DE CHOC"]
 const RES_MAX := 9999
 const PIECE_NAMES := ["MUR", "SOL", "RAMPE"]
 
@@ -23,6 +23,7 @@ const GUNS := {
 	W.RIFLE: {"mag": 30, "interval": 0.1, "damage": 24.0, "reload": 1.6, "auto": true, "spread": 0.022, "kick": 0.011},
 	# rayon de glace continu : très faibles dégâts, ralentit (70 % de vitesse) et rend vulnérable (+10 %) pendant 3 s
 	W.CRYO: {"mag": 0, "interval": 0.1, "damage": 7.0, "reload": 0.0, "auto": true, "spread": 0.0, "kick": 0.0},
+	W.SHOCK: {"mag": 0, "interval": 4.0, "damage": 100.0, "reload": 0.0, "auto": false, "spread": 0.0, "kick": 0.0},
 }
 const MAG_SIZE := 30
 const FIRE_INTERVAL := 0.1
@@ -67,7 +68,9 @@ var rifle: Node3D          # arme à feu actuellement en main (pistolet ou fusil
 var gun_data := {}         # W -> {node, muzzle, flash, light, crystal, glow, hip, ads}
 var has_rifle := false
 var has_cryo := false
-var mags := {W.PISTOL: 12, W.RIFLE: 30, W.CRYO: 0}
+var has_shock := false
+var shock_cd := 0.0   # rechargement de l'onde de choc (indépendant des autres armes)
+var mags := {W.PISTOL: 12, W.RIFLE: 30, W.CRYO: 0, W.SHOCK: 0}
 var cryo_beam: MeshInstance3D
 var cryo_beam_t := 0.0
 ## Deux armes à feu équipées (choisies dans l'inventaire) ; la hache est toujours là.
@@ -183,6 +186,7 @@ func _ready() -> void:
 	_build_rifle()
 	_build_pistol()
 	_build_cryo()
+	_build_shock()
 	_build_axe()
 	_build_ghost()
 	_build_avatar()
@@ -214,6 +218,9 @@ func _build_arms() -> void:
 	var pg: Node3D = gun_data[W.PISTOL]["node"]
 	_add_arm(pg, Vector3(0, -0.1, 0.07), Vector3(0.1, -0.42, 0.35))
 	_add_arm(pg, Vector3(-0.035, -0.12, 0.05), Vector3(-0.2, -0.42, 0.25))
+	var sg: Node3D = gun_data[W.SHOCK]["node"]
+	_add_arm(sg, Vector3(0, -0.1, 0.1), Vector3(0.15, -0.42, 0.42))
+	_add_arm(sg, Vector3(0, -0.04, -0.22), Vector3(-0.22, -0.4, 0.0))
 	var cg: Node3D = gun_data[W.CRYO]["node"]
 	_add_arm(cg, Vector3(0, -0.13, 0.1), Vector3(0.15, -0.42, 0.42))
 	_add_arm(cg, Vector3(0, -0.06, -0.3), Vector3(-0.22, -0.4, 0.0))
@@ -576,7 +583,7 @@ func _pick_piece(p: int) -> void:
 
 
 func _is_gun(w: int) -> bool:
-	return w == W.PISTOL or w == W.RIFLE or w == W.CRYO
+	return w == W.PISTOL or w == W.RIFLE or w == W.CRYO or w == W.SHOCK
 
 
 func _cycle_weapon(dir: int) -> void:
@@ -608,6 +615,8 @@ func owned_guns() -> Array:
 		arr.append(W.RIFLE)
 	if has_cryo:
 		arr.append(W.CRYO)
+	if has_shock:
+		arr.append(W.SHOCK)
 	return arr
 
 
@@ -641,6 +650,33 @@ func unlock_cryo() -> void:
 		hud.flash_message("Équipe-le dans l'inventaire (emplacement 1 ou 2)" if not loadout.has(W.CRYO) else "Touche %d pour l'équiper" % (loadout.find(W.CRYO) + 1))
 
 
+func owns_craft(id: String) -> bool:
+	return has_cryo if id == "cryo" else (has_shock if id == "shock" else false)
+
+
+## Fabrique une arme (menu de la sphère) : paie le coût et la range dans l'inventaire.
+func craft_weapon(id: String) -> bool:
+	for r in Upg.CRAFTS:
+		if r["id"] == id and not owns_craft(id) and can_afford(r["cost"]):
+			pay(r["cost"])
+			if id == "cryo":
+				unlock_cryo()
+			else:
+				unlock_shock()
+			Sfx.play("build", 0.0, 0.8)
+			return true
+	return false
+
+
+## Arme fabriquée / obtenue : rangée dans l'inventaire (et dans l'emplacement 2 s'il est vide).
+func unlock_shock() -> void:
+	has_shock = true
+	if loadout[1] < 0:
+		loadout[1] = W.SHOCK
+	if hud:
+		hud.flash_message("ONDE DE CHOC ajoutée à l'inventaire")
+
+
 func unlock_rifle() -> void:
 	has_rifle = true
 	mags[W.RIFLE] = gun_mag(W.RIFLE)
@@ -672,21 +708,29 @@ func gun_damage(w: int) -> float:
 func can_afford(c: Dictionary) -> bool:
 	if test_mode:
 		return true
-	return wood >= c.get("wood", 0) and stone >= c.get("stone", 0) and coins >= c.get("coins", 0)
+	for k in c:
+		if res_count(k) < c[k]:
+			return false
+	return true
+
+
+## Paie un coût (bois, pierre, pièces, os...). Rien en mode test.
+func pay(c: Dictionary) -> void:
+	if test_mode:
+		return
+	for k in c:
+		set(RES_PROPS[k], res_count(k) - c[k])
 
 
 ## Achète le niveau suivant d'une branche (si le précédent est acquis et qu'on a les ressources).
 func buy_upgrade(item: String, branch: String) -> bool:
 	var lvl: int = upgrades[item][branch]
-	if lvl >= Upg.MAX_LEVEL:
+	if lvl >= Upg.max_level(item, branch):
 		return false
 	var c := Upg.cost(item, branch, lvl + 1)
 	if not can_afford(c):
 		return false
-	if not test_mode:
-		wood -= c.get("wood", 0)
-		stone -= c.get("stone", 0)
-		coins -= c.get("coins", 0)
+	pay(c)
 	upgrades[item][branch] = lvl + 1
 	if item == "axe" and branch == "wood" and lvl + 1 == Upg.STONE_UNLOCK_LEVEL and hud:
 		hud.show_notice("PIERRE DÉBLOQUÉE !\nTa hache peut maintenant casser les rochers pour récolter de la pierre.\nConstruire en pierre : 2× plus solide que le bois (V / Y pour changer de matériau).", 8.0)
@@ -791,6 +835,7 @@ func _physics_process(delta: float) -> void:
 
 func _update_weapons(delta: float) -> void:
 	fire_cd -= delta
+	shock_cd -= delta
 	swing_cd -= delta
 	build_cd -= delta
 	# Souris : on n'agit que si elle est capturée (le clic qui la capture ne doit pas tirer).
@@ -816,6 +861,14 @@ func _update_weapons(delta: float) -> void:
 			if firing and fire_cd <= 0.0:
 				_shoot_cryo()
 			cryo_beam.visible = cryo_beam_t > 0.0
+			trigger_held = firing
+		W.SHOCK:
+			if firing and not trigger_held and shock_cd <= 0.0:
+				if bones < 1 and not test_mode:
+					if hud:
+						hud.flash_message("Il faut 1 OS par tir (les squelettes en laissent tomber)")
+				else:
+					_shoot_shock()
 			trigger_held = firing
 		W.PISTOL, W.RIFLE:
 			# pistolet : coup par coup (une pression = un tir) ; fusil : automatique
@@ -930,7 +983,7 @@ func _process(delta: float) -> void:
 # ------------------------------------------------------------------ fusil
 
 func _start_reload() -> void:
-	if not _is_gun(weapon) or weapon == W.CRYO or reloading or ammo >= gun_mag(weapon):
+	if not _is_gun(weapon) or weapon == W.CRYO or weapon == W.SHOCK or reloading or ammo >= gun_mag(weapon):
 		return
 	reloading = true
 	reload_t = GUNS[weapon]["reload"] * Upg.reload_mult(gun_lvl(weapon, "reload"))
@@ -1008,6 +1061,136 @@ func _shoot_cryo() -> void:
 	cryo_beam.look_at(end, up)
 	cryo_beam.scale = Vector3(1.0 + randf() * 0.4, 1.0 + randf() * 0.4, length)
 	cryo_beam.visible = true
+
+
+# ------------------------------------------------------------------ onde de choc
+
+func shock_damage() -> float:
+	return Upg.shock_damage(upgrades["shock"]["damage"])
+
+
+func shock_cooldown() -> float:
+	return Upg.shock_cooldown(upgrades["shock"]["cooldown"])
+
+
+func shock_range() -> float:
+	return Upg.shock_range(upgrades["shock"]["range"])
+
+
+## Onde de choc : coûte 1 os ; tous les squelettes dans un large cône devant soi
+## (120°, portée 6 m de base) prennent les dégâts instantanément.
+func _shoot_shock() -> void:
+	shock_cd = shock_cooldown()
+	if not test_mode:
+		bones -= 1
+	var fwd := -global_transform.basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	var origin := global_position
+	var rng := shock_range()
+	var cos_lim := cos(deg_to_rad(Upg.SHOCK_HALF_ANGLE))
+	var hits := 0
+	for z in get_tree().get_nodes_in_group("zombie"):
+		if z.dead:
+			continue
+		var d: Vector3 = z.global_position - origin
+		if absf(d.y) > 3.5:
+			continue
+		d.y = 0.0
+		var reach := rng + (2.0 if z.kind == "titan" else 0.4)
+		if d.length() > reach:
+			continue
+		if d.length() > 0.8 and d.normalized().dot(fwd) < cos_lim:
+			continue
+		z.take_damage(shock_damage(), false)
+		hits += 1
+	if hud and hits > 0:
+		hud.hitmarker(false)
+	recoil = 1.0
+	_shake(0.03)
+	Sfx.play("break", -2.0, 1.6)
+	Sfx.play("orb_hit", -4.0, 0.6)
+	_spawn_shock_fx(origin + Vector3.UP * 0.9, fwd, rng)
+
+
+## Effet visible : éventail translucide qui s'élargit jusqu'à la portée puis s'efface.
+func _spawn_shock_fx(pos: Vector3, fwd: Vector3, rng: float) -> void:
+	if main == null:
+		return
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var half := deg_to_rad(Upg.SHOCK_HALF_ANGLE)
+	var segs := 20
+	for i in segs:
+		var a0 := -half + 2.0 * half * i / segs
+		var a1 := -half + 2.0 * half * (i + 1) / segs
+		for v in [Vector3.ZERO, Vector3(sin(a0), 0, -cos(a0)), Vector3(sin(a1), 0, -cos(a1))]:
+			st.set_uv(Vector2(v.length(), 0))
+			st.add_vertex(v)
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.albedo_color = Color(0.95, 0.9, 0.75, 0.55)
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	main.add_child(mi)
+	mi.global_position = pos
+	mi.global_basis = Basis.looking_at(fwd, Vector3.UP)
+	mi.scale = Vector3.ONE * 0.5
+	var tw := mi.create_tween().set_parallel(true)
+	tw.tween_property(mi, "scale", Vector3(rng, 1.0, rng), 0.22).set_ease(Tween.EASE_OUT)
+	tw.tween_property(m, "albedo_color:a", 0.0, 0.4)
+	tw.chain().tween_callback(mi.queue_free)
+	main.spawn_impact(pos + fwd * rng * 0.6 - Vector3.UP * 0.8, Vector3.UP, Color(0.9, 0.85, 0.7), 16, 1.4)
+
+
+## Onde de choc en main : corne d'os sculptée, anneaux de bronze et cœur lumineux.
+func _build_shock() -> void:
+	var g := Node3D.new()
+	g.position = HIP_POS
+	g.scale = Vector3.ONE * 0.82
+	g.visible = false
+	viewmodel.add_child(g)
+	var bone := Mats.col(Color(0.9, 0.86, 0.74), 0.7)
+	var bronze := Mats.col(Color(0.55, 0.38, 0.18), 0.35)
+	var dark := Mats.col(Color(0.12, 0.1, 0.12), 0.6)
+	var core := StandardMaterial3D.new()
+	core.albedo_color = Color(1.0, 0.85, 0.55, 0.9)
+	core.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	core.emission_enabled = true
+	core.emission = Color(1.0, 0.7, 0.35)
+	core.emission_energy_multiplier = 3.0
+	# corne qui s'évase vers l'avant
+	Mats.cylinder(g, 0.05, 0.065, 0.2, bone, Vector3(0, 0, 0.12), Vector3(90, 0, 0), 10)
+	Mats.cylinder(g, 0.065, 0.1, 0.2, bone, Vector3(0, 0.01, -0.08), Vector3(90, 0, 0), 12)
+	Mats.cylinder(g, 0.1, 0.16, 0.16, bone, Vector3(0, 0.02, -0.26), Vector3(90, 0, 0), 14)
+	for z in [0.03, -0.17, -0.33]:
+		Mats.cylinder(g, 0.085 + absf(z) * 0.2, 0.085 + absf(z) * 0.2, 0.025, bronze, Vector3(0, 0.01, z), Vector3(90, 0, 0), 14)
+	Mats.cylinder(g, 0.13, 0.13, 0.01, core, Vector3(0, 0.02, -0.345), Vector3(90, 0, 0), 16)
+	Mats.sphere(g, 0.045, core, Vector3(0, 0.09, 0.0), 10)
+	Mats.box(g, Vector3(0.05, 0.14, 0.06), dark, Vector3(0, -0.11, 0.12), Vector3(-15, 0, 0))
+	var glow := OmniLight3D.new()
+	glow.light_color = Color(1.0, 0.75, 0.4)
+	glow.light_energy = 0.35
+	glow.omni_range = 0.6
+	glow.position = Vector3(0, 0.05, -0.2)
+	g.add_child(glow)
+	var m := Marker3D.new()
+	m.position = Vector3(0, 0.02, -0.36)
+	g.add_child(m)
+	var fl := Mats.sphere(m, 0.08, core, Vector3.ZERO, 6)
+	fl.visible = false
+	var li := OmniLight3D.new()
+	li.light_color = Color(1.0, 0.8, 0.5)
+	li.omni_range = 5.0
+	li.light_energy = 0.0
+	m.add_child(li)
+	gun_data[W.SHOCK] = {"node": g, "muzzle": m, "flash": fl, "light": li, "crystal": core, "glow": glow,
+		"hip": HIP_POS, "ads": Vector3(0.0, -0.2, -0.5), "rest": Vector3(0, deg_to_rad(6.0), 0)}
 
 
 ## Canon cryogénique : corps blanc, réservoir de glace lumineux, ailettes émettrices.
@@ -1482,7 +1665,7 @@ func respawn(pos: Vector3, invuln := 3.0) -> void:
 	can_revive = false
 	invuln_t = invuln
 	hp = MAX_HP
-	mags = {W.PISTOL: gun_mag(W.PISTOL), W.RIFLE: gun_mag(W.RIFLE), W.CRYO: 0}
+	mags = {W.PISTOL: gun_mag(W.PISTOL), W.RIFLE: gun_mag(W.RIFLE), W.CRYO: 0, W.SHOCK: 0}
 	ammo = gun_mag(weapon) if _is_gun(weapon) else ammo
 	reloading = false
 	position = pos

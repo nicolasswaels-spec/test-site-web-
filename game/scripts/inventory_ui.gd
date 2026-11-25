@@ -34,11 +34,11 @@ const RES_DESC := {
 	"arrow_bone": "Laissé par les squelettes archers. Son usage arrive bientôt.",
 	"bone_pile": "Laissé par le titan de lave. À utiliser : donne 6 os imposants et 10 os."}
 # armes : index du joueur (W), rareté et couleur de carte
-const WEAPON_ICONS := {0: "w_pistol", 1: "w_rifle", 4: "w_cryo", 2: "w_axe"}
+const WEAPON_ICONS := {0: "w_pistol", 1: "w_rifle", 4: "w_cryo", 5: "w_shock", 2: "w_axe"}
 const RARITY := {0: ["RARE", Color(0.18, 0.42, 0.85)], 1: ["ÉPIQUE", Color(0.52, 0.22, 0.78)],
-	4: ["LÉGENDAIRE", Color(0.85, 0.55, 0.12)], 2: ["OUTIL", Color(0.28, 0.45, 0.32)]}
-const ITEM_ICONS := {"pistol": "w_pistol", "rifle": "w_rifle", "cryo": "w_cryo", "axe": "w_axe", "wire": "coins"}
-const ITEM_W := {"pistol": 0, "rifle": 1, "cryo": 4, "axe": 2, "wire": -1}
+	4: ["LÉGENDAIRE", Color(0.85, 0.55, 0.12)], 5: ["MYTHIQUE", Color(0.72, 0.36, 0.2)], 2: ["OUTIL", Color(0.28, 0.45, 0.32)]}
+const ITEM_ICONS := {"pistol": "w_pistol", "rifle": "w_rifle", "cryo": "w_cryo", "shock": "w_shock", "axe": "w_axe", "wire": "coins"}
+const ITEM_W := {"pistol": 0, "rifle": 1, "cryo": 4, "shock": 5, "axe": 2, "wire": -1}
 
 
 func _ready() -> void:
@@ -221,6 +221,8 @@ func _build_inventory() -> Control:
 	var weapons := [0, 1]
 	if p.has_cryo:
 		weapons.append(4)
+	if p.has_shock:
+		weapons.append(5)
 	weapons.append(2)
 	for w in weapons:
 		var wi: int = w
@@ -304,7 +306,7 @@ func _build_detail() -> Control:
 		if w == 2:
 			desc.text = "Toujours équipée (emplacement 3). Coupe le bois, casse les rochers, frappe les squelettes. Un coup toutes les 0,9 s."
 		elif not p.owned_guns().has(w):
-			desc.text = "Se fabrique à la fin de la 1re sphère." if w == 1 else "Se trouve dans un coffre."
+			desc.text = "Se fabrique à la fin de la 1re sphère." if w == 1 else "Se trouve dans un coffre, ou se fabrique à la sphère (création d'arme)."
 			if w == 1 and p.main and p.main.rifle_craftable:
 				first = _act(acts, "FABRIQUER LE FUSIL D'ASSAUT", 420, func():
 					p.main.craft_rifle()
@@ -312,6 +314,8 @@ func _build_detail() -> Control:
 		else:
 			if w == 4:
 				desc.text = "Rayon de glace continu : ajoute des statuts de glace (1 à 10) qui ralentissent la cible et la rendent vulnérable."
+			elif w == 5:
+				desc.text = "1 os par tir · cône de 120° devant toi · %d m · %d dégâts à chaque squelette touché · %.1f s entre deux tirs" % [int(p.shock_range()), int(p.shock_damage()), p.shock_cooldown()]
 			else:
 				desc.text = "%d balles · %.1f tirs/s · %.0f dégâts · %s" % [p.gun_mag(w), 1.0 / p.gun_interval(w), p.gun_damage(w), "coup par coup" if w == 0 else "automatique"]
 			for slot in 2:
@@ -364,13 +368,15 @@ func _items() -> Array:
 		arr.append("rifle")
 	if p.has_cryo:
 		arr.append("cryo")
+	if p.has_shock:
+		arr.append("shock")
 	arr.append_array(["axe", "wire"])
 	return arr
 
 
 ## Coût affiché en icônes : [icône] 300  [icône] 100 ...
 func _cost_row(parent: Node, c: Dictionary) -> void:
-	for k in ["wood", "stone", "coins"]:
+	for k in ["wood", "stone", "coins", "bone", "big_bone"]:
 		if c.get(k, 0) <= 0:
 			continue
 		var t := TextureRect.new()
@@ -435,7 +441,7 @@ func _build_upgrades() -> Control:
 		var pips := HBoxContainer.new()
 		pips.add_theme_constant_override("separation", 3)
 		head.add_child(pips)
-		for i in Upg.MAX_LEVEL:
+		for i in Upg.max_level(selected_item, branch):
 			var pc := Panel.new()
 			pc.custom_minimum_size = Vector2(18, 14)
 			pc.add_theme_stylebox_override("panel", _flat(UI.YELLOW if i < lvl else Color(0.08, 0.08, 0.1), Color(1, 1, 1, 0.25), 1))
@@ -444,7 +450,7 @@ func _build_upgrades() -> Control:
 		line.add_theme_constant_override("separation", 8)
 		vb.add_child(line)
 		var now := Upg.effect_text(selected_item, branch, lvl, base_mag)
-		if lvl >= Upg.MAX_LEVEL:
+		if lvl >= Upg.max_level(selected_item, branch):
 			var l := _label(line, "%s  ·  MAXIMUM" % now, 15, Color(0.6, 1.0, 0.6))
 			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		else:

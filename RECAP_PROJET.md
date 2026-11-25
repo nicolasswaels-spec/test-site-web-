@@ -49,6 +49,8 @@ The Pathless).
 - Coop local à 2 en écran scindé (clavier/souris + manette, ou deux manettes).
 - Os : os (50 % par squelette), os imposant (boss), os en flèche (archer), tas d'os imposant (titan) ;
   visibles seulement dans l'inventaire, usage à définir.
+- Menu de la sphère (E / X) : LANCER + CRÉATION D'ARME (dès la 2e sphère : cryo, onde de choc).
+- Onde de choc : 1 os par tir, cône 120°, 6 m, 100 dégâts, 4 s ; améliorations dégâts / rechargement / portée.
 - Musique : fichiers à déposer dans `game/assets/music/` (`menu`, `game`, `battle` en mp3/ogg/wav).
 
 ## Organisation du code (`game/`)
@@ -96,7 +98,8 @@ assets/                modèles 3D CC0 : nature (Quaternius), skeletons, chests,
   nombre de vagues ; `difficulty()`, `_start_wave`, `_spawn_zombie` : nombre, PV, vitesse ennemis.
 - `scripts/player.gd` : GUNS (chargeur, cadence, dégâts), cadence de la hache (`swing_cd`),
   coût des pièces, PV du joueur, START_LIVES.
-- `scripts/upgrades.gd` : coûts et effets de toutes les améliorations.
+- `scripts/upgrades.gd` : coûts et effets de toutes les améliorations, recettes de création d'arme (CRAFTS),
+  onde de choc (SHOCK_COSTS, SHOCK_LEVELS, SHOCK_HALF_ANGLE).
 - `scripts/zombie.gd` : portées de chasse, dégâts, effets de la glace.
 - `scripts/chest.gd` : probabilités et contenu du butin.
 - `scripts/orb.gd` : PV de la sphère.

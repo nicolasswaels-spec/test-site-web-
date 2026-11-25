@@ -2,6 +2,7 @@ extends CanvasLayer
 ## Interface en jeu : vie, munitions, bois, vagues, sphère, menus pause / fin.
 
 const UI = preload("res://scripts/ui.gd")
+const Upg = preload("res://scripts/upgrades.gd")
 const InventoryUI = preload("res://scripts/inventory_ui.gd")
 
 signal menu_pressed
@@ -172,6 +173,12 @@ var prompt_label: Label
 var message_label: Label
 var message_t := 0.0
 var pause_panel: Control
+var orb_panel: Control      # menu de la sphère (lancer, création d'arme)
+var orb_launch_btn: Button
+var orb_craft_btn: Button
+var craft_panel: Control    # création d'arme
+var craft_row: HBoxContainer
+var menu_player
 var end_panel: Control
 var end_title: Label
 var end_sub: Label
@@ -341,6 +348,12 @@ func _ready() -> void:
 			[func(): set_paused(false), _test_skip_zone, func(): menu_pressed.emit()])
 	else:
 		pause_panel = _overlay("PAUSE", "", ["REPRENDRE", "MENU PRINCIPAL"], [func(): set_paused(false), func(): menu_pressed.emit()])
+	orb_panel = _overlay("SPHÈRE", "", ["LANCER", "CRÉATION D'ARME", "FERMER"],
+		[_orb_launch, open_craft_menu, close_orb_menu])
+	var obtns := orb_panel.find_children("*", "Button", true, false)
+	orb_launch_btn = obtns[0]
+	orb_craft_btn = obtns[1]
+	_build_craft_panel()
 	var end := _overlay("", "", ["REJOUER", "MENU PRINCIPAL"], [func(): retry_pressed.emit(), func(): menu_pressed.emit()])
 	end_panel = end
 	end_title = end.get_meta("title")
@@ -487,7 +500,7 @@ func update_player(p) -> void:
 	else:
 		build_prompt.text = ""
 	var si: int = p.slot_index()
-	var short := {0: "PISTOLET", 1: "FUSIL", 4: "CRYO"}
+	var short := {0: "PISTOLET", 1: "FUSIL", 4: "CRYO", 5: "CHOC"}
 	for i in slots.size():
 		slots[i].add_theme_stylebox_override("panel", slot_on if i == si else slot_off)
 		if i < 2:
@@ -507,6 +520,14 @@ func update_player(p) -> void:
 			mode = 0
 			if p.aiming:
 				mode = 3
+			crosshair.visible = true
+		5:
+			var ready: bool = p.shock_cd <= 0.0
+			ammo_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.6) if ready else Color(0.7, 0.7, 0.75))
+			var os_txt := "∞" if p.test_mode else str(p.bones)
+			ammo_label.text = ("PRÊT" if ready else "%.1f s" % p.shock_cd) + "  ·  OS %s" % os_txt
+			info_label.text = "Onde de choc : 1 os par tir · cône large devant toi (%d m) · %d dégâts" % [int(p.shock_range()), int(p.shock_damage())]
+			mode = 0
 			crosshair.visible = true
 		2:
 			ammo_label.add_theme_color_override("font_color", Color.WHITE)
@@ -613,7 +634,8 @@ func damage_flash() -> void:
 
 ## Un menu (pause, fin, confirmation, inventaire) de ce joueur est ouvert.
 func menu_open() -> bool:
-	return confirm_panel.visible or inventory_panel.visible or pause_panel.visible or end_panel.visible
+	return confirm_panel.visible or inventory_panel.visible or pause_panel.visible or end_panel.visible \
+		or orb_panel.visible or craft_panel.visible
 
 
 func _solo() -> bool:
@@ -646,6 +668,14 @@ func handle_input(ev: InputEvent) -> bool:
 		if _act(ev, "weapon_prev"):
 			inventory_panel.next_page(-1)
 			return true
+	elif craft_panel.visible:
+		if _act(ev, "nav_back") or _act(ev, "pause"):
+			_close_craft()
+			return true
+	elif orb_panel.visible:
+		if _act(ev, "nav_back") or _act(ev, "pause") or _act(ev, "interact"):
+			close_orb_menu()
+			return true
 	elif pause_panel.visible:
 		if _act(ev, "pause") or _act(ev, "nav_back"):
 			set_paused(false)
@@ -677,6 +707,10 @@ func _current_menu() -> Control:
 		return confirm_panel
 	if inventory_panel.visible:
 		return inventory_panel
+	if craft_panel.visible:
+		return craft_panel
+	if orb_panel.visible:
+		return orb_panel
 	if end_panel.visible:
 		return end_panel
 	return pause_panel
@@ -816,6 +850,159 @@ func _close_confirm(yes: bool) -> void:
 func _build_inventory() -> void:
 	inventory_panel = InventoryUI.new()
 	root.add_child(inventory_panel)
+
+
+# ------------------------------------------------------------------ menu de la sphère
+
+func open_orb_menu(p) -> void:
+	if menu_open() or main == null:
+		return
+	menu_player = p
+	var txt: String = main.orb_launch_text()
+	orb_launch_btn.text = txt if txt != "" else "VAGUE EN COURS"
+	orb_launch_btn.disabled = txt == ""
+	var unlocked: bool = main.crafting_unlocked()
+	orb_craft_btn.text = "CRÉATION D'ARME" if unlocked else "CRÉATION D'ARME  (dès la 2e sphère)"
+	orb_craft_btn.disabled = not unlocked
+	(orb_panel.get_meta("sub") as Label).text = "Lancer en avance reporte 50 % du temps restant sur la pause suivante." if txt != "" else ""
+	orb_panel.visible = true
+	if _solo():
+		get_tree().paused = true
+	var first: Button = orb_launch_btn if not orb_launch_btn.disabled else (orb_craft_btn if unlocked else orb_panel.find_children("*", "Button", true, false)[2])
+	first.call_deferred("grab_focus")
+	_refresh_mouse()
+
+
+func close_orb_menu() -> void:
+	orb_panel.visible = false
+	craft_panel.visible = false
+	if _solo():
+		get_tree().paused = false
+	_refresh_mouse()
+
+
+func _orb_launch() -> void:
+	close_orb_menu()
+	if main:
+		main.orb_launch()
+
+
+func _build_craft_panel() -> void:
+	var dim := ColorRect.new()
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0.02, 0.02, 0.06, 0.82)
+	dim.visible = false
+	root.add_child(dim)
+	craft_panel = dim
+	var cc := CenterContainer.new()
+	cc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.add_child(cc)
+	var panel := PanelContainer.new()
+	var ps := UI.box(Color(0.08, 0.08, 0.11, 0.95), 6, 28.0, 20.0)
+	ps.border_color = Color(0.35, 0.35, 0.42)
+	ps.set_border_width_all(2)
+	panel.add_theme_stylebox_override("panel", ps)
+	cc.add_child(panel)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 14)
+	panel.add_child(vb)
+	var t := _label(vb, "CRÉATION D'ARME", 44, UI.YELLOW)
+	t.add_theme_constant_override("outline_size", 10)
+	t.add_theme_color_override("font_outline_color", UI.DARK)
+	_label(vb, "L'arme fabriquée est rangée dans l'inventaire (à équiper en emplacement 1 ou 2).", 16, Color(0.75, 0.78, 0.9))
+	craft_row = HBoxContainer.new()
+	craft_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	craft_row.add_theme_constant_override("separation", 18)
+	vb.add_child(craft_row)
+	var back := Button.new()
+	back.text = "RETOUR"
+	back.custom_minimum_size = Vector2(260, 54)
+	back.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	back.pressed.connect(_close_craft)
+	vb.add_child(back)
+
+
+func open_craft_menu() -> void:
+	if main == null or not main.crafting_unlocked():
+		return
+	orb_panel.visible = false
+	craft_panel.visible = true
+	_refresh_craft()
+
+
+func _close_craft() -> void:
+	craft_panel.visible = false
+	if menu_player:
+		orb_panel.visible = true
+		orb_craft_btn.call_deferred("grab_focus")
+	else:
+		close_orb_menu()
+
+
+func _refresh_craft(focus_id := "") -> void:
+	for c in craft_row.get_children():
+		craft_row.remove_child(c)
+		c.queue_free()
+	var p = menu_player if menu_player else player
+	var first: Button = null
+	for r in Upg.CRAFTS:
+		var id: String = r["id"]
+		var owned: bool = p.owns_craft(id)
+		var card := PanelContainer.new()
+		var cs := UI.box(Color(0.85, 0.55, 0.12, 0.95) if id == "cryo" else Color(0.70, 0.36, 0.20, 0.95), 6, 16.0, 12.0)
+		cs.border_color = Color(1, 1, 1, 0.25)
+		cs.set_border_width_all(2)
+		card.add_theme_stylebox_override("panel", cs)
+		card.custom_minimum_size = Vector2(380, 0)
+		craft_row.add_child(card)
+		var cv := VBoxContainer.new()
+		cv.add_theme_constant_override("separation", 8)
+		card.add_child(cv)
+		var ic := TextureRect.new()
+		ic.texture = UI.icon(r["icon"])
+		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		ic.custom_minimum_size = Vector2(0, 120)
+		cv.add_child(ic)
+		_label(cv, r["name"], 24)
+		var d := _label(cv, r["desc"], 15, Color(1, 1, 1, 0.9))
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		d.custom_minimum_size = Vector2(340, 0)
+		var cost_row := HBoxContainer.new()
+		cost_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		cost_row.add_theme_constant_override("separation", 6)
+		cv.add_child(cost_row)
+		for k in ["wood", "stone", "coins", "bone", "big_bone"]:
+			if not r["cost"].has(k):
+				continue
+			var t := TextureRect.new()
+			t.texture = UI.icon(k)
+			t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			t.custom_minimum_size = Vector2(34, 34)
+			cost_row.add_child(t)
+			var enough: bool = p.test_mode or p.res_count(k) >= r["cost"][k]
+			_label(cost_row, str(r["cost"][k]) + "  ", 20, Color.WHITE if enough else Color(1, 0.5, 0.45))
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(300, 54)
+		b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		b.add_theme_font_size_override("font_size", 22)
+		if owned:
+			b.text = "DÉJÀ POSSÉDÉE"
+			b.disabled = true
+		else:
+			b.text = "FABRIQUER"
+			b.disabled = not p.can_afford(r["cost"])
+			b.pressed.connect(func():
+				if p.craft_weapon(id):
+					show_center(r["name"], "Fabriquée ! Équipe-la depuis l'inventaire.", 2.5)
+					_refresh_craft())
+		cv.add_child(b)
+		if first == null and not b.disabled:
+			first = b
+	if first == null:
+		first = craft_panel.find_children("*", "Button", true, false).back()
+	first.call_deferred("grab_focus")
 
 
 func toggle_inventory(p) -> void:

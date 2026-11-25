@@ -199,3 +199,19 @@ def axe_icon():
 for f, n in [(bone_icon, "bone"), (big_bone_icon, "big_bone"), (arrow_bone_icon, "arrow_bone"), (bone_pile_icon, "bone_pile"),
              (pistol_icon, "w_pistol"), (rifle_icon, "w_rifle"), (cryo_icon, "w_cryo"), (axe_icon, "w_axe")]:
     save(f(), n)
+
+
+def shock_icon():
+    im = Image.new("RGBA", (S, S), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
+    # corne d'os évasée + anneaux de bronze + ondes
+    _poly(d, [(80, 240), (230, 215), (360, 170), (420, 150), (420, 340), (360, 320), (230, 285), (80, 275)], (232, 220, 190))
+    for x, h in [(200, 40), (300, 70), (380, 92)]:
+        d.rectangle([x - 10, 255 - h, x + 10, 255 + h], fill=(150, 100, 50))
+    d.ellipse([400, 150, 440, 340], fill=(255, 200, 120))
+    for k in range(3):
+        r = 40 + k * 28
+        d.arc([440 - r, 245 - r * 1.6, 440 + r, 245 + r * 1.6], -50, 50, fill=(255, 220, 150), width=10)
+    _poly(d, [(150, 275), (190, 275), (175, 350), (135, 350)], (60, 50, 60))
+    return glow(im, (255, 190, 110), 18, 1.4)
+
+save(shock_icon(), "w_shock")

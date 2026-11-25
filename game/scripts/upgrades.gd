@@ -40,6 +40,8 @@ const ITEMS := {
 		["wood", "Récolte de bois (payée en bois)"], ["stone", "Récolte de pierre (payée en pierre)"]]},
 	"cryo": {"name": "CANON CRYO", "branches": [
 		["slow", "Ralentissement (à 10 statuts)"], ["damage", "Dégâts"], ["vuln", "Vulnérabilité (à 10 statuts)"], ["duration", "Durée d'un statut de glace"]]},
+	"shock": {"name": "ONDE DE CHOC", "branches": [
+		["damage", "Dégâts"], ["cooldown", "Rechargement"], ["range", "Portée"]]},
 	"wire": {"name": "BARBELÉS", "branches": [
 		["slow", "Ralentissement"], ["damage", "Dégâts"]]},
 }
@@ -54,8 +56,65 @@ static func new_state() -> Dictionary:
 	return st
 
 
+# ------------------------------------------------------------------ création d'arme (menu de la sphère, dès la 2e sphère)
+const CRAFTS := [
+	{"id": "cryo", "name": "CANON CRYOGÉNIQUE", "icon": "w_cryo", "cost": {"wood": 5000, "stone": 2500},
+		"desc": "Rayon de glace continu : ralentit et rend vulnérable."},
+	{"id": "shock", "name": "ONDE DE CHOC", "icon": "w_shock", "cost": {"wood": 2000, "stone": 1000, "bone": 30},
+		"desc": "1 os par tir : cône large devant toi, 100 dégâts à tous les squelettes touchés."},
+]
+
+
+# ------------------------------------------------------------------ onde de choc
+## Dégâts 100 -> 200 (10 niveaux), rechargement 4 s -> 2 s (4 niveaux), portée 6 -> 12 m (6 niveaux).
+## Coûts en bois, pierre, pièces et os ; le dernier niveau de chaque branche demande aussi 1 os imposant.
+const SHOCK_LEVELS := {"damage": 10, "cooldown": 4, "range": 6}
+const SHOCK_COSTS := {
+	"damage": {"wood": [300, 450, 600, 800, 1000, 1300, 1600, 2000, 2500, 3000],
+		"stone": [100, 150, 200, 300, 400, 500, 650, 800, 1000, 1200],
+		"coins": [0, 0, 2, 4, 6, 8, 10, 14, 18, 25],
+		"bone": [5, 5, 8, 10, 12, 15, 18, 22, 26, 30]},
+	"cooldown": {"wood": [600, 1200, 2000, 3000], "stone": [300, 600, 1000, 1500],
+		"coins": [5, 10, 20, 30], "bone": [10, 20, 30, 40]},
+	"range": {"wood": [400, 700, 1100, 1600, 2200, 3000], "stone": [200, 350, 550, 800, 1100, 1500],
+		"coins": [2, 5, 8, 12, 16, 22], "bone": [6, 10, 14, 18, 24, 30]},
+}
+const SHOCK_BASE_DAMAGE := 100.0
+const SHOCK_BASE_COOLDOWN := 4.0
+const SHOCK_BASE_RANGE := 6.0
+const SHOCK_HALF_ANGLE := 60.0    # cône de 120°
+
+
+static func shock_damage(lvl: int) -> float:
+	return SHOCK_BASE_DAMAGE + 10.0 * lvl
+
+
+static func shock_cooldown(lvl: int) -> float:
+	return SHOCK_BASE_COOLDOWN - 0.5 * lvl
+
+
+static func shock_range(lvl: int) -> float:
+	return SHOCK_BASE_RANGE + 1.0 * lvl
+
+
+## Nombre de niveaux d'une branche (8 partout, sauf l'onde de choc).
+static func max_level(item: String, branch: String) -> int:
+	if item == "shock":
+		return SHOCK_LEVELS[branch]
+	return MAX_LEVEL
+
+
 static func cost(item: String, branch: String, level: int) -> Dictionary:
-	# level = niveau visé (1..8)
+	# level = niveau visé (1..max)
+	if item == "shock":
+		var c := {}
+		for k in SHOCK_COSTS[branch]:
+			var v: int = SHOCK_COSTS[branch][k][level - 1]
+			if v > 0:
+				c[k] = v
+		if level == SHOCK_LEVELS[branch]:
+			c["big_bone"] = 1
+		return c
 	if item == "axe":
 		return {branch: AXE_COSTS[level - 1]}   # "wood" ou "stone"
 	if item == "cryo":
@@ -71,6 +130,10 @@ static func cost_text(c: Dictionary) -> String:
 		parts.append("%d pierre" % c["stone"])
 	if c.has("coins"):
 		parts.append("%d pièces" % c["coins"])
+	if c.has("bone"):
+		parts.append("%d os" % c["bone"])
+	if c.has("big_bone"):
+		parts.append("%d os imposant" % c["big_bone"])
 	return " + ".join(parts)
 
 
@@ -136,6 +199,14 @@ static func cryo_stack_time(lvl: int) -> float:
 
 ## Texte de l'effet d'une branche à un niveau donné (pour l'interface).
 static func effect_text(item: String, branch: String, lvl: int, base_mag := 12) -> String:
+	if item == "shock":
+		match branch:
+			"damage":
+				return "%d dégâts" % int(shock_damage(lvl))
+			"cooldown":
+				return "%.1f s entre deux tirs" % shock_cooldown(lvl)
+			"range":
+				return "portée %d m" % int(shock_range(lvl))
 	if item == "cryo":
 		match branch:
 			"slow":

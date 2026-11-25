@@ -974,13 +974,13 @@ func _process(delta: float) -> void:
 	_update_biome(delta)
 
 	# un joueur près de la sphère peut lancer la suite (E / X)
+	# E / X près de la sphère : ouvre le menu de la sphère (lancer la vague, création d'arme)
 	var near_orb := false
-	var interact := false
 	for p in players:
 		if not p.dead and p.global_position.distance_to(orb.global_position) < 5.5:
 			near_orb = true
 			if Input.is_action_just_pressed(p.a("interact")) and not p.input_blocked():
-				interact = true
+				p.hud.open_orb_menu(p)
 	var prompt := ""
 	match state:
 		"idle":
@@ -993,19 +993,12 @@ func _process(delta: float) -> void:
 				if countdown <= 0.0:
 					_start_wave(1)
 			if near_orb and state == "idle":
-				prompt = "[E / X] LANCER LE COMBAT"
-				if interact:
-					if not Settings.test_mode:
-						_carry_over(countdown)
-					_start_wave(1)
+				prompt = "[E / X] SPHÈRE"
 		"break":
 			countdown -= delta
 			hud.set_wave("%sVAGUE %d/%d DANS %d s" % [_sphere_prefix(), wave + 1, TOTAL_WAVES, int(ceil(countdown))], "Coupe du bois et renforce tes défenses !")
 			if near_orb:
-				prompt = "[E / X] LANCER LA VAGUE SUIVANTE"
-				if interact:
-					_carry_over(countdown)
-					countdown = 0.0
+				prompt = "[E / X] SPHÈRE"
 			if countdown <= 0.0:
 				_start_wave(wave + 1)
 		"wave":
@@ -1029,11 +1022,7 @@ func _process(delta: float) -> void:
 				hud.set_wave("%de SPHÈRE : DÉFENSE DANS %d s" % [sn, int(ceil(countdown))], hint)
 				go = countdown <= 0.0 and zone2_unlocked and (zone == 2 or zone == 4)
 			if near_orb and (zone == 2 or zone == 4):
-				prompt = "[E / X] LANCER LE COMBAT (%de SPHÈRE)" % sn
-				if interact:
-					if not Settings.test_mode:
-						_carry_over(countdown)
-					go = true
+				prompt = "[E / X] SPHÈRE"
 			if go:
 				if orb2_beacon:
 					orb2_beacon.queue_free()
@@ -1782,6 +1771,44 @@ func _on_player_died(p) -> void:
 
 
 ## Lancer la vague en avance : la moitié du temps restant est reportée à la pause suivante.
+## Texte du bouton de lancement du menu de la sphère ("" = rien à lancer maintenant).
+func orb_launch_text() -> String:
+	match state:
+		"idle":
+			return "LANCER LE COMBAT"
+		"break":
+			return "LANCER LA VAGUE %d" % (wave + 1)
+		"explore":
+			if zone == 2 or zone == 4:
+				return "LANCER LE COMBAT (%de SPHÈRE)" % (2 if zone == 2 else 3)
+	return ""
+
+
+## Bouton « lancer » du menu de la sphère : le temps restant est en partie reporté (50 %).
+func orb_launch() -> void:
+	match state:
+		"idle":
+			if not Settings.test_mode:
+				_carry_over(countdown)
+			_start_wave(1)
+		"break":
+			_carry_over(countdown)
+			_start_wave(wave + 1)
+		"explore":
+			if zone == 2 or zone == 4:
+				if not Settings.test_mode:
+					_carry_over(countdown)
+				if orb2_beacon and is_instance_valid(orb2_beacon):
+					orb2_beacon.queue_free()
+					orb2_beacon = null
+				_start_wave(1)
+
+
+## La création d'arme se débloque à la 2e sphère.
+func crafting_unlocked() -> bool:
+	return zone >= 2
+
+
 func _carry_over(remaining: float) -> void:
 	carry_time = remaining * CARRY_RATIO
 	if carry_time > 1.0:
@@ -1865,6 +1892,7 @@ func _apply_test_mode(p) -> void:
 	rifle_craftable = true
 	p.unlock_rifle()
 	p.unlock_cryo()
+	p.unlock_shock()
 	p.set_loadout(0, p.W.PISTOL)
 	p.set_loadout(1, p.W.RIFLE)
 	p._select_weapon(p.W.PISTOL)
