@@ -487,10 +487,8 @@ func _summon() -> void:
 		var z := ZombieScript.new()
 		z.summoned = true
 		z.guard = true            # traque les joueurs, ignore les sphères
-		z.max_hp = 260.0
-		z.hp = z.max_hp
+		z.set_level(13)          # 260 PV
 		z.speed = 3.4
-		z.damage = 14.0
 		z.main = main
 		z.orb = main.orb
 		var a := base + TAU * i / n + randf_range(-0.3, 0.3)

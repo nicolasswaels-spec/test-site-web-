@@ -43,10 +43,8 @@ const BOSS_TRAVEL_TIME := 60.0               # temps pour rejoindre le titan
 const ZONE4_TIME := 180.0                    # titan vaincu -> défense de la 3e sphère
 const MAGIC_PER_ZONE := 4                    # arbres magiques et rochers magiques par zone
 const LAVA_DPS := 16.0
-# sphères 2 et 3 : 1/3 de squelettes en moins, mais plus résistants et plus durs pour les constructions
+# sphères 2 et 3 : 1/3 de squelettes en moins (les PV et dégâts viennent du niveau des squelettes)
 const LATE_COUNT_MULT := 2.0 / 3.0
-const LATE_HP_MULT := 1.4
-const LATE_STRUCT_MULT := 1.25
 ## Les sphères sont au centre d'une case de construction (grille de 4 m) :
 ## un sol posé au pied de la sphère la centre, et 4 murs suffisent à l'entourer.
 const ORB_OFFSET := Vector3(2, 0, 2)
@@ -718,10 +716,10 @@ func _spawn_chest(center: Vector3, radius: float, gold: bool, z: int) -> void:
 		var g := ZombieScript.new()
 		g.guard = true
 		g.guard_group = ch
+		g.set_level([4, 12, 20][z - 1])
 		g.max_hp = [90.0, 220.0, 330.0][z - 1]
 		g.hp = g.max_hp
 		g.speed = [2.6, 3.2, 3.4][z - 1]
-		g.damage = [10.0, 16.0, 20.0][z - 1]
 		g.main = self
 		g.orb = orb
 		var a := TAU * i / n + rng.randf_range(-0.3, 0.3)
@@ -1182,16 +1180,8 @@ func _update_spawning(delta: float) -> void:
 func _spawn_zombie(boss: bool, archer := false) -> void:
 	var z := ZombieScript.new()
 	z.archer = archer
-	var n := difficulty()
-	if zone == 1:
-		# PV : de 40 à la vague 1 jusqu'à l'ancien maximum (186) à la vague 10 ; un peu plus lents
-		z.max_hp = lerpf(40.0, 186.0, (n - 1) / 9.0)
-		z.speed = minf(2.3 + n * 0.17, 4.1) * 0.85
-	else:
-		z.max_hp = (60.0 + (n - 1) * 14.0) * LATE_HP_MULT
-		z.speed = minf(2.3 + n * 0.17, 4.1)
-		z.struct_mult = LATE_STRUCT_MULT
-	z.damage = 8.0 + n
+	# niveau : autour du niveau de base de la vague (quelques-uns plus faibles ou plus forts)
+	z.set_level(_roll_level(boss))
 	if archer:
 		z.max_hp *= 0.6
 	if boss:
@@ -1210,6 +1200,36 @@ func _spawn_zombie(boss: bool, archer := false) -> void:
 	add_child(z)
 	if boss:
 		hud.flash_message("UN BOSS EST APPARU !")
+
+
+## Niveau de base d'une vague : zone 1 = numéro de vague (1 à 10) ; 2e sphère = 11 à 20 ;
+## 3e sphère = 16 à 25 (même difficulté qu'avant le système de niveaux).
+func base_level() -> int:
+	match zone:
+		2: return wave + 10
+		4: return wave + 15
+	return wave
+
+
+## Tirage du niveau d'un squelette : 10 % base-2, 25 % base-1, 40 % base, 18 % base+1, 7 % base+2.
+## Les boss sont toujours au niveau de base.
+func _roll_level(boss := false) -> int:
+	var b := base_level()
+	if boss:
+		return b
+	var r := rng.randf()
+	var off := 0
+	if r < 0.10:
+		off = -2
+	elif r < 0.35:
+		off = -1
+	elif r < 0.75:
+		off = 0
+	elif r < 0.93:
+		off = 1
+	else:
+		off = 2
+	return maxi(1, b + off)
 
 
 func _end_wave() -> void:

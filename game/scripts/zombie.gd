@@ -30,7 +30,11 @@ var hp := 80.0
 var speed := 2.5
 var damage := 10.0
 var size_mult := 1.0
-var struct_mult := 1.0   # dégâts aux constructions (sphères 2 et 3 : un peu plus)
+## Niveau du squelette : PV (fort), vitesse (faible), dégâts aux constructions (fort),
+## dégâts au joueur (faible : 2 à 10 PV par coup). Vague 1 de la zone 1 = niveau 1.
+var level := 1
+var player_damage := 2.0
+var struct_damage := 4.5
 var is_boss := false
 var kind := "minion"   # minion, rogue, boss
 var main
@@ -285,9 +289,9 @@ func _physics_process(delta: float) -> void:
 			if attack_target == orb:
 				dmg *= 0.6
 			elif attack_target == player:
-				dmg *= 1.0 if is_boss else 0.5
+				dmg = damage if is_boss else player_damage
 			else:
-				dmg *= (2.0 if is_boss else 0.5) * struct_mult
+				dmg = damage * 2.0 if is_boss else struct_damage
 			attack_target.take_damage(dmg)
 	else:
 		var spd := speed * (_wire_slow() if traps > 0 else 1.0) * frost_speed_mult()
@@ -478,6 +482,39 @@ class Arrow extends Node3D:
 			return
 		global_position = to
 		_orient()
+
+
+# ------------------------------------------------------------------ niveaux
+
+static func level_hp(lvl: int) -> float:
+	if lvl <= 10:
+		return 40.0 + (186.0 - 40.0) * (lvl - 1) / 9.0     # zone 1 : 40 -> 186
+	return (4.0 + 14.0 * lvl) * 1.4                         # niveau 11 = 221 PV, niveau 20 = 398 PV
+
+
+static func level_speed(lvl: int) -> float:
+	if lvl <= 10:
+		return 2.0 + 0.14 * lvl                 # zone 1 : 2,1 -> 3,4 m/s
+	return 3.4 + 0.06 * (lvl - 10)              # ensuite : +0,06 m/s par niveau
+
+
+static func level_struct_damage(lvl: int) -> float:
+	return 4.5 * pow(1.08, lvl - 1)                           # +8 % par niveau
+
+
+static func level_player_damage(lvl: int) -> float:
+	return clampf(2.0 + 8.0 * (lvl - 1) / 24.0, 2.0, 10.0)   # niveau 1 : 2 PV, niveau 25 : 10 PV
+
+
+## Applique les caractéristiques d'un niveau (PV, vitesse, dégâts).
+func set_level(lvl: int) -> void:
+	level = maxi(lvl, 1)
+	max_hp = level_hp(level)
+	hp = max_hp
+	speed = level_speed(level)
+	damage = 8.0 + level            # base : dégâts à la sphère (×0,6) et des boss
+	struct_damage = level_struct_damage(level)
+	player_damage = level_player_damage(level)
 
 
 ## Distance à laquelle le squelette délaisse la sphère pour attaquer le joueur.

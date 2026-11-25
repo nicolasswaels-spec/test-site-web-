@@ -61,12 +61,13 @@ const CRAFTS := [
 	{"id": "cryo", "name": "CANON CRYOGÉNIQUE", "icon": "w_cryo", "cost": {"wood": 5000, "stone": 2500},
 		"desc": "Rayon de glace continu : ralentit et rend vulnérable."},
 	{"id": "shock", "name": "ONDE DE CHOC", "icon": "w_shock", "cost": {"wood": 2000, "stone": 1000, "bone": 30},
-		"desc": "1 os par tir : cône large devant toi, 100 dégâts à tous les squelettes touchés."},
+		"desc": "1 os par tir : cône large devant toi, 225 dégâts à tous les squelettes touchés."},
 ]
 
 
 # ------------------------------------------------------------------ onde de choc
-## Dégâts 100 -> 200 (10 niveaux), rechargement 4 s -> 2 s (4 niveaux), portée 6 -> 12 m (6 niveaux).
+## Dégâts 225 -> 400 (10 niveaux : de quoi tuer tout juste un squelette de vague 1 de la 2e sphère,
+## puis, au maximum, un squelette de vague 5 de la zone volcanique), rechargement 4 s -> 2 s (4 niveaux), portée 6 -> 12 m (6 niveaux).
 ## Coûts en bois, pierre, pièces et os ; le dernier niveau de chaque branche demande aussi 1 os imposant.
 const SHOCK_LEVELS := {"damage": 10, "cooldown": 4, "range": 6}
 const SHOCK_COSTS := {
@@ -79,14 +80,15 @@ const SHOCK_COSTS := {
 	"range": {"wood": [400, 700, 1100, 1600, 2200, 3000], "stone": [200, 350, 550, 800, 1100, 1500],
 		"coins": [2, 5, 8, 12, 16, 22], "bone": [6, 10, 14, 18, 24, 30]},
 }
-const SHOCK_BASE_DAMAGE := 100.0
+const SHOCK_BASE_DAMAGE := 225.0
+const SHOCK_DAMAGE_STEP := 17.5
 const SHOCK_BASE_COOLDOWN := 4.0
 const SHOCK_BASE_RANGE := 6.0
 const SHOCK_HALF_ANGLE := 60.0    # cône de 120°
 
 
 static func shock_damage(lvl: int) -> float:
-	return SHOCK_BASE_DAMAGE + 10.0 * lvl
+	return SHOCK_BASE_DAMAGE + SHOCK_DAMAGE_STEP * lvl
 
 
 static func shock_cooldown(lvl: int) -> float:

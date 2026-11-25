@@ -815,7 +815,8 @@ func set_enemy(z) -> void:
 		return
 	enemy_box.visible = true
 	var names := {"minion": "SQUELETTE", "rogue": "SQUELETTE À CAPUCHE", "boss": "BOSS", "titan": "TITAN DE LAVE", "archer": "SQUELETTE ARCHER"}
-	enemy_name.text = "%s  %d / %d" % [names.get(z.kind, "SQUELETTE"), int(ceil(maxf(z.hp, 0.0))), int(z.max_hp)]
+	var lv: String = ("  NIV %d" % z.level) if z.get("level") != null and z.kind != "titan" else ""
+	enemy_name.text = "%s%s  %d / %d" % [names.get(z.kind, "SQUELETTE"), lv, int(ceil(maxf(z.hp, 0.0))), int(z.max_hp)]
 	if z.is_frozen():
 		enemy_name.text += "   GLACE %d" % z.frost_level()
 	enemy_bar.max_value = z.max_hp
