@@ -121,11 +121,11 @@ func _add_magic_look(mi: MeshInstance3D) -> void:
 	if mi.mesh.get_surface_count() > 1:
 		mi.set_surface_override_material(1, mats[1])
 	# lueur diffuse autour de l'arbre (halo + lumière douce sur les environs)
-	Nature.glow_halo(self, Color(0.10, 0.32, 0.24), 11.0, Vector3(0, 5.5, 0))
-	Nature.glow_halo(self, Color(0.10, 0.30, 0.22), 5.0, Vector3(0, 1.5, 0))
+	Nature.glow_halo(self, Color(0.22, 0.62, 0.45), 12.0, Vector3(0, 5.5, 0))
+	Nature.glow_halo(self, Color(0.20, 0.55, 0.40), 6.0, Vector3(0, 1.8, 0))
 	var l := OmniLight3D.new()
 	l.light_color = Color(0.45, 1.0, 0.8)
-	l.light_energy = 1.4
+	l.light_energy = 2.0
 	l.omni_range = 10.0
 	l.position = Vector3(0, 3.0, 0)
 	add_child(l)

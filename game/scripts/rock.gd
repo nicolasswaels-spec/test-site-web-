@@ -127,10 +127,10 @@ func _add_crystals(h: float) -> void:
 		var c := Mats.cylinder(visual, 0.0, 0.16 * rock_scale * 0.5, len, cm,
 			Vector3(cos(a) * radius * 0.45, h * randf_range(0.45, 0.8), sin(a) * radius * 0.45), Vector3.ZERO, 6)
 		c.rotation = Vector3(sin(a) * 0.7, 0, -cos(a) * 0.7)
-	Nature.glow_halo(self, Color(0.22, 0.14, 0.40), maxf(radius * 3.2, 4.0), Vector3(0, h * 0.5, 0))
+	Nature.glow_halo(self, Color(0.45, 0.30, 0.85), maxf(radius * 3.4, 4.5), Vector3(0, h * 0.5, 0))
 	var l := OmniLight3D.new()
 	l.light_color = Color(0.65, 0.45, 1.0)
-	l.light_energy = 1.4
+	l.light_energy = 2.0
 	l.omni_range = 8.0
 	l.position = Vector3(0, h + 0.5, 0)
 	add_child(l)

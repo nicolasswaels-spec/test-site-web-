@@ -310,7 +310,7 @@ static func glow_halo(parent: Node3D, color: Color, size: float, pos: Vector3) -
 		m.albedo_color = color
 		m.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
 		m.proximity_fade_enabled = true
-		m.proximity_fade_distance = 2.5
+		m.proximity_fade_distance = 0.8
 		m.disable_receive_shadows = true
 		_cache[k] = m
 	var mi := MeshInstance3D.new()
