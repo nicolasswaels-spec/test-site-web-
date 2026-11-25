@@ -504,7 +504,7 @@ func _build_skills() -> Control:
 	canvas.custom_minimum_size = Vector2(960, 400)
 	body.add_child(canvas)
 	var col_w := 320.0
-	var node_w := 96.0
+	var node_w := 102.0
 	var node_h := 56.0
 	var btns := {}
 	var first: Control = null
@@ -530,12 +530,12 @@ func _build_skills() -> Control:
 				show_page(2)
 			var b := _tile(canvas, "s:" + id, "", sk["name"], Vector2(node_w, node_h), bg, pick, st == "need_parent")
 			b.icon = null
-			b.add_theme_font_size_override("font_size", 12)
-			b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			b.add_theme_font_size_override("font_size", 11 if (sk["name"] as String).length() > 10 else 12)
+			b.autowrap_mode = TextServer.AUTOWRAP_WORD
 			var border := UI.YELLOW if id == sel_skill else (Color(0.5, 1.0, 0.5) if st == "ready" else Color(1, 1, 1, 0.2))
 			b.add_theme_stylebox_override("normal", _flat(bg, border, 3 if id == sel_skill or st == "ready" else 2))
 			var pos: Vector2 = sk["pos"]
-			b.position = Vector2(bi * col_w + 12 + pos.x * (node_w + 4), 34 + pos.y * (node_h + 18))
+			b.position = Vector2(bi * col_w + 4 + pos.x * (node_w + 3), 34 + pos.y * (node_h + 18))
 			b.size = Vector2(node_w, node_h)
 			btns[id] = b
 			if id == sel_skill:
