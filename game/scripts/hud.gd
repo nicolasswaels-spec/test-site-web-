@@ -748,6 +748,18 @@ func _nav_dir(d: Vector2) -> void:
 	var cr: Rect2 = (cur as Control).get_global_rect()
 	var cc := cr.get_center()
 	var best = null
+	# 1er passage : haut / bas dans la même colonne ; 2e passage (si rien trouvé) : la case la
+	# plus proche dans cette direction, même décalée (ex. racine d'un arbre de compétences)
+	for strict in [true, false]:
+		best = _nav_pick(btns, cur, cr, cc, d, strict)
+		if best:
+			break
+	if best:
+		(best as Button).grab_focus()
+
+
+func _nav_pick(btns: Array, cur, cr: Rect2, cc: Vector2, d: Vector2, strict: bool):
+	var best = null
 	var best_score := INF
 	for b in btns:
 		if b == cur:
@@ -762,8 +774,11 @@ func _nav_dir(d: Vector2) -> void:
 			# vers le haut / le bas : on reste de préférence dans la même colonne
 			var overlap := minf(cr.end.x, r.end.x) - maxf(cr.position.x, r.position.x)
 			if overlap <= 0.0:
-				continue      # haut / bas : uniquement dans la même colonne
-			perp = 0.0
+				if strict:
+					continue
+				perp *= 1.5
+			else:
+				perp = 0.0
 		else:
 			# vers la gauche / la droite : on reste de préférence sur la même ligne
 			var overlap_y := minf(cr.end.y, r.end.y) - maxf(cr.position.y, r.position.y)
@@ -774,8 +789,7 @@ func _nav_dir(d: Vector2) -> void:
 		if score < best_score:
 			best_score = score
 			best = b
-	if best:
-		(best as Button).grab_focus()
+	return best
 
 
 func _nav_move(dir: int) -> void:

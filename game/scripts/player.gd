@@ -23,7 +23,7 @@ const GUNS := {
 	W.PISTOL: {"mag": 12, "interval": 0.2, "damage": 34.0, "reload": 1.2, "auto": false, "spread": 0.012, "kick": 0.02},
 	W.RIFLE: {"mag": 30, "interval": 0.1, "damage": 24.0, "reload": 1.6, "auto": true, "spread": 0.022, "kick": 0.011},
 	# rayon de glace continu : très faibles dégâts, ralentit (70 % de vitesse) et rend vulnérable (+10 %) pendant 3 s
-	W.CRYO: {"mag": 0, "interval": 0.1, "damage": 7.0, "reload": 0.0, "auto": true, "spread": 0.0, "kick": 0.0},
+	W.CRYO: {"mag": 0, "interval": 0.1, "damage": 15.0, "reload": 0.0, "auto": true, "spread": 0.0, "kick": 0.0},
 	W.SHOCK: {"mag": 0, "interval": 4.0, "damage": 100.0, "reload": 0.0, "auto": false, "spread": 0.0, "kick": 0.0},
 }
 const MAG_SIZE := 30

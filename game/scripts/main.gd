@@ -1885,6 +1885,8 @@ func add_player(use_kbm: bool, pad_id: int) -> Node:
 	var container := SubViewportContainer.new()
 	container.stretch = true
 	container.mouse_filter = Control.MOUSE_FILTER_PASS
+	# toujours actif : sinon, jeu en pause (menus), les clics souris n'atteignent plus l'interface
+	container.process_mode = Node.PROCESS_MODE_ALWAYS
 	view_root.add_child(container)
 	var sv := SubViewport.new()
 	sv.world_3d = get_viewport().world_3d

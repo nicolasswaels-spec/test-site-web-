@@ -17,16 +17,16 @@ const HEIGHT := 10.5
 const BASE_HP := 30000.0
 const COOP_HP_MULT := 1.6
 const RANGE := 75.0              # il n'attaque que les joueurs à cette distance
-const FIREBALL_SPEED := 24.0
+const FIREBALL_SPEED := 10.0     # lent : on peut l'esquiver en se décalant
 const FIREBALL_DAMAGE := 22.0
 const FIREBALL_STRUCT_DAMAGE := 260.0
 const SLAM_DAMAGE := 32.0
-const SLAM_SPEED := 17.0
+const SLAM_SPEED := 8.0          # l'anneau avance lentement : le temps de sauter
 const SLAM_MAX_R := 62.0
 const ERUPT_DAMAGE := 40.0
 const ERUPT_STRUCT_DAMAGE := 450.0
 const ERUPT_RADIUS := 2.8
-const ERUPT_WARN := 1.6
+const ERUPT_WARN := 2.2
 const FROST_MAX_STACKS := 10.0
 const SUMMON_COUNT := 3          # 5 sous 50 % de PV
 const SUMMON_MAX_ALIVE := 8
@@ -57,6 +57,7 @@ var frost_max_vuln := 0.1
 var frost_decay_t := 0.0
 var frost_step := 1.0
 var target: Node3D
+var attack_target: Node3D   # joueur visé par l'attaque en cours (il le regarde)
 static var _lava_mat: StandardMaterial3D
 static var _flash_mat: StandardMaterial3D
 
@@ -172,11 +173,12 @@ func _process(delta: float) -> void:
 	if not awake:
 		return
 	target = _pick_target()
-	if target:
-		# se tourne lentement vers sa cible
-		var d: Vector3 = target.global_position - global_position
+	# il reste sur place mais se tourne : vers le joueur qu'il attaque (vite), sinon vers le plus proche
+	var look: Node3D = attack_target if (busy_t > 0.0 and is_instance_valid(attack_target) and not attack_target.dead) else target
+	if look:
+		var d: Vector3 = look.global_position - global_position
 		var want := atan2(-d.x, -d.z)
-		visual.rotation.y = lerp_angle(visual.rotation.y, want + PI, minf(delta * 1.5, 1.0))
+		visual.rotation.y = lerp_angle(visual.rotation.y, want, minf(delta * (4.0 if look == attack_target else 2.0), 1.0))
 	busy_t -= delta
 	attack_cd -= delta
 	if busy_t <= 0.0 and not anim.is_playing():
@@ -204,8 +206,20 @@ func phase2() -> bool:
 	return hp < max_hp * 0.5
 
 
+## Joueur visé par une attaque : au hasard parmi ceux à portée (à deux, il alterne).
+func _pick_attack_target() -> Node3D:
+	var cands := []
+	for p in main.players:
+		if not p.dead and p.global_position.distance_to(global_position) < RANGE:
+			cands.append(p)
+	return cands[randi() % cands.size()] if not cands.is_empty() else null
+
+
 func _attack() -> void:
-	var near: bool = target.global_position.distance_to(global_position) < 14.0
+	attack_target = _pick_attack_target()
+	if attack_target == null:
+		return
+	var near: bool = attack_target.global_position.distance_to(global_position) < 14.0
 	var choice := randi() % 4
 	if near and randf() < 0.6:
 		choice = 1
@@ -216,7 +230,8 @@ func _attack() -> void:
 		if choice == 3 and _summoned_alive() >= SUMMON_MAX_ALIVE:
 			choice = 0
 	last_attack = choice
-	attack_cd = (2.0 if phase2() else 3.0) + randf_range(0.0, 1.0)
+	# pause entre deux attaques (plus courte sous 50 % de PV)
+	attack_cd = (4.0 if phase2() else 5.5) + randf_range(0.0, 1.5)
 	match choice:
 		0: _fireballs()
 		1: _slam()
@@ -227,28 +242,28 @@ func _attack() -> void:
 # ------------------------------------------------------------------ attaque 1 : boules de feu
 
 func _fireballs() -> void:
-	busy_t = 1.6
-	anim.play("Spellcast_Shoot" if anim.has_animation("Spellcast_Shoot") else "1H_Ranged_Shoot", 0.15, 0.9)
-	var n := 5 if phase2() else 3
+	var n := 4 if phase2() else 3
+	busy_t = 1.0 + n * 0.6
+	anim.play("Spellcast_Shoot" if anim.has_animation("Spellcast_Shoot") else "1H_Ranged_Shoot", 0.15, 0.7)
 	var tw := create_tween()
-	tw.tween_interval(0.55)
+	tw.tween_interval(0.9)
 	for i in n:
 		tw.tween_callback(_launch_fireball)
-		tw.tween_interval(0.22)
+		tw.tween_interval(0.6)
 
 
 func _launch_fireball() -> void:
 	if dead or main == null:
 		return
-	var t := _pick_target()
+	var t: Node3D = attack_target if (is_instance_valid(attack_target) and not attack_target.dead) else _pick_target()
 	if t == null:
 		return
-	var fwd := Vector3(sin(visual.rotation.y), 0, cos(visual.rotation.y))
+	var fwd := Vector3(-sin(visual.rotation.y), 0, -cos(visual.rotation.y))
 	var from := global_position + Vector3.UP * (HEIGHT * 0.72) + fwd * 1.8
 	var aim: Vector3 = t.global_position + Vector3.UP * 1.0
 	var tv: Vector3 = t.velocity if "velocity" in t else Vector3.ZERO
-	aim += tv * (from.distance_to(aim) / FIREBALL_SPEED) * 0.6
-	aim += Vector3(randf_range(-1.5, 1.5), randf_range(-0.5, 0.8), randf_range(-1.5, 1.5))
+	aim += tv * 0.15     # vise presque là où tu es : un pas de côté suffit pour l'éviter
+	aim += Vector3(randf_range(-0.6, 0.6), randf_range(-0.2, 0.4), randf_range(-0.6, 0.6))
 	var fb := Fireball.new()
 	fb.main = main
 	fb.velocity = (aim - from).normalized() * FIREBALL_SPEED
@@ -260,7 +275,7 @@ func _launch_fireball() -> void:
 class Fireball extends Node3D:
 	var main
 	var velocity := Vector3.ZERO
-	var life := 5.0
+	var life := 10.0
 
 	func _ready() -> void:
 		Mats.sphere(self, 0.55, Mats.col(Color(1.0, 0.45, 0.1), 0.5, 6.0), Vector3.ZERO, 10)
@@ -320,13 +335,13 @@ class Fireball extends Node3D:
 # ------------------------------------------------------------------ attaque 2 : onde de choc
 
 func _slam() -> void:
-	busy_t = 2.0
-	anim.play("2H_Melee_Attack_Chop" if anim.has_animation("2H_Melee_Attack_Chop") else "1H_Melee_Attack_Chop", 0.15, 0.7)
+	busy_t = 2.6
+	anim.play("2H_Melee_Attack_Chop" if anim.has_animation("2H_Melee_Attack_Chop") else "1H_Melee_Attack_Chop", 0.15, 0.5)
 	var tw := create_tween()
-	tw.tween_interval(0.95)
+	tw.tween_interval(1.35)
 	tw.tween_callback(_spawn_shockwave)
 	if phase2():
-		tw.tween_interval(1.1)
+		tw.tween_interval(2.2)
 		tw.tween_callback(_spawn_shockwave)
 
 
@@ -395,11 +410,11 @@ class Shockwave extends Node3D:
 # ------------------------------------------------------------------ attaque 3 : éruptions
 
 func _eruptions() -> void:
-	busy_t = 1.8
-	anim.play("Spellcast_Raise" if anim.has_animation("Spellcast_Raise") else "Spellcast_Summon", 0.15, 1.0)
-	var per := 5 if phase2() else 3
-	for p in main.players:
-		if p.dead or p.global_position.distance_to(global_position) > RANGE:
+	busy_t = 2.4
+	anim.play("Spellcast_Raise" if anim.has_animation("Spellcast_Raise") else "Spellcast_Summon", 0.15, 0.8)
+	var per := 4 if phase2() else 3
+	for p in [attack_target]:
+		if p == null or p.dead or p.global_position.distance_to(global_position) > RANGE:
 			continue
 		for i in per:
 			var off := Vector3.ZERO

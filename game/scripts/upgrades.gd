@@ -175,8 +175,8 @@ static func wire_dps(lvl: int) -> float:
 
 ## Canon cryo : statut de glace de 0 à 10, gagné en touchant la cible (0,7 par tic de 0,1 s :
 ## ~1,5 s de rayon continu pour atteindre 10). Les effets ci-dessous sont les valeurs à 10 statuts.
-const CRYO_STACKS_PER_TICK := 0.7
-const CRYO_BASE_DPS := 70.0
+const CRYO_STACKS_PER_TICK := 1.05   # statuts appliqués encore 1,5× plus vite
+const CRYO_BASE_DPS := 150.0         # 150 dégâts/s de base, 450 au niveau 8
 
 
 ## Ralentissement à 10 statuts : 30 % → 40 %
@@ -184,9 +184,9 @@ static func cryo_max_slow(lvl: int) -> float:
 	return 0.30 + 0.0125 * lvl
 
 
-## Dégâts du rayon : 70 / s → 200 / s (avant vulnérabilité)
+## Dégâts du rayon : 150 / s → 450 / s (avant vulnérabilité)
 static func cryo_damage_mult(lvl: int) -> float:
-	return 1.0 + (200.0 / 70.0 - 1.0) / 8.0 * lvl
+	return 1.0 + (450.0 / 150.0 - 1.0) / 8.0 * lvl
 
 
 ## Vulnérabilité à 10 statuts : +10 % → +40 %
