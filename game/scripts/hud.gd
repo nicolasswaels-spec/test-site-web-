@@ -459,7 +459,7 @@ func update_player(p) -> void:
 	hp_bar.value = p.hp
 	hp_label.text = "%d PV      VIES %d" % [int(ceil(p.hp)), p.lives]
 	var counts := {"wood": p.wood, "magic_wood": p.magic_wood, "stone": p.stone, "magic_stone": p.magic_stone, "coins": p.coins}
-	var shown := {"wood": true, "magic_wood": p.magic_wood > 0, "stone": p.main != null and p.main.stone_unlocked,
+	var shown := {"wood": true, "magic_wood": p.magic_wood > 0, "stone": p.stone > 0 or p.can_mine_stone(),
 		"magic_stone": p.magic_stone > 0, "coins": p.coins > 0 or not p.first_coin}
 	for kind in RES_KINDS:
 		var r: Dictionary = res_rows[kind]
@@ -793,7 +793,7 @@ func set_enemy(z) -> void:
 		enemy_box.visible = false
 		return
 	enemy_box.visible = true
-	var names := {"minion": "SQUELETTE", "rogue": "SQUELETTE À CAPUCHE", "boss": "BOSS", "titan": "TITAN DE LAVE"}
+	var names := {"minion": "SQUELETTE", "rogue": "SQUELETTE À CAPUCHE", "boss": "BOSS", "titan": "TITAN DE LAVE", "archer": "SQUELETTE ARCHER"}
 	enemy_name.text = "%s  %d / %d" % [names.get(z.kind, "SQUELETTE"), int(ceil(maxf(z.hp, 0.0))), int(z.max_hp)]
 	if z.is_frozen():
 		enemy_name.text += "   GLACE %d" % z.frost_level()

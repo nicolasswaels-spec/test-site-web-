@@ -32,10 +32,10 @@ The Pathless).
   (pause de 60 s entre les vagues, lancer en avance reporte 50 % du temps restant).
 - Après la 10ᵉ vague : un couloir s'ouvre au nord vers la zone 2 (autre biome, 2ᵉ sphère,
   10 vagues plus dures, qui démarrent seules au bout de 2 min).
-- Zone 3 : volcan à l'ouest de la zone 2, TITAN DE LAVE (boss immobile, 3 attaques), rejoint en 1 min.
-- Zone « 4 » : 3e sphère à la place du titan, dans le volcan, défense au bout de 3 min.
+- Zone 3 : volcan à l'ouest de la zone 2, TITAN DE LAVE (boss immobile, 4 attaques dont une invocation de squelettes), rejoint en 1 min.
+- Zone « 4 » : 3e sphère à la place du titan, dans le volcan, défense au bout de 3 min, avec des squelettes archers.
 - Arbres / rochers magiques (4 par zone) : bois / pierre magique → pièces 5× plus solides.
-- Récolte : bois (arbres) et pierre (rochers, dès la vague 5) avec 3 cibles bonus qui apparaissent au 1er coup (+100 % sur le coup, +80 % du gain final par cible) ;
+- Récolte : bois (arbres) et pierre (rochers, récolte débloquée par la hache « bois » niveau 5 ; coffres) avec 3 cibles bonus qui apparaissent au 1er coup (+100 % sur le coup, +80 % du gain final par cible) ;
   pièces métalliques au sol (barbelés).
 - Construction grille 4 m : murs, sols, rampes, en bois ou pierre ; réparation, 3 niveaux
   d'amélioration, modifications (porte, fenêtre, trappe), barbelés.

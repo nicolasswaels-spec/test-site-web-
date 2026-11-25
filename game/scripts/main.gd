@@ -22,7 +22,6 @@ const MAP_RADIUS := 70.0
 const SPAWN_RADIUS := 63.0
 const TOTAL_WAVES := 10
 const BREAK_TIME := 60.0
-const STONE_WAVE := 5
 const RESPAWN_TIME := 5.0
 const TREE_COUNT := 140
 # Zone 2 (biome des érables), débloquée après les 10 vagues de la 1re sphère
@@ -181,7 +180,6 @@ var embers: CPUParticles3D
 var storm_mats: Array[ShaderMaterial] = []
 var zone2_blockers: Array[Node] = []   # forêt et pics qui occupent la zone 2 avant son ouverture
 var spires: Array[Node3D] = []
-var stone_unlocked := false
 var fireflies: CPUParticles3D
 var high := true
 var tracer_mat: StandardMaterial3D
@@ -190,6 +188,7 @@ var state := "idle"   # idle, break, wave, explore (sphère suivante), to_boss, 
 var wave := 0
 var to_spawn := 0
 var bosses_left := 0
+var archers_left := 0   # archers (3e sphère seulement)
 var spawn_timer := 0.0
 var spawn_interval := 1.0
 var countdown := 0.0
@@ -1015,7 +1014,7 @@ func _process(delta: float) -> void:
 			for zz in get_tree().get_nodes_in_group("zombie"):
 				if not zz.guard:
 					alive += 1
-			var remaining := alive + to_spawn + bosses_left
+			var remaining := alive + to_spawn + bosses_left + archers_left
 			hud.set_wave("%sVAGUE %d/%d" % [_sphere_prefix(), wave, TOTAL_WAVES], "Squelettes restants : %d" % remaining)
 			if remaining == 0:
 				_end_wave()
@@ -1125,6 +1124,7 @@ func _start_wave(n: int) -> void:
 	# zone 1 (au pistolet) : beaucoup moins de squelettes ; sphères 2 et 3 : 1/3 de moins qu'avant
 	to_spawn = (3 + (d - 1) * 2) if zone == 1 else int(round((5 + (d - 1) * 3) * LATE_COUNT_MULT))
 	bosses_left = n / 5   # mini-boss à la vague 5, deux boss à la vague 10
+	archers_left = (1 + n / 3) if zone == 4 else 0   # peu nombreux : 1 à 4
 	spawn_interval = maxf(0.3, 1.3 - d * 0.09)
 	spawn_timer = 1.5
 
@@ -1150,12 +1150,7 @@ func _start_wave(n: int) -> void:
 	var sub := "Protège la sphère !"
 	if bosses_left > 0:
 		sub = "Attention : %s en approche !" % ("un BOSS" if bosses_left == 1 else "deux BOSS")
-	if n == STONE_WAVE and not stone_unlocked:
-		stone_unlocked = true
-		hud.show_center("VAGUE %d" % n, "NOUVEAU : la PIERRE est débloquée !", 4.0)
-		hud.show_notice("Frappe les rochers à la hache pour récolter de la pierre,\npuis construis en pierre : 2× plus solide que le bois.\nChanger de matériau : V (clavier) / Y en mode construction (manette)", 9.0)
-	else:
-		hud.show_center("VAGUE %d" % n, sub, 2.5)
+	hud.show_center("VAGUE %d" % n, sub, 2.5)
 
 
 func _make_spawn_marker() -> Node3D:
@@ -1178,13 +1173,16 @@ func _make_spawn_marker() -> Node3D:
 
 
 func _update_spawning(delta: float) -> void:
-	if to_spawn <= 0 and bosses_left <= 0:
+	if to_spawn <= 0 and bosses_left <= 0 and archers_left <= 0:
 		return
 	spawn_timer -= delta
 	if spawn_timer > 0.0:
 		return
 	spawn_timer = spawn_interval
-	if to_spawn > 0:
+	if archers_left > 0 and (to_spawn <= 0 or rng.randf() < 0.2):
+		archers_left -= 1
+		_spawn_zombie(false, true)
+	elif to_spawn > 0:
 		to_spawn -= 1
 		_spawn_zombie(false)
 	else:
@@ -1192,8 +1190,9 @@ func _update_spawning(delta: float) -> void:
 		_spawn_zombie(true)
 
 
-func _spawn_zombie(boss: bool) -> void:
+func _spawn_zombie(boss: bool, archer := false) -> void:
 	var z := ZombieScript.new()
+	z.archer = archer
 	var n := difficulty()
 	if zone == 1:
 		# PV : de 40 à la vague 1 jusqu'à l'ancien maximum (186) à la vague 10 ; un peu plus lents
@@ -1204,6 +1203,8 @@ func _spawn_zombie(boss: bool) -> void:
 		z.speed = minf(2.3 + n * 0.17, 4.1)
 		z.struct_mult = LATE_STRUCT_MULT
 	z.damage = 8.0 + n
+	if archer:
+		z.max_hp *= 0.6
 	if boss:
 		z.is_boss = true
 		z.size_mult = 1.9
@@ -1273,7 +1274,6 @@ func _unlock_zone2() -> void:
 	if zone2_unlocked:
 		return
 	zone2_unlocked = true
-	stone_unlocked = true
 	for n in zone2_blockers:
 		if is_instance_valid(n):
 			n.queue_free()
@@ -1727,6 +1727,7 @@ func skip_zone() -> void:
 	spawn_markers.clear()
 	to_spawn = 0
 	bosses_left = 0
+	archers_left = 0
 	match zone:
 		1:
 			if state != "explore":
@@ -1861,7 +1862,6 @@ func add_player(use_kbm: bool, pad_id: int) -> Node:
 ## Mode test : toutes les armes, ressources illimitées, pierre débloquée.
 func _apply_test_mode(p) -> void:
 	p.test_mode = true
-	stone_unlocked = true
 	rifle_craftable = true
 	p.unlock_rifle()
 	p.unlock_cryo()

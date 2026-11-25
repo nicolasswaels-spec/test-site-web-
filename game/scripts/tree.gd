@@ -114,16 +114,19 @@ func _fall() -> void:
 	tw.tween_callback(queue_free)
 
 
-## Apparence magique : mousse lumineuse sur l'écorce, feuillage turquoise, lueur et étincelles.
+## Apparence magique : skin différent (écorce argentée, feuillage turquoise) + halo, lumière douce et étincelles.
 func _add_magic_look(mi: MeshInstance3D) -> void:
 	var mats: Array = Nature.magic_tree_materials(species)
 	mi.set_surface_override_material(0, mats[0])
 	if mi.mesh.get_surface_count() > 1:
 		mi.set_surface_override_material(1, mats[1])
+	# lueur diffuse autour de l'arbre (halo + lumière douce sur les environs)
+	Nature.glow_halo(self, Color(0.10, 0.32, 0.24), 11.0, Vector3(0, 5.5, 0))
+	Nature.glow_halo(self, Color(0.10, 0.30, 0.22), 5.0, Vector3(0, 1.5, 0))
 	var l := OmniLight3D.new()
-	l.light_color = Color(0.3, 1.0, 0.65)
-	l.light_energy = 2.2
-	l.omni_range = 9.0
+	l.light_color = Color(0.45, 1.0, 0.8)
+	l.light_energy = 1.4
+	l.omni_range = 10.0
 	l.position = Vector3(0, 3.0, 0)
 	add_child(l)
 	var sp := CPUParticles3D.new()
@@ -142,7 +145,8 @@ func _add_magic_look(mi: MeshInstance3D) -> void:
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
-	m.albedo_color = Color(0.6, 1.0, 0.8)
+	m.albedo_color = Color(0.6, 1.0, 0.8, 0.8)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	q.material = m
 	sp.mesh = q
 	add_child(sp)

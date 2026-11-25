@@ -6,6 +6,7 @@ extends StaticBody3D
 ##   2. Onde de choc : il frappe le sol, un anneau de feu s'étend ; sauter ou être en hauteur
 ##      l'évite, un mur entre lui et toi la bloque.
 ##   3. Éruptions : des cercles rouges apparaissent sous les joueurs, puis la lave jaillit.
+##   4. Invocation : des squelettes sortent de terre autour de lui et traquent les joueurs.
 ## Sous 50 % de PV, il enchaîne plus vite et tire davantage.
 ## Il est dans le groupe « zombie » pour que les armes, le viseur et la mini-carte le gèrent.
 
@@ -27,6 +28,9 @@ const ERUPT_STRUCT_DAMAGE := 450.0
 const ERUPT_RADIUS := 2.8
 const ERUPT_WARN := 1.6
 const FROST_MAX_STACKS := 10.0
+const SUMMON_COUNT := 3          # 5 sous 50 % de PV
+const SUMMON_MAX_ALIVE := 8
+const ZombieScript = preload("res://scripts/zombie.gd")
 
 signal defeated
 
@@ -202,17 +206,22 @@ func phase2() -> bool:
 
 func _attack() -> void:
 	var near: bool = target.global_position.distance_to(global_position) < 14.0
-	var choice := randi() % 3
+	var choice := randi() % 4
 	if near and randf() < 0.6:
 		choice = 1
+	if choice == 3 and _summoned_alive() >= SUMMON_MAX_ALIVE:
+		choice = randi() % 3
 	if choice == last_attack:
-		choice = (choice + 1 + randi() % 2) % 3
+		choice = (choice + 1 + randi() % 3) % 4
+		if choice == 3 and _summoned_alive() >= SUMMON_MAX_ALIVE:
+			choice = 0
 	last_attack = choice
 	attack_cd = (2.0 if phase2() else 3.0) + randf_range(0.0, 1.0)
 	match choice:
 		0: _fireballs()
 		1: _slam()
 		2: _eruptions()
+		3: _summon()
 
 
 # ------------------------------------------------------------------ attaque 1 : boules de feu
@@ -387,7 +396,7 @@ class Shockwave extends Node3D:
 
 func _eruptions() -> void:
 	busy_t = 1.8
-	anim.play("Spellcast_Summon" if anim.has_animation("Spellcast_Summon") else "Spellcast_Raise", 0.15, 1.0)
+	anim.play("Spellcast_Raise" if anim.has_animation("Spellcast_Raise") else "Spellcast_Summon", 0.15, 1.0)
 	var per := 5 if phase2() else 3
 	for p in main.players:
 		if p.dead or p.global_position.distance_to(global_position) > RANGE:
@@ -458,6 +467,45 @@ class Eruption extends Node3D:
 		Sfx.play_3d("break", pos, 3.0, 0.6)
 
 
+# ------------------------------------------------------------------ attaque 4 : invocation
+
+func _summoned_alive() -> int:
+	var n := 0
+	for z in get_tree().get_nodes_in_group("zombie"):
+		if z != self and z.get("summoned"):
+			n += 1
+	return n
+
+
+func _summon() -> void:
+	busy_t = 2.0
+	anim.play("Spellcast_Summon" if anim.has_animation("Spellcast_Summon") else "Spellcast_Raise", 0.15, 0.9)
+	Sfx.play("horn", -4.0, 0.8)
+	var n := mini(SUMMON_COUNT + (2 if phase2() else 0), SUMMON_MAX_ALIVE - _summoned_alive())
+	var base := randf() * TAU
+	for i in n:
+		var z := ZombieScript.new()
+		z.summoned = true
+		z.guard = true            # traque les joueurs, ignore les sphères
+		z.max_hp = 260.0
+		z.hp = z.max_hp
+		z.speed = 3.4
+		z.damage = 14.0
+		z.main = main
+		z.orb = main.orb
+		var a := base + TAU * i / n + randf_range(-0.3, 0.3)
+		z.position = global_position + Vector3(cos(a), 0, sin(a)) * randf_range(6.0, 9.0) + Vector3(0, 0.05, 0)
+		main.add_child(z)
+		main.spawn_impact(z.position + Vector3.UP * 0.3, Vector3.UP, Color(1.0, 0.4, 0.1), 14, 1.2)
+
+
+## Les squelettes invoqués s'effondrent avec leur maître.
+func _kill_summons() -> void:
+	for z in get_tree().get_nodes_in_group("zombie"):
+		if z != self and z.get("summoned") and not z.dead:
+			z.take_damage(99999.0)
+
+
 # ------------------------------------------------------------------ dégâts / glace
 
 func take_damage(amount: float, _headshot := false) -> void:
@@ -506,6 +554,7 @@ func die() -> void:
 	hp = 0.0
 	remove_from_group("zombie")
 	collision_layer = 0
+	_kill_summons()
 	for mi in meshes:
 		mi.material_overlay = _lava()
 	anim.play("Death_A" if anim.has_animation("Death_A") else "Death_C_Skeletons", 0.1, 0.6)

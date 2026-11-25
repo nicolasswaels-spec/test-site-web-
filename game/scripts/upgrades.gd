@@ -27,6 +27,8 @@ const CRYO_COSTS := [
 	{"wood": 4300, "stone": 2900, "coins": 50},
 	{"wood": 5200, "stone": 3600, "coins": 60},
 ]
+## Niveau de « récolte de bois » de la hache qui permet de récolter la pierre.
+const STONE_UNLOCK_LEVEL := 5
 const AXE_COSTS := [300, 550, 850, 1150, 1500, 1900, 2400, 3000]
 
 const ITEMS := {
@@ -158,7 +160,10 @@ static func effect_text(item: String, branch: String, lvl: int, base_mag := 12) 
 		"reload":
 			return "rechargement -%d %%" % int(round((1.0 - reload_mult(lvl)) * 100.0))
 		"wood", "stone":
-			return "×%.2f par coup" % harvest_mult(lvl)
+			var t := "×%.2f par coup" % harvest_mult(lvl)
+			if branch == "wood" and lvl == STONE_UNLOCK_LEVEL:
+				t += " + DÉBLOQUE LA PIERRE"
+			return t
 		"slow":
 			return "vitesse réduite à %d %%" % int(round(wire_slow(lvl) * 100.0))
 	return ""

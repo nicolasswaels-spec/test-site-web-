@@ -61,6 +61,15 @@ var frost_max_vuln := 0.10     # vulnérabilité à 10 statuts
 static var _frost_mat: StandardMaterial3D
 ## Gardien de coffre : immobile jusqu'à ce qu'un joueur approche ou l'attaque, puis il le poursuit.
 var guard := false
+var archer := false        # archer (3e sphère) : reste à distance et tire sur les joueurs
+const ARCHER_RANGE := 24.0
+const ARCHER_MIN := 9.0
+const ARCHER_KEEP := 16.0
+const ARROW_DAMAGE := 4.0
+const ARROW_CD := 3.8
+const ARROW_SPEED := 26.0
+var shoot_cd := 2.5
+var summoned := false      # invoqué par le titan : sort de terre et traque les joueurs
 var guard_group = null     # coffre gardé (les gardiens d'un même coffre réagissent ensemble)
 var charging := false
 const GUARD_CHARGE_SPEED := 5.5
@@ -109,9 +118,9 @@ func _ready() -> void:
 func _build_model(s: float) -> void:
 	visual = Node3D.new()
 	add_child(visual)
-	var idx := randi() % MODELS.size()
+	var idx := 0 if archer else randi() % MODELS.size()
 	var scene: PackedScene = BOSS_MODEL if is_boss else MODELS[idx]
-	kind = "boss" if is_boss else ("rogue" if idx == 1 else "minion")
+	kind = "boss" if is_boss else ("archer" if archer else ("rogue" if idx == 1 else "minion"))
 	var model := scene.instantiate() as Node3D
 	model.rotation.y = PI   # le modèle regarde vers +Z, le jeu vers -Z
 	model.scale = Vector3.ONE * (1.8 / MODEL_HEIGHT) * s
@@ -121,13 +130,15 @@ func _build_model(s: float) -> void:
 		meshes.append(mi)
 		if mi.name.ends_with("_Eyes"):
 			mi.material_override = _eye_material()
+	if archer:
+		_add_bow(model)
 	# Animations en boucle (l'import glTF ne les marque pas comme telles)
 	var walk := anim.get_animation(ANIM_WALK)
 	walk.loop_mode = Animation.LOOP_LINEAR
 	if is_boss:
 		attack_anim_name = "2H_Melee_Attack_Chop"
 	rise_t = anim.get_animation(ANIM_SPAWN).length / SPAWN_SPEED
-	if guard:
+	if guard and not summoned:
 		awake = false
 		rise_t = 0.0
 		anim.play("Skeletons_Inactive_Standing_Pose" if anim.has_animation("Skeletons_Inactive_Standing_Pose") else "Idle")
@@ -194,6 +205,10 @@ func _physics_process(delta: float) -> void:
 		velocity.x = 0.0
 		velocity.z = 0.0
 		move_and_slide()
+		return
+
+	if archer:
+		_archer_logic(delta)
 		return
 
 	# Choix de la cible : le joueur le plus proche s'il est assez près, sinon la sphère.
@@ -328,6 +343,143 @@ func _physics_process(delta: float) -> void:
 		Sfx.play_3d("groan", global_position + Vector3.UP * 1.5, -2.0, 0.7 if is_boss else 1.0)
 
 
+# ------------------------------------------------------------------ archer
+
+## Arc tenu dans la main gauche (os « handslot.l » du squelette KayKit).
+func _add_bow(model: Node3D) -> void:
+	var sk := model.find_child("Skeleton3D", true, false) as Skeleton3D
+	if sk == null:
+		return
+	var ba := BoneAttachment3D.new()
+	ba.bone_name = "handslot.l"
+	sk.add_child(ba)
+	var wood := Mats.col(Color(0.35, 0.2, 0.12))
+	var bow := Node3D.new()
+	bow.rotation_degrees = Vector3(0, 90, 0)
+	ba.add_child(bow)
+	for i in 7:
+		var a := deg_to_rad(-60.0 + i * 20.0)
+		var seg := Mats.box(bow, Vector3(0.06, 0.24, 0.06), wood, Vector3(-cos(a) * 0.55 + 0.45, sin(a) * 0.62, 0))
+		seg.rotation.z = a
+	Mats.box(bow, Vector3(0.015, 1.1, 0.015), Mats.col(Color(0.85, 0.85, 0.8)), Vector3(0.18, 0, 0))
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		if mi.name.ends_with("_Eyes"):
+			mi.material_override = Mats.col(Color(0.4, 1.0, 0.4), 0.3, 5.0)
+
+
+## Archer : se tient à distance des joueurs (ni sphère ni constructions), tire lentement.
+func _archer_logic(delta: float) -> void:
+	player = main.nearest_player(global_position) if main else null
+	var dir := Vector3.ZERO
+	var face := -global_transform.basis.z
+	if player and not player.dead:
+		var to: Vector3 = player.global_position - global_position
+		to.y = 0.0
+		var d := to.length()
+		var n := to / maxf(d, 0.01)
+		face = n
+		if d > ARCHER_KEEP:
+			dir = n
+		elif d < ARCHER_MIN:
+			dir = -n
+		shoot_cd -= delta
+		if shoot_cd <= 0.0 and d < ARCHER_RANGE and _clear_shot(player):
+			shoot_cd = ARROW_CD + randf_range(0.0, 1.0)
+			attack_anim = 0.9
+			var shot := "1H_Ranged_Shoot" if anim.has_animation("1H_Ranged_Shoot") else "Throw"
+			anim.play(shot, 0.1, 1.2)
+			var tw := create_tween()
+			tw.tween_interval(0.35)
+			tw.tween_callback(_shoot_arrow)
+	if dir != Vector3.ZERO and attack_anim <= 0.0:
+		dir += main.avoidance(self) * 0.6
+		dir.y = 0.0
+		dir = dir.normalized()
+		var spd := speed * 0.8 * (_wire_slow() if traps > 0 else 1.0) * frost_speed_mult()
+		velocity.x = dir.x * spd
+		velocity.z = dir.z * spd
+	else:
+		velocity.x = 0.0
+		velocity.z = 0.0
+	if traps > 0:
+		hp -= _wire_dps() * delta
+		if hp <= 0.0:
+			_die()
+			return
+	rotation.y = lerp_angle(rotation.y, atan2(-face.x, -face.z), 8.0 * delta)
+	move_and_slide()
+	_animate(delta)
+
+
+func _clear_shot(p) -> bool:
+	var from := global_position + Vector3.UP * 1.5
+	var q := PhysicsRayQueryParameters3D.create(from, p.global_position + Vector3.UP * 1.2, 1 | 8)
+	return get_world_3d().direct_space_state.intersect_ray(q).is_empty()
+
+
+func _shoot_arrow() -> void:
+	if dead or main == null or player == null or player.dead:
+		return
+	var from := global_position + Vector3.UP * 1.45 - global_transform.basis.z * 0.5
+	var aim: Vector3 = player.global_position + Vector3.UP * 1.1
+	aim += player.velocity * (from.distance_to(aim) / ARROW_SPEED) * 0.5
+	aim += Vector3(randf_range(-0.6, 0.6), randf_range(-0.3, 0.3), randf_range(-0.6, 0.6))
+	var ar := Arrow.new()
+	ar.main = main
+	ar.velocity = (aim - from).normalized() * ARROW_SPEED
+	main.add_child(ar)
+	ar.global_position = from
+	Sfx.play_3d("shot", from, -14.0, 1.8)
+
+
+class Arrow extends Node3D:
+	var main
+	var velocity := Vector3.ZERO
+	var life := 3.0
+	var stuck := false
+
+	func _ready() -> void:
+		var m := Mats.box(self, Vector3(0.04, 0.04, 0.75), Mats.col(Color(0.45, 0.3, 0.18)))
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		Mats.box(self, Vector3(0.07, 0.07, 0.12), Mats.col(Color(0.7, 0.72, 0.8), 0.4), Vector3(0, 0, -0.4))
+		Mats.box(self, Vector3(0.12, 0.01, 0.14), Mats.col(Color(0.9, 0.9, 0.85)), Vector3(0, 0, 0.32))
+		_orient()
+
+	func _orient() -> void:
+		if velocity.length() > 0.1:
+			look_at(global_position + velocity, Vector3.UP if absf(velocity.normalized().y) < 0.98 else Vector3.RIGHT)
+
+	func _physics_process(delta: float) -> void:
+		life -= delta
+		if life <= 0.0:
+			queue_free()
+			return
+		if stuck:
+			return
+		velocity.y -= 4.0 * delta
+		var from := global_position
+		var to := from + velocity * delta
+		for p in main.players:
+			if p.dead:
+				continue
+			var c: Vector3 = p.global_position + Vector3.UP * 1.0
+			var ab := to - from
+			var t := clampf((c - from).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
+			if (from + ab * t).distance_to(c) < 0.75:
+				p.take_damage(ARROW_DAMAGE)
+				queue_free()
+				return
+		var q := PhysicsRayQueryParameters3D.create(from, to, 1 | 8 | 16)
+		var r := get_world_3d().direct_space_state.intersect_ray(q)
+		if not r.is_empty():
+			global_position = r.position
+			stuck = true      # la flèche reste plantée (sans abîmer les constructions)
+			life = 2.0
+			return
+		global_position = to
+		_orient()
+
+
 ## Distance à laquelle le squelette délaisse la sphère pour attaquer le joueur.
 ## Base : courte, et encore réduite quand le joueur s'éloigne de la sphère.
 ## Capuche : longue (ils traquent le joueur). Boss : jamais (seule la sphère compte).
@@ -423,7 +575,7 @@ func wake_up() -> void:
 func take_damage(amount: float, headshot := false) -> void:
 	if dead:
 		return
-	if guard and not charging and main and main.has_method("alert_guards"):
+	if guard and not summoned and not charging and main and main.has_method("alert_guards"):
 		main.alert_guards(guard_group)
 	if is_frozen():
 		amount *= vuln_mult()

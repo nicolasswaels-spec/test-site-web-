@@ -60,14 +60,14 @@ func _ready() -> void:
 
 
 ## Appelé par la hache. Renvoie la pierre gagnée (0 si la pierre est verrouillée).
-func mine(damage: float, hit_pos := Vector3.INF) -> int:
+func mine(damage: float, hit_pos := Vector3.INF, can_mine := true) -> int:
 	if broken:
 		return 0
 	Sfx.play_3d("thud", global_position + Vector3.UP, 2.0, 1.3)
 	var tw := create_tween()
 	tw.tween_property(visual, "scale", Vector3(1.05, 0.95, 1.05), 0.05)
 	tw.tween_property(visual, "scale", Vector3.ONE, 0.12)
-	if main and not main.stone_unlocked:
+	if not can_mine:
 		return 0
 	last_target_hit = harvest.register_hit(hit_pos)
 	hp -= damage
@@ -120,16 +120,17 @@ func _break() -> void:
 
 ## Cristaux violets lumineux qui sortent du rocher magique + lueur.
 func _add_crystals(h: float) -> void:
-	var cm := Mats.col(Color(0.75, 0.6, 1.0), 0.2, 2.5)
+	var cm := Mats.col(Color(0.72, 0.62, 1.0), 0.25, 0.6)
 	for i in 6:
 		var a := TAU * i / 6.0 + randf_range(-0.3, 0.3)
 		var len := randf_range(0.8, 1.6) * rock_scale * 0.45
 		var c := Mats.cylinder(visual, 0.0, 0.16 * rock_scale * 0.5, len, cm,
 			Vector3(cos(a) * radius * 0.45, h * randf_range(0.45, 0.8), sin(a) * radius * 0.45), Vector3.ZERO, 6)
 		c.rotation = Vector3(sin(a) * 0.7, 0, -cos(a) * 0.7)
+	Nature.glow_halo(self, Color(0.22, 0.14, 0.40), maxf(radius * 3.2, 4.0), Vector3(0, h * 0.5, 0))
 	var l := OmniLight3D.new()
 	l.light_color = Color(0.65, 0.45, 1.0)
-	l.light_energy = 2.0
+	l.light_energy = 1.4
 	l.omni_range = 8.0
 	l.position = Vector3(0, h + 0.5, 0)
 	add_child(l)

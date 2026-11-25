@@ -269,24 +269,59 @@ static func ash_pines() -> Array[ArrayMesh]:
 		"PineTree_Bark.png", Color(0.13, 0.10, 0.10), "PineTree_Leaves.png", Color(0.03, 0.01, 0.01), Color(0.32, 0.10, 0.05))
 
 
-## Matériaux d'un arbre magique : écorce couverte de mousse lumineuse, feuillage turquoise qui luit.
+## Matériaux d'un arbre magique : simple skin différent (écorce pâle argentée, feuillage
+## turquoise clair), sans émission ; la lueur vient d'un halo autour (voir glow_halo).
 ## species : 0 sapin, 1 érable, 2 bouleau, 3 sapin calciné.
 static func magic_tree_materials(species: int) -> Array:
 	var k := "magic_tree_%d" % species
 	if not _cache.has(k):
 		var bark := StandardMaterial3D.new()
 		bark.albedo_texture = _texture(["PineTree_Bark.png", "MapleTree_Bark.png", "BirchTree_Bark.png", "PineTree_Bark.png"][species])
-		bark.albedo_color = Color(0.25, 0.55, 0.35)
-		bark.emission_enabled = true
-		bark.emission = Color(0.15, 0.9, 0.55)
-		bark.emission_energy_multiplier = 0.3
-		bark.emission_texture = bark.albedo_texture
+		bark.albedo_color = Color(0.62, 0.70, 0.78)
 		bark.roughness = 1.0
+		bark.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP
 		var leaf_tex: String = ["PineTree_Leaves.png", "MapleTree_Leaves.png", "BirchTree_Leaves.png", "PineTree_Leaves.png"][species]
-		var leaves := leaf_material(leaf_tex, Color(0.02, 0.12, 0.10), Color(0.30, 1.0, 0.70), 14.0, 0.1)
-		leaves.set_shader_parameter("glow", Color(0.10, 0.55, 0.38))
+		var leaves := leaf_material(leaf_tex, Color(0.03, 0.10, 0.14), Color(0.30, 0.78, 0.72), 14.0, 0.1)
 		_cache[k] = [bark, leaves]
 	return _cache[k]
+
+
+## Halo lumineux diffus (sprite toujours face à la caméra, fondu près des surfaces).
+static func glow_halo(parent: Node3D, color: Color, size: float, pos: Vector3) -> MeshInstance3D:
+	var k := "halo_" + color.to_html()
+	if not _cache.has(k):
+		var g := Gradient.new()
+		g.set_color(0, Color(1, 1, 1, 1))
+		g.set_color(1, Color(1, 1, 1, 0))
+		g.add_point(0.35, Color(1, 1, 1, 0.45))
+		var gt := GradientTexture2D.new()
+		gt.gradient = g
+		gt.fill = GradientTexture2D.FILL_RADIAL
+		gt.fill_from = Vector2(0.5, 0.5)
+		gt.fill_to = Vector2(1.0, 0.5)
+		gt.width = 128
+		gt.height = 128
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		m.albedo_texture = gt
+		m.albedo_color = color
+		m.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+		m.proximity_fade_enabled = true
+		m.proximity_fade_distance = 2.5
+		m.disable_receive_shadows = true
+		_cache[k] = m
+	var mi := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(size, size)
+	mi.mesh = q
+	mi.material_override = _cache[k]
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.position = pos
+	parent.add_child(mi)
+	return mi
 
 
 ## Rocher volcanique (basalte sombre) ou magique (violet, lumineux).
@@ -300,11 +335,7 @@ static func rock_material(kind: String) -> StandardMaterial3D:
 			"volcanic":
 				mat.albedo_color = Color(0.22, 0.17, 0.17)
 			"magic":
-				mat.albedo_color = Color(0.45, 0.35, 0.85)
-				mat.emission_enabled = true
-				mat.emission = Color(0.45, 0.25, 1.0)
-				mat.emission_energy_multiplier = 0.35
-				mat.emission_texture = mat.albedo_texture
+				mat.albedo_color = Color(0.55, 0.50, 0.85)
 		_cache[k] = mat
 	return _cache[k]
 

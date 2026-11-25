@@ -680,6 +680,8 @@ func buy_upgrade(item: String, branch: String) -> bool:
 		stone -= c.get("stone", 0)
 		coins -= c.get("coins", 0)
 	upgrades[item][branch] = lvl + 1
+	if item == "axe" and branch == "wood" and lvl + 1 == Upg.STONE_UNLOCK_LEVEL and hud:
+		hud.show_notice("PIERRE DÉBLOQUÉE !\nTa hache peut maintenant casser les rochers pour récolter de la pierre.\nConstruire en pierre : 2× plus solide que le bois (V / Y pour changer de matériau).", 8.0)
 	if branch == "mag":
 		for w in GUN_KEYS:
 			if GUN_KEYS[w] == item:
@@ -1113,7 +1115,7 @@ func _axe_impact() -> void:
 	var c = r.collider
 	_shake(0.012)
 	if c and c.is_in_group("rock"):
-		var got: int = c.mine(AXE_TREE_DAMAGE, r.position)
+		var got: int = c.mine(AXE_TREE_DAMAGE, r.position, can_mine_stone())
 		got = int(round(got * Upg.harvest_mult(upgrades["axe"]["stone"])))
 		if c.magic and c.broken:
 			_gain_magic("magic_stone")
@@ -1123,8 +1125,8 @@ func _axe_impact() -> void:
 				hud.stone_gain(got)
 				if c.last_target_hit:
 					hud.hitmarker(true)
-		elif hud and main and not main.stone_unlocked:
-			hud.flash_message("La pierre se débloque à la vague %d" % main.STONE_WAVE)
+		elif hud and not can_mine_stone():
+			hud.flash_message("Récolter la pierre : améliore la hache (récolte de bois) au niveau %d" % Upg.STONE_UNLOCK_LEVEL)
 		main.spawn_impact(r.position, r.normal, Color(0.5, 0.5, 0.6), 10, 1.0)
 		_shake(0.02)
 	elif c and c.is_in_group("tree"):
@@ -1225,6 +1227,11 @@ func _place() -> void:
 	main.place_structure(build_piece, ghost_info["xform"], ghost_info["key"], build_mat)
 
 
+## La pierre se récolte une fois la hache (récolte de bois) au niveau 5.
+func can_mine_stone() -> bool:
+	return test_mode or upgrades["axe"]["wood"] >= Upg.STONE_UNLOCK_LEVEL
+
+
 func _material_count(m: int) -> int:
 	return [wood, stone, magic_wood, magic_stone][m]
 
@@ -1252,7 +1259,7 @@ func _toggle_material() -> void:
 	var next := build_mat
 	for k in range(1, 5):
 		var m: int = order[(build_mat + k) % 4]
-		if m == 1 and main and not main.stone_unlocked:
+		if m == 1 and stone <= 0 and not can_mine_stone():
 			continue
 		if m >= 2 and _material_count(m) <= 0:
 			continue
@@ -1260,8 +1267,8 @@ func _toggle_material() -> void:
 		break
 	if next == build_mat:
 		if hud:
-			if main and not main.stone_unlocked:
-				hud.flash_message("La pierre se débloque à la vague %d" % main.STONE_WAVE)
+			if stone <= 0 and not can_mine_stone():
+				hud.flash_message("Pas de pierre : trouve-en dans un coffre, ou améliore la hache (bois) au niveau %d" % Upg.STONE_UNLOCK_LEVEL)
 			else:
 				hud.flash_message("Aucun autre matériau disponible")
 		return
