@@ -4,6 +4,7 @@ extends CharacterBody3D
 const Mats = preload("res://scripts/mats.gd")
 const Structure = preload("res://scripts/structure.gd")
 const Upg = preload("res://scripts/upgrades.gd")
+const Skills = preload("res://scripts/skills.gd")
 
 signal died
 
@@ -106,6 +107,14 @@ var flash_t := 0.0
 var bob_t := 0.0
 var equip_t := 0.0
 var hp := MAX_HP
+# ---- arbre de compétences
+var skills := {}                 # id -> vrai si débloquée
+var skill_tokens := 0
+var stats := Skills.new_stats()  # compteurs pour les prérequis
+var shield := 0.0
+var since_hit := 99.0            # temps depuis le dernier coup reçu
+var fireball_cd := 0.0
+var _last_pos := Vector3.INF
 var wood := 60
 var stone := 0
 var coins := 0
@@ -567,6 +576,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_cycle_hand_weapons()
 	elif event.is_action_pressed(a("build_toggle")):
 		_select_weapon(last_gun if weapon == W.BUILD else W.BUILD)
+	elif event.is_action_pressed(a("skill")) and weapon != W.BUILD and has_skill("A7"):
+		_cast_fireball()
 	elif event.is_action_pressed(a("piece_next")):
 		_pick_piece((build_piece + 1) % 3)
 	elif event.is_action_pressed(a("inventory")):
@@ -802,6 +813,7 @@ func _physics_process(delta: float) -> void:
 		spd = SPRINT_SPEED
 	if aiming:
 		spd *= 0.6
+	spd *= move_speed_mult()
 	if Input.is_action_just_pressed(a("jump")) and is_on_floor() and not input_blocked():
 		velocity.y = JUMP_VELOCITY
 	var accel := 14.0 if is_on_floor() else 4.0
@@ -919,6 +931,7 @@ func _animate_avatar() -> void:
 
 func _process(delta: float) -> void:
 	_animate_avatar()
+	_update_skills(delta)
 	if test_mode:
 		wood = RES_MAX
 		stone = RES_MAX
@@ -986,7 +999,7 @@ func _start_reload() -> void:
 	if not _is_gun(weapon) or weapon == W.CRYO or weapon == W.SHOCK or reloading or ammo >= gun_mag(weapon):
 		return
 	reloading = true
-	reload_t = GUNS[weapon]["reload"] * Upg.reload_mult(gun_lvl(weapon, "reload"))
+	reload_t = GUNS[weapon]["reload"] * Upg.reload_mult(gun_lvl(weapon, "reload")) * (0.75 if has_skill("A4") else 1.0)
 	Sfx.play("reload", -2.0)
 
 
@@ -1016,7 +1029,9 @@ func _shoot() -> void:
 		var c = r.collider
 		if c and c.is_in_group("zombie"):
 			var is_head: bool = r.position.y > c.global_position.y + c.head_height
-			c.take_damage(gun_damage(weapon) * (2.0 if is_head else 1.0), is_head)
+			if is_head:
+				add_stat("headshots")
+			deal_damage(c, gun_damage(weapon) * ((2.5 if has_skill("A5") else 2.0) if is_head else 1.0), is_head, "gun")
 			if hud:
 				hud.hitmarker(is_head)
 			Sfx.play("headshot" if is_head else "hit", -6.0)
@@ -1047,7 +1062,7 @@ func _shoot_cryo() -> void:
 		if c and c.is_in_group("zombie"):
 			var cu: Dictionary = upgrades["cryo"]
 			c.apply_frost(Upg.CRYO_STACKS_PER_TICK, Upg.cryo_max_slow(cu["slow"]), Upg.cryo_max_vuln(cu["vuln"]), Upg.cryo_stack_time(cu["duration"]))
-			c.take_damage(GUNS[W.CRYO]["damage"] * Upg.cryo_damage_mult(cu["damage"]), false)
+			deal_damage(c, GUNS[W.CRYO]["damage"] * Upg.cryo_damage_mult(cu["damage"]), false, "gun")
 			if hud and randf() < 0.3:
 				hud.hitmarker(false)
 		if randf() < 0.5:
@@ -1074,7 +1089,7 @@ func shock_cooldown() -> float:
 
 
 func shock_range() -> float:
-	return Upg.shock_range(upgrades["shock"]["range"])
+	return Upg.shock_range(upgrades["shock"]["range"]) + (2.0 if has_skill("A6") else 0.0)
 
 
 ## Onde de choc : coûte 1 os ; tous les squelettes dans un large cône devant soi
@@ -1102,7 +1117,7 @@ func _shoot_shock() -> void:
 			continue
 		if d.length() > 0.8 and d.normalized().dot(fwd) < cos_lim:
 			continue
-		z.take_damage(shock_damage(), false)
+		deal_damage(z, shock_damage(), false, "shock")
 		hits += 1
 	if hud and hits > 0:
 		hud.hitmarker(false)
@@ -1262,7 +1277,7 @@ func _build_cryo() -> void:
 ## Coup de hache en 4 temps : armé (on lève la hache en arrière), frappe rapide en arc,
 ## impact (petit arrêt + tremblement), puis retour en position.
 func _swing() -> void:
-	swing_cd = 0.9     # cadence réduite : viser les cibles devient plus rentable que taper vite
+	swing_cd = 0.9 / (1.2 if has_skill("F3") else 1.0)     # cadence réduite : viser les cibles devient plus rentable que taper vite
 	swinging = true
 	if swing_tween and swing_tween.is_valid():
 		swing_tween.kill()
@@ -1293,6 +1308,214 @@ func _shake(amount: float) -> void:
 	shake_t = 0.15
 
 
+# ------------------------------------------------------------------ compétences
+
+func has_skill(id: String) -> bool:
+	return skills.get(id, false)
+
+
+func stat(k: String) -> float:
+	return stats.get(k, 0.0)
+
+
+func add_stat(k: String, v := 1.0) -> void:
+	stats[k] = stats.get(k, 0.0) + v
+
+
+## État d'une compétence : "owned", "ready" (débloquable), "need_stat", "need_parent".
+func skill_state(id: String) -> String:
+	if has_skill(id):
+		return "owned"
+	var sk: Dictionary = Skills.SKILLS[id]
+	if sk["parent"] != "" and not has_skill(sk["parent"]):
+		return "need_parent"
+	if stat(sk["stat"]) < sk["need"] and not test_mode:
+		return "need_stat"
+	return "ready"
+
+
+func unlock_skill(id: String) -> bool:
+	if skill_state(id) != "ready" or (skill_tokens < 1 and not test_mode):
+		return false
+	if not test_mode:
+		skill_tokens -= 1
+	skills[id] = true
+	match id:
+		"D1":
+			hp = minf(hp + 20.0, max_hp())
+		"D4", "D7":
+			shield = shield_max()
+		"D9":
+			lives += 1
+	Sfx.play("build", 0.0, 1.4)
+	return true
+
+
+func max_hp() -> float:
+	return MAX_HP + (20.0 if has_skill("D1") else 0.0)
+
+
+func shield_max() -> float:
+	if has_skill("D7"):
+		return 25.0
+	return 10.0 if has_skill("D4") else 0.0
+
+
+func move_speed_mult() -> float:
+	return 1.1 if has_skill("D3") else 1.0
+
+
+func harvest_bonus(kind: String) -> float:
+	var m := 1.0
+	if kind == "wood" and has_skill("F1"):
+		m += 0.10
+	if kind == "stone" and has_skill("F2"):
+		m += 0.10
+	if has_skill("F4"):
+		m += 0.15
+	return m
+
+
+## Multiplicateur de dégâts selon la source (« gun », « axe », « shock », « fire »).
+func dmg_mult(src: String) -> float:
+	var m := 1.05 if has_skill("A1") else 1.0
+	if src == "gun" and has_skill("A2"):
+		m *= 1.10
+	if src == "axe" and has_skill("A3"):
+		m *= 1.40
+	if src == "shock" and has_skill("A6"):
+		m *= 1.15
+	return m
+
+
+## Inflige des dégâts à un ennemi en appliquant les compétences, et compte les éliminations.
+func deal_damage(c, amount: float, head: bool, src: String) -> void:
+	if c == null or not is_instance_valid(c) or c.dead:
+		return
+	amount *= dmg_mult(src)
+	if has_skill("A8") and c.hp < c.max_hp * 0.3:
+		amount *= 1.3
+	c.take_damage(amount, head)
+	if c.dead:
+		register_kill(c, src)
+
+
+func register_kill(c, src: String) -> void:
+	add_stat("kills")
+	match src:
+		"gun": add_stat("kills_gun")
+		"axe": add_stat("kills_axe")
+		"shock": add_stat("kills_shock")
+		"fire": add_stat("kills_fire")
+	if c.is_boss and c.kind != "titan":
+		add_stat("boss_kills")
+
+
+func repair_price(st) -> int:
+	var c: int = st.repair_cost()
+	if has_skill("F8") and not st.is_magic():
+		c = maxi(1, int(ceil(c * 0.8)))
+	return c
+
+
+## Jeton de compétence (fin de vague, titan).
+func gain_tokens(n: int) -> void:
+	skill_tokens += n
+	if hud:
+		hud.flash_message("+%d JETON%s DE COMPÉTENCE  (inventaire → page PERSONNAGE)" % [n, "S" if n > 1 else ""])
+
+
+## Boule de feu (compétence A7) : projectile qui brûle la cible.
+func _cast_fireball() -> void:
+	if not has_skill("A7") or dead or fireball_cd > 0.0:
+		return
+	fireball_cd = 8.0 if has_skill("A9") else 12.0
+	var fb := Fireball.new()
+	fb.owner_player = self
+	fb.explode = has_skill("A9")
+	var dir := -cam.global_transform.basis.z
+	fb.velocity = dir * 32.0
+	main.add_child(fb)
+	fb.global_position = cam.global_position + dir * 1.0 - cam.global_transform.basis.y * 0.15
+	Sfx.play("orb_hit", -2.0, 0.7)
+
+
+class Fireball extends Node3D:
+	var owner_player
+	var velocity := Vector3.ZERO
+	var explode := false
+	var life := 2.5
+
+	func _ready() -> void:
+		Mats.sphere(self, 0.28, Mats.col(Color(1.0, 0.5, 0.12), 0.5, 6.0), Vector3.ZERO, 10)
+		var l := OmniLight3D.new()
+		l.light_color = Color(1.0, 0.55, 0.2)
+		l.light_energy = 2.5
+		l.omni_range = 5.0
+		add_child(l)
+
+	func _physics_process(delta: float) -> void:
+		life -= delta
+		var from := global_position
+		var to := from + velocity * delta
+		var hit = null
+		for z in get_tree().get_nodes_in_group("zombie"):
+			if z.dead:
+				continue
+			var c: Vector3 = z.global_position + Vector3.UP * (1.0 if z.kind != "titan" else 5.0)
+			var ab := to - from
+			var t := clampf((c - from).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
+			if (from + ab * t).distance_to(c) < (1.0 if z.kind != "titan" else 2.5):
+				hit = z
+				break
+		var q := PhysicsRayQueryParameters3D.create(from, to, 1 | 8 | 16)
+		var r := get_world_3d().direct_space_state.intersect_ray(q)
+		if hit or not r.is_empty() or life <= 0.0:
+			_burst(to if r.is_empty() else r.position, hit)
+			return
+		global_position = to
+
+	func _burst(pos: Vector3, hit) -> void:
+		var p = owner_player
+		var targets := []
+		if hit:
+			targets.append(hit)
+		if explode:
+			for z in get_tree().get_nodes_in_group("zombie"):
+				if not z.dead and z != hit and z.global_position.distance_to(pos) < 4.0:
+					targets.append(z)
+		for z in targets:
+			if is_instance_valid(p):
+				p.deal_damage(z, 60.0, false, "fire")
+			if is_instance_valid(z) and not z.dead and z.has_method("ignite"):
+				z.ignite(5.0, 12.0 * (p.dmg_mult("fire") if is_instance_valid(p) else 1.0), p)
+		if is_instance_valid(p) and p.main:
+			p.main.spawn_impact(pos, Vector3.UP, Color(1.0, 0.5, 0.1), 24 if explode else 12, 2.0 if explode else 1.2)
+		Sfx.play_3d("break", pos, 0.0, 1.3)
+		queue_free()
+
+
+func _update_skills(delta: float) -> void:
+	fireball_cd = maxf(fireball_cd - delta, 0.0)
+	if dead:
+		_last_pos = Vector3.INF
+		return
+	since_hit += delta
+	var sm := shield_max()
+	if sm > 0.0 and since_hit > 2.0 and shield < sm:
+		shield = minf(shield + sm / 10.0 * delta, sm)
+	if has_skill("D5") and since_hit > 5.0 and hp < max_hp():
+		hp = minf(hp + 2.0 * delta, max_hp())
+	var gp := Vector3(global_position.x, 0, global_position.z)
+	if _last_pos != Vector3.INF:
+		var dd := gp.distance_to(_last_pos)
+		if dd < 2.0:          # (une téléportation ne compte pas)
+			add_stat("distance", dd)
+	_last_pos = gp
+	if test_mode:
+		skill_tokens = maxi(skill_tokens, 99)
+
+
 func _axe_impact() -> void:
 	if dead or weapon != W.AXE:
 		return
@@ -1307,7 +1530,13 @@ func _axe_impact() -> void:
 	_shake(0.012)
 	if c and c.is_in_group("rock"):
 		var got: int = c.mine(AXE_TREE_DAMAGE, r.position, can_mine_stone())
-		got = int(round(got * Upg.harvest_mult(upgrades["axe"]["stone"])))
+		var tgt_mult := 1.5 if (c.last_target_hit and has_skill("F5")) else 1.0
+		got = int(round(got * Upg.harvest_mult(upgrades["axe"]["stone"]) * harvest_bonus("stone") * tgt_mult))
+		if c.last_target_hit and got > 0:
+			add_stat("targets")
+		add_stat("harvested", got)
+		if c.broken and got > 0:
+			add_stat("rocks")
 		if c.magic and c.broken:
 			_gain_magic("magic_stone")
 		if got > 0:
@@ -1322,7 +1551,13 @@ func _axe_impact() -> void:
 		_shake(0.02)
 	elif c and c.is_in_group("tree"):
 		var gained: int = c.chop(AXE_TREE_DAMAGE, r.position)
-		gained = int(round(gained * Upg.harvest_mult(upgrades["axe"]["wood"])))
+		var tgt_mult := 1.5 if (c.last_target_hit and has_skill("F5")) else 1.0
+		gained = int(round(gained * Upg.harvest_mult(upgrades["axe"]["wood"]) * harvest_bonus("wood") * tgt_mult))
+		if c.last_target_hit and gained > 0:
+			add_stat("targets")
+		add_stat("harvested", gained)
+		if c.fallen and gained > 0:
+			add_stat("trees")
 		wood = mini(wood + gained, RES_MAX)
 		if c.magic and c.fallen and gained > 0:
 			_gain_magic("magic_wood")
@@ -1337,7 +1572,7 @@ func _axe_impact() -> void:
 		c.take_damage(AXE_STRUCTURE_DAMAGE)
 		_shake(0.015)
 	elif c and c.is_in_group("zombie"):
-		c.take_damage(AXE_ZOMBIE_DAMAGE, false)
+		deal_damage(c, AXE_ZOMBIE_DAMAGE, false, "axe")
 		if hud:
 			hud.hitmarker(false)
 		Sfx.play("thud", 0.0)
@@ -1414,6 +1649,7 @@ func _place() -> void:
 		build_cd = 0.4
 		return
 	_spend(build_mat, build_cost())
+	add_stat("built")
 	build_cd = 0.15
 	main.place_structure(build_piece, ghost_info["xform"], ghost_info["key"], build_mat)
 
@@ -1431,7 +1667,9 @@ func _material_count(m: int) -> int:
 func build_cost(m := -1) -> int:
 	if m < 0:
 		m = build_mat
-	return MAGIC_BUILD_COST if m >= 2 else BUILD_COST
+	if m >= 2:
+		return MAGIC_BUILD_COST
+	return 8 if has_skill("F8") else BUILD_COST
 
 
 func _spend(m: int, amount: int) -> void:
@@ -1519,7 +1757,7 @@ func _try_repair() -> void:
 	if build_target.is_repairing():
 		hud.flash_message("Réparation déjà en cours")
 		return
-	var cost: int = build_target.repair_cost()
+	var cost: int = repair_price(build_target)
 	if cost == 0:
 		hud.flash_message("Cette construction est intacte")
 		return
@@ -1555,6 +1793,9 @@ func drop_resource(kind: String, amount: int) -> void:
 ## Arbre / rocher magique terminé : +1 bois ou pierre magique.
 func _gain_magic(kind: String) -> void:
 	add_resource(kind, 1)
+	add_stat("magic")
+	if has_skill("F7") and randf() < 0.5:
+		add_resource(kind, 1)
 	Sfx.play("coin", 0.0, 0.7)
 	if hud:
 		hud.res_gain(kind, 1)
@@ -1581,6 +1822,9 @@ func use_bone_pile() -> bool:
 
 func collect_coin() -> void:
 	coins = mini(coins + 1, RES_MAX)
+	add_stat("coins")
+	if has_skill("F6") and randf() < 0.25:
+		coins = mini(coins + 1, RES_MAX)
 	Sfx.play("coin", -4.0)
 	if hud:
 		hud.coin_gain(1)
@@ -1643,9 +1887,25 @@ func _do_upgrade(target, m: int, cost: int) -> void:
 func take_damage(amount: float) -> void:
 	if dead or invuln_t > 0.0:
 		return
-	# défense apportée par l'arme en main
+	# esquive, défense apportée par l'arme en main, peau dure, bouclier
+	if has_skill("D6") and randf() < 0.10:
+		if hud:
+			hud.flash_message("ESQUIVE !")
+		return
 	if _is_gun(weapon):
 		amount *= 1.0 - Upg.defense(gun_lvl(weapon, "defense"))
+	if has_skill("D2"):
+		amount *= 0.9
+	since_hit = 0.0
+	if shield > 0.0:
+		var absorbed := minf(shield, amount)
+		shield -= absorbed
+		amount -= absorbed
+		add_stat("shield_absorbed", absorbed)
+		if amount <= 0.0:
+			Sfx.play("orb_hit", -8.0, 1.6)
+			return
+	add_stat("dmg_taken", amount)
 	hp = maxf(hp - amount, 0.0)
 	Sfx.play("hurt", 0.0)
 	if hud:
@@ -1664,7 +1924,8 @@ func respawn(pos: Vector3, invuln := 3.0) -> void:
 	dead = false
 	can_revive = false
 	invuln_t = invuln
-	hp = MAX_HP
+	hp = max_hp()
+	shield = shield_max()
 	mags = {W.PISTOL: gun_mag(W.PISTOL), W.RIFLE: gun_mag(W.RIFLE), W.CRYO: 0, W.SHOCK: 0}
 	ammo = gun_mag(weapon) if _is_gun(weapon) else ammo
 	reloading = false

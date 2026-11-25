@@ -31,6 +31,7 @@ func _ready() -> void:
 	_key("build_material", KEY_V)
 	_key("edit", KEY_X)
 	_key("trap", KEY_B)
+	_key("skill", KEY_C)
 	_mouse("fire", MOUSE_BUTTON_LEFT)
 	_mouse("aim", MOUSE_BUTTON_RIGHT)
 
@@ -54,6 +55,7 @@ func _ready() -> void:
 	_button("weapon_next", JOY_BUTTON_RIGHT_SHOULDER)
 	_button("sprint_toggle", JOY_BUTTON_LEFT_STICK)   # clic stick gauche
 	_button("piece_next", JOY_BUTTON_DPAD_LEFT)
+	_button("skill", JOY_BUTTON_DPAD_LEFT)       # hors construction : compétence (boule de feu)
 	_button("edit", JOY_BUTTON_DPAD_RIGHT)
 	_button("trap", JOY_BUTTON_RIGHT_STICK)   # clic stick droit : barbelés
 	_button("upgrade", JOY_BUTTON_DPAD_UP)

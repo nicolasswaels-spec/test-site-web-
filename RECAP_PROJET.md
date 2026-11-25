@@ -51,6 +51,7 @@ The Pathless).
   visibles seulement dans l'inventaire, usage à définir.
 - Menu de la sphère (E / X) : LANCER + CRÉATION D'ARME (dès la 2e sphère : cryo, onde de choc).
 - Onde de choc : 1 os par tir, cône 120°, 6 m, 225 dégâts (440 max), 4 s ; améliorations dégâts / rechargement / portée.
+- Arbre de compétences (page PERSONNAGE de l'inventaire) : 27 compétences, prérequis + jetons (1 / vague, 3 après le titan).
 - Musique : fichiers à déposer dans `game/assets/music/` (`menu`, `game`, `battle` en mp3/ogg/wav).
 
 ## Organisation du code (`game/`)
@@ -73,6 +74,7 @@ scripts/
   hud_group.gd         diffuse les messages généraux aux HUD des deux joueurs
   inventory_ui.gd      inventaire en cases (ressources, os, armes + fiche d'actions) et page Améliorations
   menu.gd              menu principal
+  skills.gd            arbre de compétences (données : effets, parents, prérequis) ; effets codés dans player.gd
   titan.gd             titan de lave (boss de la zone volcanique : boules de feu, onde de choc, éruptions)
   orb.gd               sphère à défendre
   tree.gd, rock.gd     ressources à la hache ; harvest.gd = cibles et bonus (HIT_BONUS, FINAL_PER_HIT) ; weak_spot.gd = cible

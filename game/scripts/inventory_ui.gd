@@ -6,11 +6,13 @@ extends ColorRect
 ##  2. Améliorations : cartes d'équipement à gauche, branches à droite (niveaux en pastilles, coût en icônes).
 
 const UI = preload("res://scripts/ui.gd")
+const Skills = preload("res://scripts/skills.gd")
 const Upg = preload("res://scripts/upgrades.gd")
 
 var p                     # joueur
 var page := 0
 var selected_item := "pistol"
+var sel_skill := "F1"
 var sel := "w:0"          # case sélectionnée : « r:<ressource> » ou « w:<arme> »
 var focus_key := ""       # case / bouton à re-sélectionner après reconstruction de la page
 var tab_buttons: Array[Button] = []
@@ -63,10 +65,10 @@ func _ready() -> void:
 	top.add_theme_constant_override("separation", 16)
 	vb.add_child(top)
 	_label(top, "LB ◀", 18, Color(0.7, 0.72, 0.8))
-	for i in 2:
+	for i in 3:
 		var b := Button.new()
-		b.text = ["INVENTAIRE", "AMÉLIORATIONS"][i]
-		b.custom_minimum_size = Vector2(250, 46)
+		b.text = ["INVENTAIRE", "AMÉLIORATIONS", "PERSONNAGE"][i]
+		b.custom_minimum_size = Vector2(230, 46)
 		b.add_theme_font_size_override("font_size", 22)
 		b.focus_mode = Control.FOCUS_NONE
 		var idx := i
@@ -130,7 +132,7 @@ func _flat(bg: Color, border: Color, bw := 2) -> StyleBoxFlat:
 func _tile(parent: Node, key: String, icon_name: String, txt: String, size: Vector2, bg: Color, cb: Callable, dim := false) -> Button:
 	var b := Button.new()
 	b.custom_minimum_size = size
-	b.icon = UI.icon(icon_name)
+	b.icon = UI.icon(icon_name) if icon_name != "" else null
 	b.expand_icon = true
 	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
@@ -165,7 +167,11 @@ func show_page(i: int) -> void:
 	for c in body.get_children():
 		body.remove_child(c)
 		c.queue_free()
-	var first: Control = _build_inventory() if page == 0 else _build_upgrades()
+	var first: Control = null
+	match page:
+		0: first = _build_inventory()
+		1: first = _build_upgrades()
+		2: first = _build_skills()
 	if focus_key != "":
 		for b in body.find_children("*", "Button", true, false):
 			if b.get_meta("key", "") == focus_key:
@@ -183,7 +189,7 @@ func _focus_if_valid(b) -> void:
 
 
 func next_page(dir: int) -> void:
-	show_page((page + dir + 2) % 2)
+	show_page((page + dir + 3) % 3)
 
 
 func _select(key: String, then_focus := "") -> void:
@@ -469,4 +475,111 @@ func _build_upgrades() -> Control:
 					show_page(1)
 			var buy := _button(line, "AMÉLIORER", 150, 36, 15, buy_cb, ok)
 			buy.set_meta("key", key)
+	return first
+
+
+# ------------------------------------------------------------------ page 3 : arbre de compétences
+
+## Zone de l'arbre : dessine les liaisons parent -> enfant derrière les cases.
+class TreeCanvas extends Control:
+	var links: Array = []     # [Button parent, Button enfant, couleur]
+	func _draw() -> void:
+		for l in links:
+			var a: Button = l[0]
+			var b: Button = l[1]
+			if not is_instance_valid(a) or not is_instance_valid(b):
+				continue
+			var pa := a.position + Vector2(a.size.x * 0.5, a.size.y)
+			var pb := b.position + Vector2(b.size.x * 0.5, 0)
+			var mid := (pa.y + pb.y) * 0.5
+			var col: Color = l[2]
+			draw_polyline(PackedVector2Array([pa, Vector2(pa.x, mid), Vector2(pb.x, mid), pb]), col, 4.0)
+
+
+func _build_skills() -> Control:
+	title.text = "JETONS DE COMPÉTENCE : %d   ·   1 jeton par vague terminée, 3 après le titan" % p.skill_tokens
+	if p.test_mode:
+		title.text = "MODE TEST : prérequis et jetons ignorés"
+	var canvas := TreeCanvas.new()
+	canvas.custom_minimum_size = Vector2(960, 400)
+	body.add_child(canvas)
+	var col_w := 320.0
+	var node_w := 96.0
+	var node_h := 56.0
+	var btns := {}
+	var first: Control = null
+	for bi in Skills.BRANCHES.size():
+		var br: Array = Skills.BRANCHES[bi]
+		var head := _section(canvas, br[1])
+		head.position = Vector2(bi * col_w + 10, 0)
+		head.add_theme_color_override("font_color", (br[2] as Color).lightened(0.3))
+		for id in Skills.SKILLS:
+			var sk: Dictionary = Skills.SKILLS[id]
+			if sk["branch"] != br[0]:
+				continue
+			var st: String = p.skill_state(id)
+			var bg: Color = br[2]
+			match st:
+				"owned": bg = (br[2] as Color).lightened(0.05)
+				"ready": bg = Color(0.18, 0.2, 0.16)
+				_: bg = Color(0.13, 0.13, 0.16)
+			var sid: String = id
+			var pick := func():
+				sel_skill = sid
+				focus_key = "unlock"
+				show_page(2)
+			var b := _tile(canvas, "s:" + id, "", sk["name"], Vector2(node_w, node_h), bg, pick, st == "need_parent")
+			b.icon = null
+			b.add_theme_font_size_override("font_size", 12)
+			b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			var border := UI.YELLOW if id == sel_skill else (Color(0.5, 1.0, 0.5) if st == "ready" else Color(1, 1, 1, 0.2))
+			b.add_theme_stylebox_override("normal", _flat(bg, border, 3 if id == sel_skill or st == "ready" else 2))
+			var pos: Vector2 = sk["pos"]
+			b.position = Vector2(bi * col_w + 12 + pos.x * (node_w + 4), 34 + pos.y * (node_h + 18))
+			b.size = Vector2(node_w, node_h)
+			btns[id] = b
+			if id == sel_skill:
+				first = b
+	for id in btns:
+		var par: String = Skills.SKILLS[id]["parent"]
+		if par != "":
+			var lit: bool = p.has_skill(par)
+			canvas.links.append([btns[par], btns[id], Color(1.0, 0.85, 0.3, 0.9) if lit else Color(1, 1, 1, 0.18)])
+	canvas.queue_redraw()
+	# fiche de la compétence choisie
+	var sk: Dictionary = Skills.SKILLS[sel_skill]
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _flat(Color(0.12, 0.12, 0.16, 0.95), Color(1, 1, 1, 0.12)))
+	body.add_child(panel)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 4)
+	panel.add_child(vb)
+	var headrow := HBoxContainer.new()
+	headrow.add_theme_constant_override("separation", 14)
+	vb.add_child(headrow)
+	_section(headrow, sk["name"])
+	var st2: String = p.skill_state(sel_skill)
+	var state_txt: String = {"owned": "DÉBLOQUÉE", "ready": "DÉBLOCABLE", "need_stat": "PRÉREQUIS NON ATTEINT", "need_parent": "DÉBLOQUE D'ABORD : " + (Skills.SKILLS[sk["parent"]]["name"] if sk["parent"] != "" else "")}[st2]
+	_label(headrow, state_txt, 15, {"owned": UI.YELLOW, "ready": Color(0.5, 1.0, 0.5)}.get(st2, Color(0.75, 0.75, 0.8)))
+	var d := _label(vb, sk["desc"], 16, Color(0.88, 0.9, 0.96))
+	d.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.custom_minimum_size = Vector2(900, 0)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	vb.add_child(row)
+	var have: float = p.stat(sk["stat"])
+	var req := _label(row, "Prérequis : %d / %d %s" % [int(minf(have, sk["need"])), sk["need"], Skills.STAT_NAMES[sk["stat"]]], 16,
+		Color(0.6, 1.0, 0.6) if have >= sk["need"] else Color(1.0, 0.75, 0.5))
+	req.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	req.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var can: bool = st2 == "ready" and (p.skill_tokens >= 1 or p.test_mode)
+	var unlock_cb := func():
+		if p.unlock_skill(sel_skill):
+			focus_key = "s:" + sel_skill
+			show_page(2)
+	var ub := _button(row, "DÉJÀ DÉBLOQUÉE" if st2 == "owned" else "DÉBLOQUER (1 JETON)", 300, 44, 17, unlock_cb, can)
+	ub.set_meta("key", "unlock")
+	if focus_key == "unlock" and not can:
+		focus_key = "s:" + sel_skill
 	return first

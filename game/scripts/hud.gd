@@ -155,6 +155,7 @@ var orb_label: Label
 var alert_label: Label
 var hp_bar: ProgressBar
 var hp_label: Label
+var skill_label: Label   # bouclier / boule de feu (au-dessus de la vie)
 var ammo_label: Label
 var info_label: Label
 const RES_KINDS := ["wood", "magic_wood", "stone", "magic_stone", "coins"]
@@ -237,6 +238,9 @@ func _ready() -> void:
 	hp_panel.add_child(hp_vb)
 	hp_label = _label(hp_vb, "100 PV", 22, Color(0.6, 1.0, 0.5))
 	hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	skill_label = _label(root, "", 18, Color(1.0, 0.8, 0.55))
+	skill_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_place(skill_label, 0.0, 1.0, 0.0, 1.0, 24, -128, 560, -100)
 	hp_bar = _bar(Color(0.35, 0.85, 0.3), Vector2(340, 20))
 	hp_vb.add_child(hp_bar)
 
@@ -468,8 +472,15 @@ func _process(delta: float) -> void:
 
 
 func update_player(p) -> void:
+	hp_bar.max_value = p.max_hp()
 	hp_bar.value = p.hp
+	var extra := ""
+	if p.shield_max() > 0.0:
+		extra += "   BOUCLIER %d" % int(ceil(p.shield))
+	if p.has_skill("A7"):
+		extra += "   FEU %s" % ("PRÊT (C / ◀)" if p.fireball_cd <= 0.0 else "%d s" % int(ceil(p.fireball_cd)))
 	hp_label.text = "%d PV      VIES %d" % [int(ceil(p.hp)), p.lives]
+	skill_label.text = extra.strip_edges()
 	var counts := {"wood": p.wood, "magic_wood": p.magic_wood, "stone": p.stone, "magic_stone": p.magic_stone, "coins": p.coins}
 	var shown := {"wood": true, "magic_wood": p.magic_wood > 0, "stone": p.stone > 0 or p.can_mine_stone(),
 		"magic_stone": p.magic_stone > 0, "coins": p.coins > 0 or not p.first_coin}
@@ -482,7 +493,7 @@ func update_player(p) -> void:
 	if bt and is_instance_valid(bt) and not p.dead:
 		var mname: String = p.MAT_NAMES[bt.repair_material()].to_lower()
 		var parts: Array[String] = [bt.describe() + "  %d / %d PV" % [int(ceil(bt.hp)), int(bt.max_hp)]]
-		var rc: int = bt.repair_cost()
+		var rc: int = p.repair_price(bt)
 		if rc > 0:
 			parts.append("[G / ↓] Réparer (%d %s)" % [rc, mname])
 		elif bt.is_repairing():

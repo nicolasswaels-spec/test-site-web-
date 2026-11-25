@@ -1064,10 +1064,12 @@ func _process(delta: float) -> void:
 				pr = "[E / X] REVENIR ICI   (%d vie%s)" % [p.lives, "s" if p.lives > 1 else ""]
 				if Input.is_action_just_pressed(p.a("interact")) and not p.input_blocked():
 					p.lives -= 1
+					p.add_stat("revives")
 					var spot: Vector3 = p.global_position
-					p.respawn(Vector3(spot.x, maxf(spot.y, 0.0) + 0.3, spot.z), REVIVE_INVULN)
-					knockback_around(spot, 7.0, 10.0)
-					p.hud.show_center("DE RETOUR !", "Invulnérable 5 s · %d vie%s restante%s" % [p.lives, "s" if p.lives > 1 else "", "s" if p.lives > 1 else ""], 2.0)
+					var strong: bool = p.has_skill("D8")
+					p.respawn(Vector3(spot.x, maxf(spot.y, 0.0) + 0.3, spot.z), 8.0 if strong else REVIVE_INVULN)
+					knockback_around(spot, 10.0 if strong else 7.0, 16.0 if strong else 10.0)
+					p.hud.show_center("DE RETOUR !", ("Invulnérable 8 s" if strong else "Invulnérable 5 s") + " · %d vie%s restante%s" % [p.lives, "s" if p.lives > 1 else "", "s" if p.lives > 1 else ""], 2.0)
 			else:
 				p.respawn_t -= delta
 				pr = "Plus de vie · réapparition dans %d..." % int(ceil(p.respawn_t))
@@ -1254,6 +1256,10 @@ func _roll_level(big_wave := false) -> int:
 
 
 func _end_wave() -> void:
+	# compétences : 1 jeton par vague terminée (et une vague survécue de plus)
+	for p in players:
+		p.gain_tokens(1)
+		p.add_stat("waves")
 	for m in spawn_markers:
 		m.queue_free()
 	spawn_markers.clear()
@@ -1275,7 +1281,7 @@ func _end_wave() -> void:
 	for p in players:
 		p.wood = mini(p.wood + 50, p.RES_MAX)
 		if not p.dead:
-			p.hp = p.MAX_HP
+			p.hp = p.max_hp()
 	orb.repair(150.0)
 	hud.show_center("VAGUE %d TERMINÉE" % wave, "+50 bois · vie restaurée · sphère réparée (+150)", 3.0)
 
@@ -1291,7 +1297,7 @@ func _complete_zone1() -> void:
 	for p in players:
 		p.wood = mini(p.wood + 100, p.RES_MAX)
 		if not p.dead:
-			p.hp = p.MAX_HP
+			p.hp = p.max_hp()
 	hud.show_center("VICTOIRE !", "La 1re sphère est sauve... mais la forêt s'ouvre au nord !", 5.0)
 	rifle_craftable = true
 	get_tree().create_timer(1.0, false).timeout.connect(_unlock_zone2)
@@ -1478,7 +1484,7 @@ func _complete_zone2() -> void:
 	for p in players:
 		p.wood = mini(p.wood + 100, p.RES_MAX)
 		if not p.dead:
-			p.hp = p.MAX_HP
+			p.hp = p.max_hp()
 	hud.show_center("VICTOIRE !", "La 2e sphère est sauve... mais la terre gronde à l'ouest !", 5.0)
 	get_tree().create_timer(1.0, false).timeout.connect(_unlock_zone3)
 
@@ -1667,13 +1673,15 @@ func _start_boss() -> void:
 func _on_titan_defeated() -> void:
 	state = "titan_down"
 	hud.set_wave("TITAN VAINCU !", "Une 3e sphère va apparaître à sa place...")
-	hud.show_center("TITAN VAINCU !", "+300 bois · +150 pierre · vie restaurée", 4.0)
+	hud.show_center("TITAN VAINCU !", "+300 bois · +150 pierre · +3 jetons de compétence", 4.0)
+	for p in players:
+		p.gain_tokens(3)
 	Music.play("game")
 	for p in players:
 		p.wood = mini(p.wood + 300, p.RES_MAX)
 		p.stone = mini(p.stone + 150, p.RES_MAX)
 		if not p.dead:
-			p.hp = p.MAX_HP
+			p.hp = p.max_hp()
 	get_tree().create_timer(4.5, false).timeout.connect(_start_zone4)
 
 

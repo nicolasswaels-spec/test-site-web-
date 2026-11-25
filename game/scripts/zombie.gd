@@ -33,6 +33,11 @@ var size_mult := 1.0
 ## Niveau du squelette : PV (fort), vitesse (faible), dégâts aux constructions (fort),
 ## dégâts au joueur (faible : 2 à 10 PV par coup). Vague 1 de la zone 1 = niveau 1.
 var level := 1
+# brûlure (boule de feu) : dégâts par tic de 0,5 s
+var burn_t := 0.0
+var burn_dps := 0.0
+var burn_by = null
+var _burn_tick := 0.0
 var player_damage := 2.0
 var struct_damage := 4.5
 var is_boss := false
@@ -191,6 +196,20 @@ func _physics_process(delta: float) -> void:
 	if not is_frozen() and flash_t <= 0.0 and meshes.size() > 0 and meshes[0].material_overlay == _frost():
 		for mi in meshes:
 			mi.material_overlay = null
+
+	if burn_t > 0.0:
+		burn_t -= delta
+		_burn_tick -= delta
+		if _burn_tick <= 0.0:
+			_burn_tick = 0.5
+			if main:
+				main.spawn_impact(global_position + Vector3.UP * 1.2, Vector3.UP, Color(1.0, 0.45, 0.1), 4, 0.5)
+			if is_instance_valid(burn_by):
+				burn_by.deal_damage(self, burn_dps * 0.5 / burn_by.dmg_mult("fire"), false, "fire")
+			else:
+				take_damage(burn_dps * 0.5)
+			if dead:
+				return
 
 	# repoussé (retour d'un joueur) : on glisse en arrière sans rien faire d'autre
 	if knock_t > 0.0:
@@ -638,6 +657,13 @@ func _wire_dps() -> float:
 	if main and main.has_method("wire_level"):
 		return Upg.wire_dps(main.wire_level("damage"))
 	return TRAP_DPS
+
+
+## Brûlure : dps pendant t secondes (la plus forte remplace l'ancienne).
+func ignite(t: float, dps: float, by) -> void:
+	burn_t = t
+	burn_dps = maxf(dps, burn_dps if burn_t > 0.0 else 0.0)
+	burn_by = by
 
 
 func knockback(v: Vector3) -> void:
