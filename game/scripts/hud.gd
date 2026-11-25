@@ -85,8 +85,8 @@ class Minimap extends Control:
 		draw_circle(c, r, Color(0.05, 0.04, 0.12, 0.72))
 		var o: Vector3 = player.global_position
 		# limite de la zone en cours uniquement, coupée au bord du radar
-		var zc: Vector3 = Vector3.ZERO if main.zone == 1 else main.ZONE2_CENTER
-		var zr: float = main.MAP_RADIUS if main.zone == 1 else main.ZONE2_RADIUS
+		var zc: Vector3 = main.zone_center(main.zone)
+		var zr: float = main.zone_radius(main.zone)
 		_clipped_circle(c, r - 2.0, _w2m(c, o, zc), zr * SCALE, Color(0.45, 0.5, 1.0, 0.7))
 		# constructions
 		for st in main.structures.values():
@@ -101,11 +101,11 @@ class Minimap extends Control:
 				if zp.distance_to(c) < r - 3:
 					draw_circle(zp, 5.0 if z.is_boss else 3.0, Color(1.0, 0.2, 0.15))
 		# sphère défendue (épinglée au bord si hors de portée)
-		var op := _w2m(c, o, main.orb.global_position)
+		var op := _w2m(c, o, main.objective_pos())
 		if op.distance_to(c) > r - 7:
 			op = c + (op - c).normalized() * (r - 7)
 		draw_circle(op, 6.0, Color(0, 0, 0, 0.7))
-		draw_circle(op, 4.5, Color(0.3, 1.0, 0.4))
+		draw_circle(op, 4.5, Color(1.0, 0.45, 0.1) if main.zone == 3 else Color(0.3, 1.0, 0.4))
 		# joueur : flèche bleue orientée
 		# alliés (autres joueurs) : points bleus
 		for other in main.players:
@@ -156,12 +156,9 @@ var hp_bar: ProgressBar
 var hp_label: Label
 var ammo_label: Label
 var info_label: Label
-var wood_label: Label
-var wood_pop: Label
-var stone_label: Label
-var stone_pop: Label
-var coin_label: Label
-var coin_pop: Label
+const RES_KINDS := ["wood", "magic_wood", "stone", "magic_stone", "coins"]
+var res_rows := {}     # type de ressource -> {row, label, pop}
+static var _icons := {}
 var build_prompt: Label
 var notice_label: Label
 var notice_t := 0.0
@@ -245,16 +242,31 @@ func _ready() -> void:
 	br.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	br.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	root.add_child(br)
-	var wood_row := HBoxContainer.new()
-	wood_row.alignment = BoxContainer.ALIGNMENT_END
-	wood_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	br.add_child(wood_row)
-	wood_pop = _label(wood_row, "", 22, Color(0.6, 1.0, 0.5))
-	wood_label = _label(wood_row, "BOIS 0", 26, Color(0.95, 0.75, 0.5))
-	stone_pop = _label(wood_row, "", 22, Color(0.6, 1.0, 0.5))
-	stone_label = _label(wood_row, "", 26, Color(0.78, 0.78, 0.92))
-	coin_pop = _label(wood_row, "", 22, Color(0.6, 1.0, 0.5))
-	coin_label = _label(wood_row, "", 26, Color(0.75, 0.9, 1.0))
+	# --- droite, sous la mini-carte : ressources (icône + quantité, une par ligne)
+	var res_col := VBoxContainer.new()
+	res_col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	res_col.add_theme_constant_override("separation", 0)
+	_place(res_col, 1.0, 0.0, 1.0, 0.0, -260, 238, -16, 440)
+	root.add_child(res_col)
+	var colors := {"wood": Color(0.95, 0.78, 0.55), "magic_wood": Color(0.55, 1.0, 0.7), "stone": Color(0.8, 0.8, 0.95),
+		"magic_stone": Color(0.8, 0.65, 1.0), "coins": Color(0.75, 0.9, 1.0)}
+	for kind in RES_KINDS:
+		var row := HBoxContainer.new()
+		row.alignment = BoxContainer.ALIGNMENT_END
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_theme_constant_override("separation", 6)
+		res_col.add_child(row)
+		var pop := _label(row, "", 20, Color(0.6, 1.0, 0.5))
+		var lab := _label(row, "0", 26, colors[kind])
+		lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		var icon := TextureRect.new()
+		icon.texture = load_icon(kind)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.custom_minimum_size = Vector2(40, 40)
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(icon)
+		res_rows[kind] = {"row": row, "label": lab, "pop": pop}
 	ammo_label = _label(br, "30 / ∞", 36)
 	ammo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	info_label = _label(br, "", 15, Color(0.85, 0.9, 1.0))
@@ -324,7 +336,12 @@ func _ready() -> void:
 	enemy_box.add_child(enemy_bar)
 	enemy_box.visible = false
 
-	pause_panel = _overlay("PAUSE", "", ["REPRENDRE", "MENU PRINCIPAL"], [func(): set_paused(false), func(): menu_pressed.emit()])
+	if Settings.test_mode:
+		# mode test : passer directement à l'étape suivante (zone 1 → 2 → titan → zone volcanique)
+		pause_panel = _overlay("PAUSE", "MODE TEST", ["REPRENDRE", "ZONE SUIVANTE (TEST)", "MENU PRINCIPAL"],
+			[func(): set_paused(false), _test_skip_zone, func(): menu_pressed.emit()])
+	else:
+		pause_panel = _overlay("PAUSE", "", ["REPRENDRE", "MENU PRINCIPAL"], [func(): set_paused(false), func(): menu_pressed.emit()])
 	var end := _overlay("", "", ["REJOUER", "MENU PRINCIPAL"], [func(): retry_pressed.emit(), func(): menu_pressed.emit()])
 	end_panel = end
 	end_title = end.get_meta("title")
@@ -334,6 +351,12 @@ func _ready() -> void:
 	confirm_text = confirm_panel.get_meta("sub")
 	confirm_title.add_theme_font_size_override("font_size", 52)
 	_build_inventory()
+
+
+func _test_skip_zone() -> void:
+	set_paused(false)
+	if main:
+		main.skip_zone()
 
 
 # ------------------------------------------------------------------ helpers UI
@@ -435,13 +458,17 @@ func _process(delta: float) -> void:
 func update_player(p) -> void:
 	hp_bar.value = p.hp
 	hp_label.text = "%d PV      VIES %d" % [int(ceil(p.hp)), p.lives]
-	wood_label.text = "BOIS %d" % p.wood
-	stone_label.text = ("   PIERRE %d" % p.stone) if (p.main and p.main.stone_unlocked) else ""
-	coin_label.text = ("   PIÈCES %d" % p.coins) if (p.coins > 0 or not p.first_coin) else ""
+	var counts := {"wood": p.wood, "magic_wood": p.magic_wood, "stone": p.stone, "magic_stone": p.magic_stone, "coins": p.coins}
+	var shown := {"wood": true, "magic_wood": p.magic_wood > 0, "stone": p.main != null and p.main.stone_unlocked,
+		"magic_stone": p.magic_stone > 0, "coins": p.coins > 0 or not p.first_coin}
+	for kind in RES_KINDS:
+		var r: Dictionary = res_rows[kind]
+		r["row"].visible = shown[kind]
+		r["label"].text = str(counts[kind])
 	# Construction visée : réparer / améliorer
 	var bt = p.build_target
 	if bt and is_instance_valid(bt) and not p.dead:
-		var mname: String = p.MAT_NAMES[bt.material_type].to_lower()
+		var mname: String = p.MAT_NAMES[bt.repair_material()].to_lower()
 		var parts: Array[String] = [bt.describe() + "  %d / %d PV" % [int(ceil(bt.hp)), int(bt.max_hp)]]
 		var rc: int = bt.repair_cost()
 		if rc > 0:
@@ -489,9 +516,9 @@ func update_player(p) -> void:
 			mode = 1
 			crosshair.visible = true
 		3:
-			var have: int = p.wood if p.build_mat == 0 else p.stone
+			var have: int = p._material_count(p.build_mat)
 			ammo_label.text = "%s · %s %d" % [p.PIECE_NAMES[p.build_piece], p.MAT_NAMES[p.build_mat], have]
-			ammo_label.add_theme_color_override("font_color", Color.WHITE if have >= p.BUILD_COST else Color(1, 0.4, 0.35))
+			ammo_label.add_theme_color_override("font_color", Color.WHITE if have >= p.build_cost() else Color(1, 0.4, 0.35))
 			info_label.text = "Clic G construire · F pièce · V matériau · X modifier\nManette : RT mur · LT sol · RB rampe · Y matériau · → modifier"
 			mode = 2
 			crosshair.visible = true
@@ -507,10 +534,13 @@ func set_wave(title: String, sub: String) -> void:
 	wave_sub.text = sub
 
 
-func set_orb(hp: float, max_hp: float) -> void:
+func set_orb(hp: float, max_hp: float, title := "SPHÈRE") -> void:
 	orb_bar.max_value = max_hp
 	orb_bar.value = hp
-	orb_label.text = "SPHÈRE %d  " % int(ceil(hp))
+	orb_label.text = "%s %d  " % [title, int(ceil(hp))]
+	var fill := orb_bar.get_theme_stylebox("fill") as StyleBoxFlat
+	if fill:
+		fill.bg_color = Color(0.3, 0.8, 1.0) if title == "SPHÈRE" else Color(1.0, 0.35, 0.1)
 
 
 func set_alert(text: String) -> void:
@@ -545,20 +575,38 @@ func hitmarker(head: bool) -> void:
 	hit.queue_redraw()
 
 
-func stone_gain(amount: int) -> void:
-	stone_pop.text = "   +%d" % amount
-	stone_pop.modulate.a = 1.0
+## Icône de ressource (assets/ui/<type>.png) ; chargée brute si l'éditeur ne l'a pas encore importée.
+static func load_icon(kind: String) -> Texture2D:
+	if _icons.has(kind):
+		return _icons[kind]
+	var path := "res://assets/ui/%s.png" % kind
+	var tex: Texture2D = null
+	if ResourceLoader.exists(path):
+		tex = load(path)
+	else:
+		var img := Image.load_from_file(path)
+		if img:
+			tex = ImageTexture.create_from_image(img)
+	_icons[kind] = tex
+	return tex
+
+
+## Petit « +N » à gauche de la quantité qui vient d'augmenter.
+func res_gain(kind: String, amount: int) -> void:
+	var pop: Label = res_rows[kind]["pop"]
+	pop.text = "+%d" % amount
+	pop.modulate.a = 1.0
 	var tw := create_tween()
 	tw.tween_interval(0.6)
-	tw.tween_property(stone_pop, "modulate:a", 0.0, 0.5)
+	tw.tween_property(pop, "modulate:a", 0.0, 0.5)
+
+
+func stone_gain(amount: int) -> void:
+	res_gain("stone", amount)
 
 
 func coin_gain(amount: int) -> void:
-	coin_pop.text = "   +%d" % amount
-	coin_pop.modulate.a = 1.0
-	var tw := create_tween()
-	tw.tween_interval(0.6)
-	tw.tween_property(coin_pop, "modulate:a", 0.0, 0.5)
+	res_gain("coins", amount)
 
 
 func show_notice(text: String, duration := 6.0) -> void:
@@ -569,11 +617,7 @@ func show_notice(text: String, duration := 6.0) -> void:
 
 
 func wood_gain(amount: int) -> void:
-	wood_pop.text = "+%d  " % amount
-	wood_pop.modulate.a = 1.0
-	var tw := create_tween()
-	tw.tween_interval(0.6)
-	tw.tween_property(wood_pop, "modulate:a", 0.0, 0.5)
+	res_gain("wood", amount)
 
 
 func damage_flash() -> void:
@@ -749,13 +793,13 @@ func set_enemy(z) -> void:
 		enemy_box.visible = false
 		return
 	enemy_box.visible = true
-	var names := {"minion": "SQUELETTE", "rogue": "SQUELETTE À CAPUCHE", "boss": "BOSS"}
+	var names := {"minion": "SQUELETTE", "rogue": "SQUELETTE À CAPUCHE", "boss": "BOSS", "titan": "TITAN DE LAVE"}
 	enemy_name.text = "%s  %d / %d" % [names.get(z.kind, "SQUELETTE"), int(ceil(maxf(z.hp, 0.0))), int(z.max_hp)]
 	if z.is_frozen():
 		enemy_name.text += "   GLACE %d" % z.frost_level()
 	enemy_bar.max_value = z.max_hp
 	enemy_bar.value = maxf(z.hp, 0.0)
-	enemy_fill.bg_color = Color(1.0, 0.75, 0.15) if z.kind == "boss" else Color(0.95, 0.25, 0.2)
+	enemy_fill.bg_color = Color(1.0, 0.75, 0.15) if z.kind == "boss" or z.kind == "titan" else Color(0.95, 0.25, 0.2)
 
 
 # ------------------------------------------------------------------ fenêtre de confirmation

@@ -3,9 +3,10 @@ extends StaticBody3D
 
 const Nature = preload("res://scripts/nature.gd")
 const Harvest = preload("res://scripts/harvest.gd")
+const Mats = preload("res://scripts/mats.gd")
 
 const STONE_PER_HIT := 10
-const STONE_BREAK := 30       # pierre du dernier coup, multipliée par le bonus des cibles (+60 % par cible touchée, jusqu'à ×2,8)
+const STONE_BREAK := 30       # pierre du dernier coup, multipliée par le bonus des cibles (+80 % par cible touchée, jusqu'à ×3,4)
 
 var variant := 1
 var rock_scale := 2.0
@@ -19,6 +20,10 @@ var harvest := Harvest.new()
 var col_center := Vector3.ZERO
 var col_radius := 1.0
 var last_target_hit := false
+## Rocher volcanique (basalte) ; rocher magique : lueur, ressources doublées et 1 PIERRE MAGIQUE.
+var volcanic := false
+var magic := false
+const MAGIC_MULT := 2
 
 
 func _ready() -> void:
@@ -31,6 +36,10 @@ func _ready() -> void:
 	m.mesh = Nature.rock(variant)
 	m.scale = Vector3.ONE * rock_scale
 	visual.add_child(m)
+	if magic:
+		m.material_override = Nature.rock_material("magic")
+	elif volcanic:
+		m.material_override = Nature.rock_material("volcanic")
 	var ab: AABB = m.mesh.get_aabb()
 	radius = maxf(ab.size.x, ab.size.z) * 0.5 * rock_scale
 	# collision = enveloppe convexe du rocher (suit sa vraie forme : coups et cibles sur la surface)
@@ -43,6 +52,8 @@ func _ready() -> void:
 	cs.shape = hull
 	add_child(cs)
 	col_center = Vector3(0, ab.size.y * rock_scale * 0.4, 0)
+	if magic:
+		_add_crystals(ab.size.y * rock_scale)
 	col_radius = radius
 	max_hp = 120.0 * rock_scale
 	hp = max_hp
@@ -61,7 +72,7 @@ func mine(damage: float, hit_pos := Vector3.INF) -> int:
 	last_target_hit = harvest.register_hit(hit_pos)
 	hp -= damage
 	if hp <= 0.0:
-		var bonus := int(round(STONE_BREAK * harvest.final_mult()))
+		var bonus := int(round(STONE_BREAK * harvest.final_mult())) * (MAGIC_MULT if magic else 1)
 		harvest.clear()
 		_break()
 		return bonus
@@ -81,7 +92,7 @@ func mine(damage: float, hit_pos := Vector3.INF) -> int:
 				if not r.is_empty() and r.collider == self:
 					harvest.add_spot(self, r.position + r.normal * 0.05, r.normal)
 					break
-	return int(round(STONE_PER_HIT * (harvest.HIT_BONUS if last_target_hit else 1.0)))
+	return int(round(STONE_PER_HIT * (harvest.HIT_BONUS if last_target_hit else 1.0))) * (MAGIC_MULT if magic else 1)
 
 
 ## Frappé par un squelette bloqué.
@@ -105,3 +116,20 @@ func _break() -> void:
 	var tw := create_tween()
 	tw.tween_property(visual, "scale", Vector3.ONE * 0.01, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
 	tw.tween_callback(queue_free)
+
+
+## Cristaux violets lumineux qui sortent du rocher magique + lueur.
+func _add_crystals(h: float) -> void:
+	var cm := Mats.col(Color(0.75, 0.6, 1.0), 0.2, 2.5)
+	for i in 6:
+		var a := TAU * i / 6.0 + randf_range(-0.3, 0.3)
+		var len := randf_range(0.8, 1.6) * rock_scale * 0.45
+		var c := Mats.cylinder(visual, 0.0, 0.16 * rock_scale * 0.5, len, cm,
+			Vector3(cos(a) * radius * 0.45, h * randf_range(0.45, 0.8), sin(a) * radius * 0.45), Vector3.ZERO, 6)
+		c.rotation = Vector3(sin(a) * 0.7, 0, -cos(a) * 0.7)
+	var l := OmniLight3D.new()
+	l.light_color = Color(0.65, 0.45, 1.0)
+	l.light_energy = 2.0
+	l.omni_range = 8.0
+	l.position = Vector3(0, h + 0.5, 0)
+	add_child(l)

@@ -8,8 +8,8 @@ func set_wave(title: String, sub: String) -> void:
 	for h in huds: h.set_wave(title, sub)
 
 
-func set_orb(hp: float, max_hp: float) -> void:
-	for h in huds: h.set_orb(hp, max_hp)
+func set_orb(hp: float, max_hp: float, title := "SPHÈRE") -> void:
+	for h in huds: h.set_orb(hp, max_hp, title)
 
 
 func set_alert(text: String) -> void:

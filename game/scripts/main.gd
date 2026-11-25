@@ -15,6 +15,7 @@ const HudGroup = preload("res://scripts/hud_group.gd")
 const RouterScript = preload("res://scripts/input_router.gd")
 const DropScript = preload("res://scripts/resource_drop.gd")
 const ChestScript = preload("res://scripts/chest.gd")
+const TitanScript = preload("res://scripts/titan.gd")
 const CHESTS_PER_ZONE := 2
 
 const MAP_RADIUS := 70.0
@@ -32,6 +33,21 @@ const CORRIDOR_Z := Vector2(-104.0, -66.0)   # z min / z max du couloir
 const ZONE2_DIFFICULTY_OFFSET := 7           # vague 1 de la sphère 2 = vague 8 de la sphère 1
 const ZONE2_TREE_COUNT := 95
 const PICKUPS_PER_ZONE := 30
+# Zone volcanique (à l'ouest de la zone 2) : titan de lave, puis 3e sphère au même endroit
+const ZONE3_CENTER := Vector3(-170, 0, -160)
+const ZONE3_RADIUS := 58.0
+const CORRIDOR2_HALF := 7.0
+const CORRIDOR2_X := Vector2(-116.0, -54.0)   # x min / x max du couloir zone 2 -> zone 3 (le long de z = -160)
+const ZONE3_TREE_COUNT := 60
+const ZONE4_DIFFICULTY_OFFSET := 12          # vague 1 de la sphère 3 = vague 13 de la sphère 1
+const BOSS_TRAVEL_TIME := 60.0               # temps pour rejoindre le titan
+const ZONE4_TIME := 180.0                    # titan vaincu -> défense de la 3e sphère
+const MAGIC_PER_ZONE := 4                    # arbres magiques et rochers magiques par zone
+const LAVA_DPS := 16.0
+# sphères 2 et 3 : 1/3 de squelettes en moins, mais plus résistants et plus durs pour les constructions
+const LATE_COUNT_MULT := 2.0 / 3.0
+const LATE_HP_MULT := 1.4
+const LATE_STRUCT_MULT := 1.25
 ## Les sphères sont au centre d'une case de construction (grille de 4 m) :
 ## un sol posé au pied de la sphère la centre, et 4 murs suffisent à l'entourer.
 const ORB_OFFSET := Vector3(2, 0, 2)
@@ -58,9 +74,36 @@ void fragment() {
 	float b2 = smoothstep(72.0, 58.0, r2 + noise(wpos.xz * 0.1) * 8.0);
 	vec3 grass2 = mix(vec3(0.12, 0.04, 0.10), vec3(0.26, 0.10, 0.20), n);
 	grass = mix(grass, grass2, b2);
-	r = min(r, r2);
+	// biome 3 (volcan) : basalte sombre parcouru de fissures de lave
+	vec2 c3 = vec2(-170.0, -160.0);
+	float r3 = length(wpos.xz - c3);
+	float b3 = smoothstep(74.0, 56.0, r3 + noise(wpos.xz * 0.1) * 8.0);
+	vec3 basalt = mix(vec3(0.07, 0.05, 0.05), vec3(0.16, 0.11, 0.10), n);
+	float crack = smoothstep(0.035, 0.0, abs(noise(wpos.xz * 0.32) - 0.5)) * smoothstep(0.3, 0.6, noise(wpos.xz * 0.07));
+	grass = mix(grass, basalt, b3);
+	dirt = mix(dirt, vec3(0.20, 0.12, 0.09), b3);
+	r = min(min(r, r2), r3);
 	ALBEDO = mix(dirt, grass, smoothstep(4.5, 7.0, r + dirt_n));
+	ALBEDO = mix(ALBEDO, vec3(0.9, 0.3, 0.05), crack * b3);
+	EMISSION = vec3(1.0, 0.32, 0.05) * crack * b3 * (1.4 + 0.5 * sin(TIME * 1.3 + wpos.x * 0.2));
 	ROUGHNESS = 1.0;
+}
+"""
+
+const LAVA_SHADER := """
+shader_type spatial;
+render_mode unshaded, shadows_disabled;
+varying vec3 wp;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+void fragment() {
+	float n = noise(wp.xz * 0.8 + vec2(TIME * 0.15, TIME * 0.1)) * 0.6 + noise(wp.xz * 2.2 - TIME * 0.2) * 0.4;
+	vec3 c = mix(vec3(0.55, 0.06, 0.0), vec3(1.0, 0.55, 0.08), smoothstep(0.3, 0.8, n));
+	ALBEDO = c * 1.6;
 }
 """
 
@@ -96,11 +139,13 @@ shader_type spatial;
 render_mode unshaded, cull_disabled, blend_add, depth_draw_never, shadows_disabled, fog_disabled;
 uniform vec4 color : source_color = vec4(0.25, 0.55, 1.0, 1.0);
 uniform float gap = 0.0;   // ouverture du couloir vers la zone 2
+uniform float gap2 = 0.0;  // ouverture du couloir zone 2 -> zone volcanique
 varying float h;
 varying vec3 wp;
 void vertex() { h = VERTEX.y; wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
 	if (gap > 0.0 && abs(wp.x) < gap && wp.z < -60.0 && wp.z > -108.0) { discard; }
+	if (gap2 > 0.0 && abs(wp.z + 160.0) < gap2 && wp.x < -50.0 && wp.x > -120.0) { discard; }
 	float stripes = 0.5 + 0.5 * sin(UV.x * 500.0 + h * 1.5 - TIME * 2.0);
 	float fade = smoothstep(6.0, -15.0, h);
 	ALBEDO = color.rgb * (0.08 + 0.12 * stripes) * fade;
@@ -125,7 +170,14 @@ var zone := 1                 # sphère défendue : 1 puis 2
 var zone2_unlocked := false
 var orb1
 var orb2
-var orb2_beacon: Node3D
+var orb2_beacon: Node3D   # colonne de lumière vers l'objectif suivant
+var orb3
+var zone3_unlocked := false
+var zone3_blockers: Array[Node] = []
+var titan
+var lava_pools: Array = []   # [position, rayon]
+var world_env: Environment
+var embers: CPUParticles3D
 var storm_mats: Array[ShaderMaterial] = []
 var zone2_blockers: Array[Node] = []   # forêt et pics qui occupent la zone 2 avant son ouverture
 var spires: Array[Node3D] = []
@@ -134,7 +186,7 @@ var fireflies: CPUParticles3D
 var high := true
 var tracer_mat: StandardMaterial3D
 
-var state := "idle"   # idle, break, wave, explore (zone 2 ouverte), free (tout fini), lost
+var state := "idle"   # idle, break, wave, explore (sphère suivante), to_boss, boss, free (tout fini), lost
 var wave := 0
 var to_spawn := 0
 var bosses_left := 0
@@ -176,6 +228,7 @@ func _ready() -> void:
 	for i in 34:
 		spawn_rock(_random_free_spot(12.0))
 		rebuild_obstacles()
+	_spawn_magic(1)
 
 	orb = OrbScript.new()
 	orb.position = ORB_OFFSET
@@ -278,6 +331,7 @@ func _build_environment() -> void:
 	env.adjustment_contrast = 1.15
 	var we := WorldEnvironment.new()
 	we.environment = env
+	world_env = env
 	add_child(we)
 
 	# Soleil couchant, bas sur l'horizon
@@ -444,6 +498,8 @@ func _build_scenery() -> void:
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		if Vector2(m.position.x - ZONE2_CENTER.x, m.position.z - ZONE2_CENTER.z).length() < ZONE2_RADIUS + 40.0:
 			zone2_blockers.append(m)
+		elif _in_zone3_footprint(m.position, 30.0):
+			zone3_blockers.append(m)
 
 	# Lucioles autour du joueur
 	fireflies = CPUParticles3D.new()
@@ -475,6 +531,18 @@ func _build_scenery() -> void:
 	ramp.add_point(0.7, Color(1, 1, 1, 1))
 	fireflies.color_ramp = ramp
 	add_child(fireflies)
+	# braises de la zone volcanique (actives seulement là-bas)
+	embers = fireflies.duplicate()
+	var em := fm.duplicate() as StandardMaterial3D
+	em.albedo_color = Color(1.0, 0.45, 0.1)
+	var eq := q.duplicate() as QuadMesh
+	eq.size = Vector2(0.07, 0.07)
+	eq.material = em
+	embers.mesh = eq
+	embers.gravity = Vector3(0, 0.4, 0)
+	embers.initial_velocity_max = 1.2
+	embers.emitting = false
+	add_child(embers)
 
 
 func _spawn_trees() -> void:
@@ -533,13 +601,42 @@ func _in_zone2_footprint(p: Vector3, margin: float) -> bool:
 	return absf(p.x) < CORRIDOR_HALF + margin and p.z > CORRIDOR_Z.x - margin and p.z < CORRIDOR_Z.y + margin
 
 
-## Ramène une position dans la zone jouable (zone 1, et si débloqués le couloir et la zone 2).
+## Vrai si la position est sur la zone volcanique ou son couloir (marge en mètres).
+func _in_zone3_footprint(p: Vector3, margin: float) -> bool:
+	if Vector2(p.x - ZONE3_CENTER.x, p.z - ZONE3_CENTER.z).length() < ZONE3_RADIUS + margin:
+		return true
+	return absf(p.z - ZONE2_CENTER.z) < CORRIDOR2_HALF + margin and p.x > CORRIDOR2_X.x - margin and p.x < CORRIDOR2_X.y + margin
+
+
+## Centre et rayon de chaque zone (3 = volcan, où se trouve aussi la 3e sphère : zone 4).
+func zone_center(z: int) -> Vector3:
+	match z:
+		1: return Vector3.ZERO
+		2: return ZONE2_CENTER
+	return ZONE3_CENTER
+
+
+func zone_radius(z: int) -> float:
+	match z:
+		1: return MAP_RADIUS
+		2: return ZONE2_RADIUS
+	return ZONE3_RADIUS
+
+
+## Ce que la mini-carte montre comme objectif : la sphère défendue, ou le titan.
+func objective_pos() -> Vector3:
+	if zone == 3 and titan and is_instance_valid(titan):
+		return titan.global_position
+	return orb.global_position
+
+
+## Ramène une position dans la zone jouable (zones et couloirs débloqués).
 func clamp_to_area(p: Vector3) -> Vector3:
 	var lim1 := MAP_RADIUS - 1.5
 	var f1 := Vector2(p.x, p.z)
 	if f1.length() <= lim1:
 		return p
-	var best := f1.normalized() * lim1
+	var cands: Array[Vector2] = [f1.normalized() * lim1]
 	if zone2_unlocked:
 		var cor_x := clampf(p.x, -CORRIDOR_HALF + 0.5, CORRIDOR_HALF - 0.5)
 		var cor_z := clampf(p.z, CORRIDOR_Z.x, CORRIDOR_Z.y + 6.0)
@@ -549,10 +646,24 @@ func clamp_to_area(p: Vector3) -> Vector3:
 		var d2 := f1 - c2
 		if d2.length() <= ZONE2_RADIUS - 1.5:
 			return p
-		var cands := [best, Vector2(cor_x, cor_z), c2 + d2.normalized() * (ZONE2_RADIUS - 1.5)]
-		for c in cands:
-			if c.distance_to(f1) < best.distance_to(f1):
-				best = c
+		cands.append(Vector2(cor_x, cor_z))
+		cands.append(c2 + d2.normalized() * (ZONE2_RADIUS - 1.5))
+	if zone3_unlocked:
+		var zc := ZONE2_CENTER.z
+		var c2x := clampf(p.x, CORRIDOR2_X.x - 6.0, CORRIDOR2_X.y + 6.0)
+		var c2z := clampf(p.z, zc - CORRIDOR2_HALF + 0.5, zc + CORRIDOR2_HALF - 0.5)
+		if c2x == p.x and c2z == p.z:
+			return p
+		var c3 := Vector2(ZONE3_CENTER.x, ZONE3_CENTER.z)
+		var d3 := f1 - c3
+		if d3.length() <= ZONE3_RADIUS - 1.5:
+			return p
+		cands.append(Vector2(c2x, c2z))
+		cands.append(c3 + d3.normalized() * (ZONE3_RADIUS - 1.5))
+	var best: Vector2 = cands[0]
+	for c in cands:
+		if c.distance_to(f1) < best.distance_to(f1):
+			best = c
 	return Vector3(best.x, p.y, best.y)
 
 
@@ -560,9 +671,7 @@ func spawn_pickup(z: int) -> void:
 	var pk := PickupScript.new()
 	pk.main = self
 	pk.zone = z
-	var center := Vector3.ZERO if z == 1 else ZONE2_CENTER
-	var radius := MAP_RADIUS if z == 1 else ZONE2_RADIUS
-	pk.position = _random_free_spot(6.0, center, radius)
+	pk.position = _random_free_spot(6.0, zone_center(z), zone_radius(z))
 	add_child(pk)
 
 
@@ -610,10 +719,10 @@ func _spawn_chest(center: Vector3, radius: float, gold: bool, z: int) -> void:
 		var g := ZombieScript.new()
 		g.guard = true
 		g.guard_group = ch
-		g.max_hp = 90.0 if z == 1 else 220.0
+		g.max_hp = [90.0, 220.0, 330.0][z - 1]
 		g.hp = g.max_hp
-		g.speed = 2.6 if z == 1 else 3.2
-		g.damage = 10.0 if z == 1 else 16.0
+		g.speed = [2.6, 3.2, 3.4][z - 1]
+		g.damage = [10.0, 16.0, 20.0][z - 1]
 		g.main = self
 		g.orb = orb
 		var a := TAU * i / n + rng.randf_range(-0.3, 0.3)
@@ -630,9 +739,11 @@ func alert_guards(group) -> void:
 			g.charge()
 
 
-func spawn_rock(pos: Vector3, z := 1) -> void:
+func spawn_rock(pos: Vector3, z := 1, magic := false) -> void:
 	var rk := RockScript.new()
 	rk.set_meta("zone", z)
+	rk.volcanic = z == 3
+	rk.magic = magic
 	rk.variant = 1 + rng.randi() % 5
 	rk.rock_scale = rng.randf_range(1.5, 3.0)
 	rk.main = self
@@ -649,10 +760,26 @@ func on_rock_broken(rk: Node3D) -> void:
 	# un nouveau rocher apparaît ailleurs un peu plus tard
 	var z: int = rk.get_meta("zone", 1)
 	get_tree().create_timer(40.0, false).timeout.connect(func():
-		if z == 1:
-			spawn_rock(_random_free_spot(12.0), 1)
-		else:
-			spawn_rock(_random_free_spot(12.0, ZONE2_CENTER, ZONE2_RADIUS), 2))
+		spawn_rock(_random_free_spot(12.0, zone_center(z), zone_radius(z)), z))
+
+
+## Arbres et rochers magiques d'une zone (4 de chaque) : lueur, ressources ×2 et 1 bois / pierre magique.
+func _spawn_magic(z: int) -> void:
+	var c := zone_center(z)
+	var rad := zone_radius(z)
+	for i in MAGIC_PER_ZONE:
+		var t := TreeScript.new()
+		t.magic = true
+		t.species = [0, 1, 3][z - 1]
+		t.kind = rng.randi() % 4
+		t.tree_scale = rng.randf_range(1.0, 1.2)
+		t.main = self
+		t.position = _random_free_spot(16.0, c, rad)
+		add_child(t)
+		rebuild_obstacles()
+	for i in MAGIC_PER_ZONE:
+		spawn_rock(_random_free_spot(16.0, c, rad), z, true)
+		rebuild_obstacles()
 
 
 func rebuild_obstacles() -> void:
@@ -841,7 +968,11 @@ func _process(delta: float) -> void:
 	fireflies.global_position = player.global_position + Vector3(0, 1.5, 0)
 	for i in players.size():
 		huds[i].update_player(players[i])
-	hud.set_orb(orb.hp, orb.max_hp)
+	if zone == 3 and titan and is_instance_valid(titan) and titan.awake:
+		hud.set_orb(titan.hp, titan.max_hp, "TITAN")
+	else:
+		hud.set_orb(orb.hp, orb.max_hp)
+	_update_biome(delta)
 
 	# un joueur près de la sphère peut lancer la suite (E / X)
 	var near_orb := false
@@ -870,7 +1001,7 @@ func _process(delta: float) -> void:
 					_start_wave(1)
 		"break":
 			countdown -= delta
-			hud.set_wave("%sVAGUE %d/%d DANS %d s" % ["" if zone == 1 else "SPHÈRE 2 · ", wave + 1, TOTAL_WAVES, int(ceil(countdown))], "Coupe du bois et renforce tes défenses !")
+			hud.set_wave("%sVAGUE %d/%d DANS %d s" % [_sphere_prefix(), wave + 1, TOTAL_WAVES, int(ceil(countdown))], "Coupe du bois et renforce tes défenses !")
 			if near_orb:
 				prompt = "[E / X] LANCER LA VAGUE SUIVANTE"
 				if interact:
@@ -885,19 +1016,21 @@ func _process(delta: float) -> void:
 				if not zz.guard:
 					alive += 1
 			var remaining := alive + to_spawn + bosses_left
-			hud.set_wave("%sVAGUE %d/%d" % ["" if zone == 1 else "SPHÈRE 2 · ", wave, TOTAL_WAVES], "Squelettes restants : %d" % remaining)
+			hud.set_wave("%sVAGUE %d/%d" % [_sphere_prefix(), wave, TOTAL_WAVES], "Squelettes restants : %d" % remaining)
 			if remaining == 0:
 				_end_wave()
 		"explore":
 			var go := false
+			var sn := 2 if zone <= 2 else 3
+			var hint := "La forêt s'est ouverte au nord : rejoins la 2e sphère (suis la lumière)" if sn == 2 else "Construis autour de la 3e sphère, là où se tenait le titan"
 			if Settings.test_mode:
-				hud.set_wave("EXPLORATION", "La forêt s'est ouverte au nord : rejoins la 2e sphère (suis la lumière)")
+				hud.set_wave("EXPLORATION", hint)
 			else:
 				countdown -= delta
-				hud.set_wave("2e SPHÈRE : DÉFENSE DANS %d s" % int(ceil(countdown)), "La forêt s'est ouverte au nord : rejoins la 2e sphère (suis la lumière)")
-				go = countdown <= 0.0 and zone2_unlocked
-			if near_orb and zone == 2:
-				prompt = "[E / X] LANCER LE COMBAT (2e SPHÈRE)"
+				hud.set_wave("%de SPHÈRE : DÉFENSE DANS %d s" % [sn, int(ceil(countdown))], hint)
+				go = countdown <= 0.0 and zone2_unlocked and (zone == 2 or zone == 4)
+			if near_orb and (zone == 2 or zone == 4):
+				prompt = "[E / X] LANCER LE COMBAT (%de SPHÈRE)" % sn
 				if interact:
 					if not Settings.test_mode:
 						_carry_over(countdown)
@@ -907,8 +1040,25 @@ func _process(delta: float) -> void:
 					orb2_beacon.queue_free()
 					orb2_beacon = null
 				_start_wave(1)
+		"to_boss":
+			if Settings.test_mode:
+				hud.set_wave("TITAN DE LAVE", "La terre s'est ouverte à l'ouest de la 2e sphère : approche-toi du titan pour le réveiller")
+			else:
+				countdown -= delta
+				hud.set_wave("LE TITAN SE RÉVEILLE DANS %d s" % int(ceil(countdown)), "Rejoins la zone volcanique, à l'ouest de la 2e sphère (suis la lueur rouge)")
+			var wake := zone3_unlocked and not Settings.test_mode and countdown <= 0.0
+			if zone3_unlocked and titan and is_instance_valid(titan):
+				for p in players:
+					if not p.dead and p.global_position.distance_to(titan.global_position) < 40.0:
+						wake = true
+				if titan.awake:
+					wake = true
+			if wake:
+				_start_boss()
+		"boss":
+			hud.set_wave("TITAN DE LAVE", "Boules de feu : abrite-toi · Onde de choc : saute · Cercles rouges : bouge !")
 		"free":
-			hud.set_wave("FORÊT LIBÉRÉE", "Les deux sphères sont sauves. Explore librement !")
+			hud.set_wave("FORÊT LIBÉRÉE", "Les trois sphères sont sauves. Explore librement !")
 
 	for i in players.size():
 		var p = players[i]
@@ -935,10 +1085,10 @@ func _process(delta: float) -> void:
 				p.respawn_t -= delta
 				pr = "Plus de vie · réapparition dans %d..." % int(ceil(p.respawn_t))
 				if p.respawn_t <= 0.0:
-					var a := rng.randf() * TAU
-					var spot := clamp_to_area(orb.global_position + Vector3(cos(a), 0, sin(a)) * OUT_RESPAWN_DIST)
+					var spot := respawn_anchor()
 					p.respawn(Vector3(spot.x, 0.5, spot.z))
 		huds[i].set_prompt(pr)
+		_lava_damage(p, delta)
 
 	orb_alert_t -= delta
 	hud.set_alert("⚠ LA SPHÈRE EST ATTAQUÉE !" if orb_alert_t > 0.0 and fmod(orb_alert_t, 0.5) > 0.2 else "")
@@ -946,15 +1096,25 @@ func _process(delta: float) -> void:
 
 ## Niveau de difficulté : vague 1 de la sphère 2 = vague 8 de la sphère 1, et ça continue de monter.
 func difficulty() -> int:
-	return wave + (ZONE2_DIFFICULTY_OFFSET if zone == 2 else 0)
+	match zone:
+		2: return wave + ZONE2_DIFFICULTY_OFFSET
+		4: return wave + ZONE4_DIFFICULTY_OFFSET
+	return wave
+
+
+func _sphere_prefix() -> String:
+	match zone:
+		2: return "SPHÈRE 2 · "
+		4: return "SPHÈRE 3 · "
+	return ""
 
 
 func _spawn_center() -> Vector3:
-	return Vector3.ZERO if zone == 1 else ZONE2_CENTER
+	return zone_center(zone)
 
 
 func _spawn_radius() -> float:
-	return SPAWN_RADIUS if zone == 1 else ZONE2_RADIUS - 5.0
+	return SPAWN_RADIUS if zone == 1 else zone_radius(zone) - 5.0
 
 
 func _start_wave(n: int) -> void:
@@ -962,8 +1122,8 @@ func _start_wave(n: int) -> void:
 	state = "wave"
 	Music.play("battle")
 	var d := difficulty()
-	# zone 1 (au pistolet) : beaucoup moins de squelettes ; zone 2 : comme avant
-	to_spawn = (3 + (d - 1) * 2) if zone == 1 else (5 + (d - 1) * 3)
+	# zone 1 (au pistolet) : beaucoup moins de squelettes ; sphères 2 et 3 : 1/3 de moins qu'avant
+	to_spawn = (3 + (d - 1) * 2) if zone == 1 else int(round((5 + (d - 1) * 3) * LATE_COUNT_MULT))
 	bosses_left = n / 5   # mini-boss à la vague 5, deux boss à la vague 10
 	spawn_interval = maxf(0.3, 1.3 - d * 0.09)
 	spawn_timer = 1.5
@@ -974,9 +1134,9 @@ func _start_wave(n: int) -> void:
 	var base := rng.randf() * TAU
 	for i in dirs:
 		var a := base + TAU * i / dirs + rng.randf_range(-0.3, 0.3)
-		if zone == 2:
-			# pas d'apparition côté couloir (vers +Z depuis la 2e sphère)
-			var diff := wrapf(a - PI * 0.5, -PI, PI)
+		if zone == 2 or zone == 4:
+			# pas d'apparition côté couloir (+Z depuis la 2e sphère, +X depuis la 3e)
+			var diff := wrapf(a - (PI * 0.5 if zone == 2 else 0.0), -PI, PI)
 			if absf(diff) < 0.6:
 				a += 1.2 * (1.0 if diff >= 0.0 else -1.0)
 		spawn_angles.append(a)
@@ -1040,8 +1200,9 @@ func _spawn_zombie(boss: bool) -> void:
 		z.max_hp = lerpf(40.0, 186.0, (n - 1) / 9.0)
 		z.speed = minf(2.3 + n * 0.17, 4.1) * 0.85
 	else:
-		z.max_hp = 60.0 + (n - 1) * 14.0
+		z.max_hp = (60.0 + (n - 1) * 14.0) * LATE_HP_MULT
 		z.speed = minf(2.3 + n * 0.17, 4.1)
+		z.struct_mult = LATE_STRUCT_MULT
 	z.damage = 8.0 + n
 	if boss:
 		z.is_boss = true
@@ -1068,10 +1229,13 @@ func _end_wave() -> void:
 	if wave >= TOTAL_WAVES:
 		if zone == 1:
 			_complete_zone1()
+		elif zone == 2:
+			_complete_zone2()
 		else:
 			state = "free"
+			Music.play("game")
 			Sfx.play("win")
-			hud.show_center("VICTOIRE !", "La 2e sphère est sauve. La forêt t'appartient.", 5.0)
+			hud.show_center("VICTOIRE !", "Les trois sphères sont sauves. La forêt t'appartient.", 6.0)
 		return
 	state = "break"
 	Music.play("game")
@@ -1144,14 +1308,14 @@ func craft_rifle() -> void:
 	hud.show_center("FUSIL D'ASSAUT", "Fabriqué ! Touche 2 / LB-RB pour l'équiper", 3.0)
 
 
-func _make_beacon() -> Node3D:
+func _make_beacon(color := Color(0.3, 0.9, 1.0, 0.45)) -> Node3D:
 	var n := Node3D.new()
 	var beam := Mats.cylinder(n, 1.2, 1.2, 120.0, null, Vector3(0, 60, 0), Vector3.ZERO, 16)
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	m.albedo_color = Color(0.3, 0.9, 1.0, 0.45)
+	m.albedo_color = color
 	beam.material_override = m
 	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return n
@@ -1196,6 +1360,7 @@ func _build_zone2() -> void:
 	all.append_array(Nature.maples())
 	all.append_array(Nature.birches())
 	var entries: Array = []
+	var blocked3: Array = []
 	for i in 420:
 		var a := rng.randf() * TAU
 		var r := ZONE2_RADIUS + 3.0 + pow(rng.randf(), 0.8) * 70.0
@@ -1206,8 +1371,13 @@ func _build_zone2() -> void:
 			continue
 		var sc := rng.randf_range(0.9, 1.5)
 		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc))
-		entries.append([rng.randi() % all.size(), Transform3D(b, pos)])
+		if _in_zone3_footprint(pos, 6.0):
+			blocked3.append([rng.randi() % all.size(), Transform3D(b, pos)])
+		else:
+			entries.append([rng.randi() % all.size(), Transform3D(b, pos)])
 	_add_forest(all, entries)
+	if not zone3_unlocked:
+		zone3_blockers.append_array(_add_forest(all, blocked3))
 	# Haies de sapins le long du couloir
 	var pines := Nature.pines()
 	var cor: Array = []
@@ -1253,6 +1423,7 @@ func _build_zone2() -> void:
 		spawn_pickup(2)
 	for i in CHESTS_PER_ZONE:
 		_spawn_chest(c, ZONE2_RADIUS, true, 2)
+	_spawn_magic(2)
 
 	# Végétation : herbe mauve, plantes dorées, buissons violets (zone 2) + herbe du couloir
 	var grass2 := Nature.grass_material(Color(0.04, 0.01, 0.05), Color(0.40, 0.14, 0.34), Color(0.55, 0.22, 0.30))
@@ -1265,6 +1436,329 @@ func _build_zone2() -> void:
 	for v in [1, 2]:
 		_scatter_chunks(Nature.red_plant(v), gold, 0.02, ZONE2_RADIUS + 12.0, 7.0, 0.6, 1.1, 80.0, true, 0.0, c, not_zone1)
 	_scatter_chunks(Nature.bush(false), violet, 0.02, ZONE2_RADIUS + 12.0, 7.0, 1.0, 2.0, 80.0, true, 0.0, c, not_zone1)
+
+
+# ------------------------------------------------------------------ zone volcanique (titan puis 3e sphère)
+
+func _complete_zone2() -> void:
+	state = "to_boss"
+	countdown = BOSS_TRAVEL_TIME   # le report éventuel (carry_time) est gardé pour la 3e sphère
+	Music.play("game")
+	Sfx.play("win")
+	for p in players:
+		p.wood = mini(p.wood + 100, p.RES_MAX)
+		if not p.dead:
+			p.hp = p.MAX_HP
+	hud.show_center("VICTOIRE !", "La 2e sphère est sauve... mais la terre gronde à l'ouest !", 5.0)
+	get_tree().create_timer(1.0, false).timeout.connect(_unlock_zone3)
+
+
+func _unlock_zone3() -> void:
+	if zone3_unlocked:
+		return
+	zone3_unlocked = true
+	for n in zone3_blockers:
+		if is_instance_valid(n):
+			n.queue_free()
+	zone3_blockers.clear()
+	for m in storm_mats:
+		m.set_shader_parameter("gap2", CORRIDOR2_HALF)
+	_build_zone3()
+	zone = 3
+	wave = 0
+	if orb2_beacon and is_instance_valid(orb2_beacon):
+		orb2_beacon.queue_free()
+	orb2_beacon = _make_beacon(Color(1.0, 0.35, 0.1, 0.45))
+	orb2_beacon.position = ZONE3_CENTER
+	add_child(orb2_beacon)
+	rebuild_obstacles()
+	hud.show_notice("NOUVELLE ZONE : le volcan, à l'ouest de la 2e sphère (suis la lueur rouge).\nUn TITAN DE LAVE s'y dresse : il se réveille dans 1 min, ou dès que tu approches.\nAucune sphère à défendre ici, mais chaque mort te coûte une vie.\nUne fois vaincu, une 3e sphère apparaîtra à sa place.", 11.0)
+
+
+func _build_zone3() -> void:
+	var c := ZONE3_CENTER
+	var sh := Shader.new()
+	sh.code = STORM_SHADER
+	var mat := ShaderMaterial.new()
+	mat.shader = sh
+	mat.set_shader_parameter("gap2", CORRIDOR2_HALF)
+	mat.set_shader_parameter("color", Color(1.0, 0.35, 0.12, 1.0))
+	storm_mats.append(mat)
+	var wall := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = ZONE3_RADIUS
+	cm.bottom_radius = ZONE3_RADIUS
+	cm.height = 30.0
+	cm.radial_segments = 128
+	cm.cap_top = false
+	cm.cap_bottom = false
+	wall.mesh = cm
+	wall.material_override = mat
+	wall.position = c + Vector3(0, 15, 0)
+	wall.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(wall)
+	var side_mat := ShaderMaterial.new()
+	side_mat.shader = sh
+	side_mat.set_shader_parameter("color", Color(1.0, 0.35, 0.12, 1.0))
+	for dz in [-CORRIDOR2_HALF, CORRIDOR2_HALF]:
+		var sw := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(CORRIDOR2_X.y - CORRIDOR2_X.x + 4.0, 30.0, 0.05)
+		sw.mesh = bm
+		sw.material_override = side_mat
+		sw.position = Vector3((CORRIDOR2_X.x + CORRIDOR2_X.y) * 0.5, 15.0, ZONE2_CENTER.z + dz)
+		sw.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(sw)
+
+	# Décor de fond : arbres calcinés, colonnes de basalte, volcans au loin
+	var burnt: Array = [Nature.burnt_tree(1), Nature.burnt_tree(2), Nature.burnt_tree(3)]
+	var entries: Array = []
+	for i in 260:
+		var a := rng.randf() * TAU
+		var r := ZONE3_RADIUS + 3.0 + pow(rng.randf(), 0.8) * 60.0
+		var pos := c + Vector3(cos(a) * r, 0, sin(a) * r)
+		if Vector2(pos.x - ZONE2_CENTER.x, pos.z - ZONE2_CENTER.z).length() < ZONE2_RADIUS + 6.0:
+			continue
+		if absf(pos.z - ZONE2_CENTER.z) < CORRIDOR2_HALF + 3.0 and pos.x > c.x:
+			continue
+		var sc := rng.randf_range(0.9, 1.6)
+		entries.append([rng.randi() % 3, Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc)), pos)])
+	_add_forest(burnt, entries)
+	var basalt := Mats.col(Color(0.10, 0.08, 0.08), 1.0)
+	for i in 40:
+		var a := rng.randf() * TAU
+		var r := ZONE3_RADIUS + rng.randf_range(4.0, 45.0)
+		var pos := c + Vector3(cos(a) * r, 0, sin(a) * r)
+		if _in_zone2_footprint(pos, 8.0) or (absf(pos.z - ZONE2_CENTER.z) < CORRIDOR2_HALF + 4.0 and pos.x > c.x):
+			continue
+		var hgt := rng.randf_range(4.0, 16.0)
+		Mats.cylinder(self, rng.randf_range(0.8, 2.0), rng.randf_range(1.5, 3.0), hgt, basalt, pos + Vector3(0, hgt * 0.5 - 0.5, 0), Vector3(rng.randf_range(-8, 8), 0, rng.randf_range(-8, 8)), 6)
+	for v in [[Vector3(-330, 0, -120), 75.0], [Vector3(-300, 0, -260), 95.0], [Vector3(-260, 0, -40), 60.0]]:
+		var vp: Vector3 = v[0]
+		var vh: float = v[1]
+		var cone := Mats.cylinder(self, vh * 0.12, vh * 0.9, vh, Mats.col(Color(0.09, 0.06, 0.07), 1.0), vp + Vector3(0, vh * 0.5 - 2.0, 0), Vector3.ZERO, 14)
+		cone.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		Mats.cylinder(self, vh * 0.11, vh * 0.12, 1.0, Mats.col(Color(1.0, 0.35, 0.05), 0.5, 6.0), vp + Vector3(0, vh - 2.0, 0), Vector3.ZERO, 14)
+		var gl := OmniLight3D.new()
+		gl.light_color = Color(1.0, 0.4, 0.1)
+		gl.light_energy = 6.0
+		gl.omni_range = vh * 0.6
+		gl.position = vp + Vector3(0, vh + 4.0, 0)
+		add_child(gl)
+
+	# Mares de lave (brûlent les joueurs qui marchent dedans)
+	var lava := ShaderMaterial.new()
+	var lsh := Shader.new()
+	lsh.code = LAVA_SHADER
+	lava.shader = lsh
+	lava_pools.clear()
+	for i in 7:
+		var pos := Vector3.ZERO
+		for attempt in 30:
+			var a := rng.randf() * TAU
+			var r := rng.randf_range(24.0, ZONE3_RADIUS - 8.0)
+			pos = c + Vector3(cos(a) * r, 0, sin(a) * r)
+			if absf(pos.z - c.z) < CORRIDOR2_HALF + 4.0 and pos.x > c.x:
+				continue
+			var ok := true
+			for lp in lava_pools:
+				if (lp[0] as Vector3).distance_to(pos) < lp[1] + 8.0:
+					ok = false
+			if ok:
+				break
+		var rad := rng.randf_range(2.5, 4.5)
+		var pool := Mats.cylinder(self, rad, rad, 0.06, lava, pos + Vector3(0, 0.04, 0), Vector3.ZERO, 24)
+		pool.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		Mats.cylinder(self, rad + 0.5, rad + 0.7, 0.25, Mats.col(Color(0.08, 0.06, 0.06), 1.0), pos, Vector3.ZERO, 24)
+		var ll := OmniLight3D.new()
+		ll.light_color = Color(1.0, 0.4, 0.1)
+		ll.light_energy = 2.0
+		ll.omni_range = rad * 3.0
+		ll.position = pos + Vector3(0, 1.0, 0)
+		add_child(ll)
+		lava_pools.append([pos, rad])
+
+	# Sapins calcinés à couper (le centre reste dégagé pour le titan puis la 3e sphère)
+	var placed: Array[Vector3] = []
+	var tries := 0
+	while placed.size() < ZONE3_TREE_COUNT and tries < 4000:
+		tries += 1
+		var r := sqrt(rng.randf_range(0.02, 1.0)) * (ZONE3_RADIUS - 5.0)
+		if r < 16.0:
+			continue
+		var a := rng.randf() * TAU
+		var p := c + Vector3(cos(a) * r, 0, sin(a) * r)
+		if absf(p.z - c.z) < CORRIDOR2_HALF + 2.0 and p.x > c.x + ZONE3_RADIUS - 14.0:
+			continue
+		var ok := true
+		for q in placed:
+			if q.distance_to(p) < 5.0:
+				ok = false
+				break
+		for lp in lava_pools:
+			if (lp[0] as Vector3).distance_to(p) < lp[1] + 2.5:
+				ok = false
+		if not ok:
+			continue
+		placed.append(p)
+		var t := TreeScript.new()
+		t.species = 3
+		t.kind = rng.randi() % 5
+		t.tree_scale = rng.randf_range(0.8, 1.2)
+		t.main = self
+		t.position = p
+		add_child(t)
+	# le titan, au centre
+	titan = TitanScript.new()
+	titan.main = self
+	titan.position = c
+	if players.size() > 1:
+		titan.max_hp = TitanScript.BASE_HP * TitanScript.COOP_HP_MULT
+		titan.hp = titan.max_hp
+	add_child(titan)
+	titan.defeated.connect(_on_titan_defeated)
+	rebuild_obstacles()
+	for i in 22:
+		spawn_rock(_random_free_spot(14.0, c, ZONE3_RADIUS), 3)
+		rebuild_obstacles()
+	for i in PICKUPS_PER_ZONE:
+		spawn_pickup(3)
+	_spawn_magic(3)
+
+
+func _start_boss() -> void:
+	state = "boss"
+	if titan and is_instance_valid(titan):
+		titan.wake()
+	Music.play("boss", "battle")
+	hud.show_center("TITAN DE LAVE", "Il ne bouge pas, mais il frappe fort et de loin.", 3.5)
+
+
+func _on_titan_defeated() -> void:
+	state = "titan_down"
+	hud.set_wave("TITAN VAINCU !", "Une 3e sphère va apparaître à sa place...")
+	hud.show_center("TITAN VAINCU !", "+300 bois · +150 pierre · vie restaurée", 4.0)
+	Music.play("game")
+	for p in players:
+		p.wood = mini(p.wood + 300, p.RES_MAX)
+		p.stone = mini(p.stone + 150, p.RES_MAX)
+		if not p.dead:
+			p.hp = p.MAX_HP
+	get_tree().create_timer(4.5, false).timeout.connect(_start_zone4)
+
+
+## 3e sphère, à l'emplacement du titan : 3 min (+ report éventuel) avant la 1re vague.
+func _start_zone4() -> void:
+	if zone == 4:
+		return
+	orb3 = OrbScript.new()
+	orb3.position = ZONE3_CENTER + ORB_OFFSET
+	add_child(orb3)
+	orb3.damaged.connect(_on_orb_damaged)
+	orb3.destroyed.connect(_on_orb_destroyed)
+	if orb.damaged.is_connected(_on_orb_damaged):
+		orb.damaged.disconnect(_on_orb_damaged)
+		orb.destroyed.disconnect(_on_orb_destroyed)
+	orb = orb3
+	zone = 4
+	wave = 0
+	state = "explore"
+	countdown = ZONE4_TIME + carry_time
+	carry_time = 0.0
+	if orb2_beacon and is_instance_valid(orb2_beacon):
+		orb2_beacon.queue_free()
+	orb2_beacon = _make_beacon()
+	orb2_beacon.position = ZONE3_CENTER + ORB_OFFSET
+	add_child(orb2_beacon)
+	for i in CHESTS_PER_ZONE:
+		_spawn_chest(ZONE3_CENTER, ZONE3_RADIUS, true, 3)
+	rebuild_obstacles()
+	hud.show_notice("3e SPHÈRE : défends-la contre 10 nouvelles vagues.\nLa défense commence dans 3 min (ou plus tôt avec E / X près de la sphère).\nDeux coffres gardés sont apparus dans la zone volcanique.", 9.0)
+
+
+## Où réapparaît un joueur qui n'a plus de vie : loin de la sphère, ou à l'entrée de l'arène du titan.
+func respawn_anchor() -> Vector3:
+	if zone == 3:
+		return ZONE3_CENTER + Vector3(ZONE3_RADIUS - 6.0, 0, rng.randf_range(-4.0, 4.0))
+	var a := rng.randf() * TAU
+	return clamp_to_area(orb.global_position + Vector3(cos(a), 0, sin(a)) * OUT_RESPAWN_DIST)
+
+
+func _lava_damage(p, delta: float) -> void:
+	if p.dead or lava_pools.is_empty() or p.global_position.y > 0.6:
+		return
+	for lp in lava_pools:
+		var d := Vector2(p.global_position.x - lp[0].x, p.global_position.z - lp[0].z).length()
+		if d < lp[1]:
+			var t: float = p.get_meta("lava_t", 0.0) - delta
+			if t <= 0.0:
+				t = 0.5
+				p.take_damage(LAVA_DPS * 0.5)
+			p.set_meta("lava_t", t)
+			return
+
+
+## Ambiance : brouillard rougeoyant et braises quand le joueur 1 est dans la zone volcanique.
+func _update_biome(delta: float) -> void:
+	if not zone3_unlocked or world_env == null:
+		return
+	var d := Vector2(player.global_position.x - ZONE3_CENTER.x, player.global_position.z - ZONE3_CENTER.z).length()
+	var k := clampf((ZONE3_RADIUS + 20.0 - d) / 30.0, 0.0, 1.0)
+	var cur: float = get_meta("biome_k", 0.0)
+	cur = move_toward(cur, k, delta * 0.5)
+	set_meta("biome_k", cur)
+	world_env.fog_light_color = Color(0.17, 0.17, 0.38).lerp(Color(0.38, 0.12, 0.06), cur)
+	world_env.ambient_light_color = Color(0.22, 0.24, 0.5).lerp(Color(0.5, 0.2, 0.12), cur)
+	world_env.fog_density = lerpf(0.011, 0.016, cur)
+	embers.emitting = cur > 0.3
+	fireflies.emitting = cur < 0.7
+	embers.global_position = player.global_position + Vector3(0, 1.5, 0)
+
+
+## MODE TEST : passe directement à l'étape suivante (zone 1 → zone 2 → titan → 3e sphère → fin).
+func skip_zone() -> void:
+	if state == "won" or state == "lost":
+		return
+	for z in get_tree().get_nodes_in_group("zombie"):
+		if not z.guard and z != titan:
+			z.queue_free()
+	for m in spawn_markers:
+		m.queue_free()
+	spawn_markers.clear()
+	to_spawn = 0
+	bosses_left = 0
+	match zone:
+		1:
+			if state != "explore":
+				wave = TOTAL_WAVES
+				_complete_zone1()
+			_unlock_zone2()
+			_teleport_players(ZONE2_CENTER + ORB_OFFSET + Vector3(0, 0.5, 10))
+		2:
+			if state != "to_boss":
+				wave = TOTAL_WAVES
+				_complete_zone2()
+			_unlock_zone3()
+			_teleport_players(ZONE3_CENTER + Vector3(ZONE3_RADIUS - 8.0, 0.5, 0))
+		3:
+			if titan and is_instance_valid(titan) and not titan.dead:
+				titan.die()
+			_teleport_players(ZONE3_CENTER + Vector3(16.0, 0.5, 0))
+		4:
+			wave = TOTAL_WAVES
+			state = "wave"
+			_end_wave()
+	hud.flash_message("MODE TEST : zone suivante")
+
+
+func _teleport_players(pos: Vector3) -> void:
+	for i in players.size():
+		var p = players[i]
+		if p.dead:
+			p.respawn(pos + Vector3(i * 2.0, 0, 0))
+		else:
+			p.global_position = pos + Vector3(i * 2.0, 0, 0)
+			p.velocity = Vector3.ZERO
 
 
 func _on_orb_damaged(_amount: float) -> void:

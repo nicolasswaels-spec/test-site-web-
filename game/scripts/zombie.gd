@@ -30,6 +30,7 @@ var hp := 80.0
 var speed := 2.5
 var damage := 10.0
 var size_mult := 1.0
+var struct_mult := 1.0   # dégâts aux constructions (sphères 2 et 3 : un peu plus)
 var is_boss := false
 var kind := "minion"   # minion, rogue, boss
 var main
@@ -271,7 +272,7 @@ func _physics_process(delta: float) -> void:
 			elif attack_target == player:
 				dmg *= 1.0 if is_boss else 0.5
 			else:
-				dmg *= 2.0 if is_boss else 0.5
+				dmg *= (2.0 if is_boss else 0.5) * struct_mult
 			attack_target.take_damage(dmg)
 	else:
 		var spd := speed * (_wire_slow() if traps > 0 else 1.0) * frost_speed_mult()

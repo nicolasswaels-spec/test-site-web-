@@ -12,6 +12,7 @@ uniform vec3 tint_dark : source_color = vec3(0.02, 0.05, 0.10);
 uniform vec3 tint_light : source_color = vec3(0.08, 0.26, 0.28);
 uniform float height_ref = 14.0;
 uniform float sway = 0.12;
+uniform vec3 glow : source_color = vec3(0.0);   // lueur (arbres magiques)
 varying float hfac;
 void vertex() {
 	hfac = clamp(VERTEX.y / height_ref, 0.0, 1.0);
@@ -25,6 +26,7 @@ void fragment() {
 	if (t.a < 0.5) { discard; }
 	float lum = dot(t.rgb, vec3(0.3, 0.59, 0.11));
 	ALBEDO = mix(tint_dark, tint_light, clamp(lum * 1.1 + hfac * 0.35, 0.0, 1.0));
+	EMISSION = glow * (0.4 + lum * 1.2) * (0.75 + 0.25 * sin(TIME * 2.0 + hfac * 6.0));
 }
 """
 
@@ -256,6 +258,67 @@ static func dead_tree(variant: int) -> ArrayMesh:
 		mat.emission_enabled = true
 		mat.emission = Color(0.35, 0.65, 0.8)
 		mat.emission_energy_multiplier = 0.35
+		m.surface_set_material(0, mat)
+		_cache[k] = m
+	return _cache[k]
+
+
+## Zone volcanique : sapins calcinés (écorce noire, aiguilles couleur braise).
+static func ash_pines() -> Array[ArrayMesh]:
+	return _tree_species("ash_pines", ["PineTree_1", "PineTree_2", "PineTree_3", "PineTree_4", "PineTree_5"], [13.0, 16.0, 11.0, 14.5, 12.5],
+		"PineTree_Bark.png", Color(0.13, 0.10, 0.10), "PineTree_Leaves.png", Color(0.04, 0.01, 0.01), Color(0.55, 0.16, 0.05))
+
+
+## Matériaux d'un arbre magique : écorce couverte de mousse lumineuse, feuillage turquoise qui luit.
+## species : 0 sapin, 1 érable, 2 bouleau, 3 sapin calciné.
+static func magic_tree_materials(species: int) -> Array:
+	var k := "magic_tree_%d" % species
+	if not _cache.has(k):
+		var bark := StandardMaterial3D.new()
+		bark.albedo_texture = _texture(["PineTree_Bark.png", "MapleTree_Bark.png", "BirchTree_Bark.png", "PineTree_Bark.png"][species])
+		bark.albedo_color = Color(0.25, 0.55, 0.35)
+		bark.emission_enabled = true
+		bark.emission = Color(0.15, 0.9, 0.55)
+		bark.emission_energy_multiplier = 0.3
+		bark.emission_texture = bark.albedo_texture
+		bark.roughness = 1.0
+		var leaf_tex: String = ["PineTree_Leaves.png", "MapleTree_Leaves.png", "BirchTree_Leaves.png", "PineTree_Leaves.png"][species]
+		var leaves := leaf_material(leaf_tex, Color(0.02, 0.12, 0.10), Color(0.30, 1.0, 0.70), 14.0, 0.1)
+		leaves.set_shader_parameter("glow", Color(0.10, 0.55, 0.38))
+		_cache[k] = [bark, leaves]
+	return _cache[k]
+
+
+## Rocher volcanique (basalte sombre) ou magique (violet, lumineux).
+static func rock_material(kind: String) -> StandardMaterial3D:
+	var k := "rockmat_" + kind
+	if not _cache.has(k):
+		var mat := StandardMaterial3D.new()
+		mat.albedo_texture = _texture("Rocks_Violet.png")
+		mat.roughness = 0.95
+		match kind:
+			"volcanic":
+				mat.albedo_color = Color(0.22, 0.17, 0.17)
+			"magic":
+				mat.albedo_color = Color(0.45, 0.35, 0.85)
+				mat.emission_enabled = true
+				mat.emission = Color(0.45, 0.25, 1.0)
+				mat.emission_energy_multiplier = 0.35
+				mat.emission_texture = mat.albedo_texture
+		_cache[k] = mat
+	return _cache[k]
+
+
+## Arbre mort calciné (décor de la zone volcanique).
+static func burnt_tree(variant: int) -> ArrayMesh:
+	var k := "burnt%d" % variant
+	if not _cache.has(k):
+		var m := _bake("DeadTree_%d" % variant, 9.0)
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.08, 0.06, 0.06)
+		mat.emission_enabled = true
+		mat.emission = Color(1.0, 0.3, 0.05)
+		mat.emission_energy_multiplier = 0.12
 		m.surface_set_material(0, mat)
 		_cache[k] = m
 	return _cache[k]

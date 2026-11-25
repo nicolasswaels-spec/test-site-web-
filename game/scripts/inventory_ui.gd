@@ -106,6 +106,8 @@ func next_page(dir: int) -> void:
 
 func _res_line(parent: Node) -> void:
 	_label(parent, "BOIS  %d        PIERRE  %d        PIÈCES  %d" % [p.wood, p.stone, p.coins], 26)
+	if p.magic_wood > 0 or p.magic_stone > 0:
+		_label(parent, "BOIS MAGIQUE  %d        PIERRE MAGIQUE  %d" % [p.magic_wood, p.magic_stone], 20, Color(0.6, 1.0, 0.75))
 
 
 # ------------------------------------------------------------------ page 1 : résumé

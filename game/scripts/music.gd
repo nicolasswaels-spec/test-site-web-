@@ -4,6 +4,7 @@ extends Node
 ##   menu.mp3    → menu principal
 ##   game.mp3    → exploration / préparation / pauses entre vagues
 ##   battle.mp3  → pendant les vagues
+##   boss.mp3    → combat contre le titan (sinon battle.mp3)
 ## Un fichier absent = silence pour ce moment-là (aucune erreur).
 ## Les morceaux bouclent et s'enchaînent en fondu.
 
@@ -27,11 +28,14 @@ func _ready() -> void:
 		_players.append(p)
 
 
-func play(track: String) -> void:
+## fallback : morceau joué si le fichier du premier n'existe pas (ex. « boss » → « battle »).
+func play(track: String, fallback := "") -> void:
 	if track == _track:
 		return
 	_track = track
 	var stream := _load(track)
+	if stream == null and fallback != "":
+		stream = _load(fallback)
 	var old := _players[_cur]
 	_cur = 1 - _cur
 	var nxt := _players[_cur]

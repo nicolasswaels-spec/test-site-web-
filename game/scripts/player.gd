@@ -34,7 +34,8 @@ const AXE_STRUCTURE_DAMAGE := 80.0
 const CLIMB_SPEED := 5.0
 const CELL := 4.0
 const BUILD_COST := 10
-const MAT_NAMES := ["BOIS", "PIERRE"]
+const MAT_NAMES := ["BOIS", "PIERRE", "BOIS MAGIQUE", "PIERRE MAGIQUE"]
+const MAGIC_BUILD_COST := 1   # 1 bois / pierre magique = 1 pièce
 const MAX_HP := 100.0
 const MASK_SHOOT := 1 | 4 | 8 | 16 | 32
 
@@ -105,8 +106,11 @@ var hp := MAX_HP
 var wood := 60
 var stone := 0
 var coins := 0
+var magic_wood := 0
+var magic_stone := 0
+const MAGIC_MAX := 99
 var first_coin := true
-var build_mat := 0   # 0 bois, 1 pierre
+var build_mat := 0   # 0 bois, 1 pierre, 2 bois magique, 3 pierre magique
 var build_target = null
 var crystal_mat: StandardMaterial3D
 var sight_glow: OmniLight3D
@@ -856,6 +860,8 @@ func _process(delta: float) -> void:
 		wood = RES_MAX
 		stone = RES_MAX
 		coins = RES_MAX
+		magic_wood = MAGIC_MAX
+		magic_stone = MAGIC_MAX
 	# Visée au stick droit (courbe quadratique pour la précision)
 	if not dead and not get_tree().paused and not input_blocked():
 		var look := Input.get_vector(a("look_left"), a("look_right"), a("look_up"), a("look_down"))
@@ -1109,6 +1115,8 @@ func _axe_impact() -> void:
 	if c and c.is_in_group("rock"):
 		var got: int = c.mine(AXE_TREE_DAMAGE, r.position)
 		got = int(round(got * Upg.harvest_mult(upgrades["axe"]["stone"])))
+		if c.magic and c.broken:
+			_gain_magic("magic_stone")
 		if got > 0:
 			stone = mini(stone + got, RES_MAX)
 			if hud:
@@ -1123,6 +1131,8 @@ func _axe_impact() -> void:
 		var gained: int = c.chop(AXE_TREE_DAMAGE, r.position)
 		gained = int(round(gained * Upg.harvest_mult(upgrades["axe"]["wood"])))
 		wood = mini(wood + gained, RES_MAX)
+		if c.magic and c.fallen and gained > 0:
+			_gain_magic("magic_wood")
 		if hud and gained > 0:
 			hud.wood_gain(gained)
 		if hud and c.last_target_hit:
@@ -1196,8 +1206,8 @@ func _update_ghost() -> void:
 	ghost_info = _compute_build()
 	ghost.mesh = piece_meshes[build_piece]
 	ghost.global_transform = ghost_info["xform"]
-	ghost_valid = _material_count(build_mat) >= BUILD_COST and not main.structures.has(ghost_info["key"])
-	ghost_ok_mat.albedo_color = Color(0.3, 0.7, 1.0, 0.35) if build_mat == 0 else Color(0.75, 0.7, 1.0, 0.4)
+	ghost_valid = _material_count(build_mat) >= build_cost() and not main.structures.has(ghost_info["key"])
+	ghost_ok_mat.albedo_color = [Color(0.3, 0.7, 1.0, 0.35), Color(0.75, 0.7, 1.0, 0.4), Color(0.3, 1.0, 0.55, 0.4), Color(0.75, 0.45, 1.0, 0.45)][build_mat]
 	ghost.material_override = ghost_ok_mat if ghost_valid else ghost_bad_mat
 
 
@@ -1205,34 +1215,62 @@ func _place() -> void:
 	if ghost_info.is_empty():
 		return
 	if not ghost_valid:
-		if _material_count(build_mat) < BUILD_COST and hud:
-			hud.flash_message("Pas assez de bois ! Coupe des arbres (hache)" if build_mat == 0 else "Pas assez de pierre ! Casse des rochers (hache)")
+		if _material_count(build_mat) < build_cost() and hud:
+			hud.flash_message(["Pas assez de bois ! Coupe des arbres (hache)", "Pas assez de pierre ! Casse des rochers (hache)",
+				"Plus de bois magique ! Abats un arbre magique (lueur verte)", "Plus de pierre magique ! Casse un rocher magique (cristaux violets)"][build_mat])
 		build_cd = 0.4
 		return
-	_spend(build_mat, BUILD_COST)
+	_spend(build_mat, build_cost())
 	build_cd = 0.15
 	main.place_structure(build_piece, ghost_info["xform"], ghost_info["key"], build_mat)
 
 
 func _material_count(m: int) -> int:
-	return wood if m == 0 else stone
+	return [wood, stone, magic_wood, magic_stone][m]
+
+
+## Coût d'une pièce dans le matériau choisi (10 bois / pierre, ou 1 bois / pierre magique).
+func build_cost(m := -1) -> int:
+	if m < 0:
+		m = build_mat
+	return MAGIC_BUILD_COST if m >= 2 else BUILD_COST
 
 
 func _spend(m: int, amount: int) -> void:
 	if test_mode:
 		return
-	if m == 0:
-		wood -= amount
-	else:
-		stone -= amount
+	match m:
+		0: wood -= amount
+		1: stone -= amount
+		2: magic_wood -= amount
+		3: magic_stone -= amount
 
 
+## Matériau suivant : bois → pierre (si débloquée) → bois magique → pierre magique (si on en a).
 func _toggle_material() -> void:
-	if main and not main.stone_unlocked:
+	var order := [0, 1, 2, 3]
+	var next := build_mat
+	for k in range(1, 5):
+		var m: int = order[(build_mat + k) % 4]
+		if m == 1 and main and not main.stone_unlocked:
+			continue
+		if m >= 2 and _material_count(m) <= 0:
+			continue
+		next = m
+		break
+	if next == build_mat:
 		if hud:
-			hud.flash_message("La pierre se débloque à la vague %d" % main.STONE_WAVE)
+			if main and not main.stone_unlocked:
+				hud.flash_message("La pierre se débloque à la vague %d" % main.STONE_WAVE)
+			else:
+				hud.flash_message("Aucun autre matériau disponible")
 		return
-	build_mat = 1 - build_mat
+	build_mat = next
+	if hud:
+		hud.flash_message("Matériau : " + MAT_NAMES[build_mat])
+	Sfx.play("equip", -6.0)
+	if weapon != W.BUILD:
+		_select_weapon(W.BUILD)
 	Sfx.play("equip", -6.0)
 	if weapon != W.BUILD:
 		_select_weapon(W.BUILD)
@@ -1287,7 +1325,7 @@ func _try_repair() -> void:
 	if cost == 0:
 		hud.flash_message("Cette construction est intacte")
 		return
-	var m: int = build_target.material_type
+	var m: int = build_target.repair_material()
 	if _material_count(m) < cost:
 		hud.flash_message("Il faut %d %s pour réparer" % [cost, MAT_NAMES[m].to_lower()])
 		return
@@ -1297,8 +1335,8 @@ func _try_repair() -> void:
 
 ## Ajoute des ressources (bois, pierre, pièces) dans la limite du maximum. Renvoie la quantité prise.
 func add_resource(kind: String, amount: int) -> int:
-	var have: int = {"wood": wood, "stone": stone, "coins": coins}[kind]
-	var take := mini(amount, RES_MAX - have)
+	var have: int = {"wood": wood, "stone": stone, "coins": coins, "magic_wood": magic_wood, "magic_stone": magic_stone}[kind]
+	var take := mini(amount, (MAGIC_MAX if kind.begins_with("magic") else RES_MAX) - have)
 	match kind:
 		"wood":
 			wood += take
@@ -1306,6 +1344,10 @@ func add_resource(kind: String, amount: int) -> int:
 			stone += take
 		"coins":
 			coins += take
+		"magic_wood":
+			magic_wood += take
+		"magic_stone":
+			magic_stone += take
 	return take
 
 
@@ -1324,6 +1366,18 @@ func drop_resource(kind: String, amount: int) -> void:
 			coins -= amount
 	var fwd := -global_transform.basis.z
 	main.spawn_resource_drop(kind, amount, global_position + Vector3(fwd.x, 0, fwd.z).normalized() * 1.6, self)
+
+
+## Arbre / rocher magique terminé : +1 bois ou pierre magique.
+func _gain_magic(kind: String) -> void:
+	add_resource(kind, 1)
+	Sfx.play("coin", 0.0, 0.7)
+	if hud:
+		hud.res_gain(kind, 1)
+		var wood_k := kind == "magic_wood"
+		hud.show_notice(("+1 BOIS MAGIQUE !\nIl permet de construire 1 pièce (mur, sol ou rampe) couverte de mousse,\n5× plus solide qu'une pièce en bois améliorée au maximum." if wood_k else
+			"+1 PIERRE MAGIQUE !\nElle permet de construire 1 pièce (mur, sol ou rampe) couverte de mousse,\n5× plus solide qu'une pièce en pierre améliorée au maximum.") +
+			"\nChoisis-la en mode construction (V / Y). Réparation : jusqu'à 1000 %s." % ("bois" if wood_k else "pierre"), 8.0)
 
 
 func collect_coin() -> void:
@@ -1364,7 +1418,7 @@ func _try_upgrade() -> void:
 	if not build_target.can_upgrade():
 		hud.flash_message("Niveau maximum atteint")
 		return
-	var m: int = build_target.material_type
+	var m: int = build_target.repair_material()
 	var cost: int = build_target.upgrade_cost()
 	if _material_count(m) < cost:
 		hud.flash_message("Il faut %d %s pour améliorer" % [cost, MAT_NAMES[m].to_lower()])

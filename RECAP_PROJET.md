@@ -25,13 +25,17 @@ Jeu de défense en vagues à la première personne, en français, inspiré de Fo
 hache, construction sur grille), ambiance forêt stylisée au crépuscule (références : Firewatch,
 The Pathless).
 
-- Menu : COMMENCER, JOUER À DEUX (écran scindé), MODE TEST (ressources infinies, toutes les armes),
+- Menu : COMMENCER, JOUER À DEUX (écran scindé), MODE TEST (ressources infinies, toutes les armes,
+  bouton ZONE SUIVANTE dans la pause),
   GRAPHISMES (qualité haute/basse), QUITTER.
 - Zone 1 : une sphère à défendre, 1 min 30 de préparation puis 10 vagues de squelettes
   (pause de 60 s entre les vagues, lancer en avance reporte 50 % du temps restant).
 - Après la 10ᵉ vague : un couloir s'ouvre au nord vers la zone 2 (autre biome, 2ᵉ sphère,
   10 vagues plus dures, qui démarrent seules au bout de 2 min).
-- Récolte : bois (arbres) et pierre (rochers, dès la vague 5) avec 3 cibles bonus qui apparaissent au 1er coup (+50 % sur le coup, +60 % du gain final par cible) ;
+- Zone 3 : volcan à l'ouest de la zone 2, TITAN DE LAVE (boss immobile, 3 attaques), rejoint en 1 min.
+- Zone « 4 » : 3e sphère à la place du titan, dans le volcan, défense au bout de 3 min.
+- Arbres / rochers magiques (4 par zone) : bois / pierre magique → pièces 5× plus solides.
+- Récolte : bois (arbres) et pierre (rochers, dès la vague 5) avec 3 cibles bonus qui apparaissent au 1er coup (+100 % sur le coup, +80 % du gain final par cible) ;
   pièces métalliques au sol (barbelés).
 - Construction grille 4 m : murs, sols, rampes, en bois ou pierre ; réparation, 3 niveaux
   d'amélioration, modifications (porte, fenêtre, trappe), barbelés.
@@ -57,6 +61,7 @@ scripts/
   player.gd            joueur : déplacement, armes (GUNS), hache, construction, réparation,
                        améliorations, avatar 3D + bras FPS, vies
   zombie.gd            squelettes : IA (chasse, itinéraire, gardiens), statuts de glace,
+                       struct_mult (dégâts aux constructions),
                        barbelés, recul
   structure.gd         pièces de construction (PV, niveaux, réparation, modifications, pièges)
   upgrades.gd          TOUS les coûts et effets des améliorations
@@ -64,6 +69,7 @@ scripts/
   hud_group.gd         diffuse les messages généraux aux HUD des deux joueurs
   inventory_ui.gd      inventaire (pages Résumé / Améliorations)
   menu.gd              menu principal
+  titan.gd             titan de lave (boss de la zone volcanique : boules de feu, onde de choc, éruptions)
   orb.gd               sphère à défendre
   tree.gd, rock.gd     ressources à la hache ; harvest.gd = cibles et bonus (HIT_BONUS, FINAL_PER_HIT) ; weak_spot.gd = cible
   chest.gd             coffres et tirage du butin
@@ -76,12 +82,14 @@ scripts/
   settings.gd          options (qualité, coop, mode test) — autoload Settings
   mats.gd, ui.gd       matériaux et style d'interface
 assets/                modèles 3D CC0 : nature (Quaternius), skeletons, chests, characters (KayKit) ;
+                       ui/ (icônes de ressources, générées par tools/make_icons.py) ;
                        music/ (tes morceaux)
 ```
 
 ## Où régler l'équilibrage
 
-- `scripts/main.gd` (en tête) : durées (START_TIME 90 s, BREAK_TIME 60 s, ZONE2_TIME 120 s, CARRY_RATIO 0,5),
+- `scripts/main.gd` (en tête) : durées (START_TIME 90 s, BREAK_TIME 60 s, ZONE2_TIME 120 s, BOSS_TRAVEL_TIME 60 s, ZONE4_TIME 180 s,
+  LATE_COUNT_MULT / LATE_HP_MULT / LATE_STRUCT_MULT (sphères 2 et 3), MAGIC_PER_ZONE, CARRY_RATIO 0,5),
   vies (OUT_WAIT_BASE, OUT_WAIT_STEP, REVIVE_INVULN, OUT_RESPAWN_DIST), taille des zones,
   nombre de vagues ; `difficulty()`, `_start_wave`, `_spawn_zombie` : nombre, PV, vitesse ennemis.
 - `scripts/player.gd` : GUNS (chargeur, cadence, dégâts), cadence de la hache (`swing_cd`),
@@ -90,6 +98,8 @@ assets/                modèles 3D CC0 : nature (Quaternius), skeletons, chests,
 - `scripts/zombie.gd` : portées de chasse, dégâts, effets de la glace.
 - `scripts/chest.gd` : probabilités et contenu du butin.
 - `scripts/orb.gd` : PV de la sphère.
+- `scripts/titan.gd` : PV et dégâts du titan (BASE_HP, FIREBALL_*, SLAM_*, ERUPT_*).
+- `scripts/structure.gd` : MAGIC_MULT (×5) et MAGIC_REPAIR_FULL (1000) des pièces magiques.
 
 ## Conventions et méthode de travail
 
