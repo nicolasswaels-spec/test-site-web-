@@ -266,7 +266,7 @@ static func dead_tree(variant: int) -> ArrayMesh:
 ## Zone volcanique : sapins calcinés (écorce noire, aiguilles couleur braise).
 static func ash_pines() -> Array[ArrayMesh]:
 	return _tree_species("ash_pines", ["PineTree_1", "PineTree_2", "PineTree_3", "PineTree_4", "PineTree_5"], [13.0, 16.0, 11.0, 14.5, 12.5],
-		"PineTree_Bark.png", Color(0.13, 0.10, 0.10), "PineTree_Leaves.png", Color(0.04, 0.01, 0.01), Color(0.55, 0.16, 0.05))
+		"PineTree_Bark.png", Color(0.13, 0.10, 0.10), "PineTree_Leaves.png", Color(0.03, 0.01, 0.01), Color(0.32, 0.10, 0.05))
 
 
 ## Matériaux d'un arbre magique : écorce couverte de mousse lumineuse, feuillage turquoise qui luit.
