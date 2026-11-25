@@ -16,6 +16,7 @@ const RouterScript = preload("res://scripts/input_router.gd")
 const DropScript = preload("res://scripts/resource_drop.gd")
 const ChestScript = preload("res://scripts/chest.gd")
 const TitanScript = preload("res://scripts/titan.gd")
+const CloudResScript = preload("res://scripts/cloud_res.gd")
 const CHESTS_PER_ZONE := 2
 
 const MAP_RADIUS := 70.0
@@ -41,6 +42,19 @@ const ZONE3_TREE_COUNT := 60
 const ZONE4_DIFFICULTY_OFFSET := 12          # vague 1 de la sphère 3 = vague 13 de la sphère 1
 const BOSS_TRAVEL_TIME := 60.0               # temps pour rejoindre le titan
 const ZONE4_TIME := 180.0                    # titan vaincu -> défense de la 3e sphère
+# Zone céleste (après la 3e sphère) : île de nuages en hauteur, au nord du volcan, reliée par
+# un escalier de nuages en spirale puis une passerelle. 4e sphère au centre.
+const SKY_Y := 32.0                         # sol de l'île (multiple de 4 : grille de construction)
+const SKY_CENTER := Vector3(-170, 32, -290)
+const SKY_RADIUS := 50.0
+const STAIR_CENTER := Vector3(-170, 0, -205) # axe de l'escalier en spirale (dans la zone volcanique)
+const STAIR_RADIUS := 9.0
+const BRIDGE_Z := Vector2(-246.0, -212.0)    # passerelle : z min / z max (x = -170)
+const BRIDGE_HALF := 2.5
+const SKY_TIME := 150.0                      # 3e sphère terminée -> défense de la 4e sphère
+const ZONE5_DIFFICULTY_OFFSET := 15
+const CLOUD_GROUND := 45
+const CLOUD_AIR := 25
 const MAGIC_PER_ZONE := 4                    # arbres magiques et rochers magiques par zone
 const LAVA_DPS := 16.0
 # sphères 2 et 3 : 1/3 de squelettes en moins (les PV et dégâts viennent du niveau des squelettes)
@@ -101,6 +115,24 @@ void fragment() {
 	float n = noise(wp.xz * 0.8 + vec2(TIME * 0.15, TIME * 0.1)) * 0.6 + noise(wp.xz * 2.2 - TIME * 0.2) * 0.4;
 	vec3 c = mix(vec3(0.55, 0.06, 0.0), vec3(1.0, 0.55, 0.08), smoothstep(0.3, 0.8, n));
 	ALBEDO = c * 1.6;
+}
+"""
+
+const CLOUD_GROUND_SHADER := """
+shader_type spatial;
+render_mode diffuse_lambert_wrap, specular_disabled;
+varying vec3 wp;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+void fragment() {
+	float n = noise(wp.xz * 0.15 + TIME * 0.03) * 0.6 + noise(wp.xz * 0.6) * 0.4;
+	ALBEDO = mix(vec3(0.80, 0.85, 0.97), vec3(1.0, 1.0, 1.0), n);
+	EMISSION = vec3(0.30, 0.33, 0.42) * (0.6 + 0.4 * n);
+	ROUGHNESS = 1.0;
 }
 """
 
@@ -175,6 +207,9 @@ var titan
 var lava_pools: Array = []   # [position, rayon]
 var world_env: Environment
 var embers: CPUParticles3D
+var sky_unlocked := false
+var orb4
+var angels_left := 0   # anges squelettes (4e sphère seulement, 3 maximum)
 var storm_mats: Array[ShaderMaterial] = []
 var zone2_blockers: Array[Node] = []   # forêt et pics qui occupent la zone 2 avant son ouverture
 var spires: Array[Node3D] = []
@@ -611,6 +646,7 @@ func zone_center(z: int) -> Vector3:
 	match z:
 		1: return Vector3.ZERO
 		2: return ZONE2_CENTER
+		5: return SKY_CENTER
 	return ZONE3_CENTER
 
 
@@ -618,6 +654,7 @@ func zone_radius(z: int) -> float:
 	match z:
 		1: return MAP_RADIUS
 		2: return ZONE2_RADIUS
+		5: return SKY_RADIUS
 	return ZONE3_RADIUS
 
 
@@ -630,6 +667,22 @@ func objective_pos() -> Vector3:
 
 ## Ramène une position dans la zone jouable (zones et couloirs débloqués).
 func clamp_to_area(p: Vector3) -> Vector3:
+	if sky_unlocked and p.y > SKY_Y - 6.0:
+		# en hauteur : île de nuages ou passerelle (l'escalier lui-même est dans la zone volcanique)
+		var sc := Vector2(SKY_CENTER.x, SKY_CENTER.z)
+		var f := Vector2(p.x, p.z)
+		var bx := clampf(p.x, SKY_CENTER.x - BRIDGE_HALF + 0.4, SKY_CENTER.x + BRIDGE_HALF - 0.4)
+		var bz := clampf(p.z, BRIDGE_Z.x, BRIDGE_Z.y)
+		if (f - sc).length() <= SKY_RADIUS - 1.5:
+			return p
+		if bx == p.x and bz == p.z:
+			return p
+		if f.distance_to(Vector2(STAIR_CENTER.x, STAIR_CENTER.z)) < STAIR_RADIUS + 4.0:
+			return p
+		var c1 := sc + (f - sc).normalized() * (SKY_RADIUS - 1.5)
+		var c2 := Vector2(bx, bz)
+		var best := c1 if c1.distance_to(f) < c2.distance_to(f) else c2
+		return Vector3(best.x, p.y, best.y)
 	var lim1 := MAP_RADIUS - 1.5
 	var f1 := Vector2(p.x, p.z)
 	if f1.length() <= lim1:
@@ -1006,21 +1059,23 @@ func _process(delta: float) -> void:
 			for zz in get_tree().get_nodes_in_group("zombie"):
 				if not zz.guard:
 					alive += 1
-			var remaining := alive + to_spawn + bosses_left + archers_left
+			var remaining := alive + to_spawn + bosses_left + archers_left + angels_left
 			hud.set_wave("%sVAGUE %d/%d" % [_sphere_prefix(), wave, TOTAL_WAVES], "Squelettes restants : %d" % remaining)
 			if remaining == 0:
 				_end_wave()
 		"explore":
 			var go := false
-			var sn := 2 if zone <= 2 else 3
-			var hint := "La forêt s'est ouverte au nord : rejoins la 2e sphère (suis la lumière)" if sn == 2 else "Construis autour de la 3e sphère, là où se tenait le titan"
+			var sn := 2 if zone <= 2 else (3 if zone <= 4 else 4)
+			var hint: String = {2: "La forêt s'est ouverte au nord : rejoins la 2e sphère (suis la lumière)",
+				3: "Construis autour de la 3e sphère, là où se tenait le titan",
+				4: "Monte l'escalier de nuages au nord du volcan : la 4e sphère flotte dans le ciel"}[sn]
 			if Settings.test_mode:
 				hud.set_wave("EXPLORATION", hint)
 			else:
 				countdown -= delta
 				hud.set_wave("%de SPHÈRE : DÉFENSE DANS %d s" % [sn, int(ceil(countdown))], hint)
-				go = countdown <= 0.0 and zone2_unlocked and (zone == 2 or zone == 4)
-			if near_orb and (zone == 2 or zone == 4):
+				go = countdown <= 0.0 and zone2_unlocked and (zone == 2 or zone == 4 or zone == 5)
+			if near_orb and (zone == 2 or zone == 4 or zone == 5):
 				prompt = "[E / X] SPHÈRE"
 			if go:
 				if orb2_beacon:
@@ -1045,7 +1100,7 @@ func _process(delta: float) -> void:
 		"boss":
 			hud.set_wave("TITAN DE LAVE", "Boules de feu : abrite-toi · Onde de choc : saute · Cercles rouges : bouge !")
 		"free":
-			hud.set_wave("FORÊT LIBÉRÉE", "Les trois sphères sont sauves. Explore librement !")
+			hud.set_wave("FORÊT LIBÉRÉE", "Les quatre sphères sont sauves. Explore librement !")
 
 	for i in players.size():
 		var p = players[i]
@@ -1075,9 +1130,14 @@ func _process(delta: float) -> void:
 				pr = "Plus de vie · réapparition dans %d..." % int(ceil(p.respawn_t))
 				if p.respawn_t <= 0.0:
 					var spot := respawn_anchor()
-					p.respawn(Vector3(spot.x, 0.5, spot.z))
+					p.respawn(Vector3(spot.x, spot.y + 0.5, spot.z))
 		huds[i].set_prompt(pr)
 		_lava_damage(p, delta)
+		# tombé dans le vide (bord de l'escalier, de la passerelle...) : retour sur l'île / dans la zone
+		if not p.dead and p.global_position.y < -15.0:
+			var spot := respawn_anchor()
+			p.global_position = Vector3(spot.x, spot.y + 0.6, spot.z)
+			p.velocity = Vector3.ZERO
 
 	orb_alert_t -= delta
 	hud.set_alert("⚠ LA SPHÈRE EST ATTAQUÉE !" if orb_alert_t > 0.0 and fmod(orb_alert_t, 0.5) > 0.2 else "")
@@ -1088,6 +1148,7 @@ func difficulty() -> int:
 	match zone:
 		2: return wave + ZONE2_DIFFICULTY_OFFSET
 		4: return wave + ZONE4_DIFFICULTY_OFFSET
+		5: return wave + ZONE5_DIFFICULTY_OFFSET
 	return wave
 
 
@@ -1095,6 +1156,7 @@ func _sphere_prefix() -> String:
 	match zone:
 		2: return "SPHÈRE 2 · "
 		4: return "SPHÈRE 3 · "
+		5: return "SPHÈRE 4 · "
 	return ""
 
 
@@ -1115,6 +1177,7 @@ func _start_wave(n: int) -> void:
 	to_spawn = (3 + (d - 1) * 2) if zone == 1 else int(round((5 + (d - 1) * 3) * LATE_COUNT_MULT))
 	bosses_left = n / 5   # mini-boss à la vague 5, deux boss à la vague 10
 	archers_left = (1 + n / 3) if zone == 4 else 0   # peu nombreux : 1 à 4
+	angels_left = mini(3, 1 + n / 4) if zone == 5 else 0   # anges : 1 à 3
 	wave_levels = _wave_levels(to_spawn)
 	spawn_interval = maxf(0.3, 1.3 - d * 0.09)
 	spawn_timer = 1.5
@@ -1125,9 +1188,9 @@ func _start_wave(n: int) -> void:
 	var base := rng.randf() * TAU
 	for i in dirs:
 		var a := base + TAU * i / dirs + rng.randf_range(-0.3, 0.3)
-		if zone == 2 or zone == 4:
-			# pas d'apparition côté couloir (+Z depuis la 2e sphère, +X depuis la 3e)
-			var diff := wrapf(a - (PI * 0.5 if zone == 2 else 0.0), -PI, PI)
+		if zone == 2 or zone == 4 or zone == 5:
+			# pas d'apparition côté couloir (+Z depuis la 2e sphère, +X depuis la 3e, +Z / passerelle pour l'île)
+			var diff := wrapf(a - (0.0 if zone == 4 else PI * 0.5), -PI, PI)
 			if absf(diff) < 0.6:
 				a += 1.2 * (1.0 if diff >= 0.0 else -1.0)
 		spawn_angles.append(a)
@@ -1164,13 +1227,16 @@ func _make_spawn_marker() -> Node3D:
 
 
 func _update_spawning(delta: float) -> void:
-	if to_spawn <= 0 and bosses_left <= 0 and archers_left <= 0:
+	if to_spawn <= 0 and bosses_left <= 0 and archers_left <= 0 and angels_left <= 0:
 		return
 	spawn_timer -= delta
 	if spawn_timer > 0.0:
 		return
 	spawn_timer = spawn_interval
-	if archers_left > 0 and (to_spawn <= 0 or rng.randf() < 0.2):
+	if angels_left > 0 and (to_spawn <= 0 or rng.randf() < 0.08):
+		angels_left -= 1
+		_spawn_zombie(false, true, true)
+	elif archers_left > 0 and (to_spawn <= 0 or rng.randf() < 0.2):
 		archers_left -= 1
 		_spawn_zombie(false, true)
 	elif to_spawn > 0:
@@ -1181,15 +1247,18 @@ func _update_spawning(delta: float) -> void:
 		_spawn_zombie(true)
 
 
-func _spawn_zombie(boss: bool, archer := false) -> void:
+func _spawn_zombie(boss: bool, archer := false, angel := false) -> void:
 	var z := ZombieScript.new()
 	z.archer = archer
+	z.angel = angel
 	# niveau : les boss sont au niveau maximum de la vague ; les autres suivent la liste de la vague
 	var lvl := max_level()
 	if not boss:
 		lvl = wave_levels.pop_back() if not archer and not wave_levels.is_empty() else _roll_level()
 	z.set_level(lvl)
-	if archer:
+	if angel:
+		z.max_hp *= 4.0      # anges : beaucoup de PV (mais très vulnérables à la tête)
+	elif archer:
 		z.max_hp *= 0.6
 	if boss:
 		z.is_boss = true
@@ -1203,7 +1272,7 @@ func _spawn_zombie(boss: bool, archer := false) -> void:
 	z.player = nearest_player(z.position)
 	var a: float = spawn_angles[rng.randi() % spawn_angles.size()] + rng.randf_range(-0.18, 0.18)
 	var r := _spawn_radius() + rng.randf_range(-2.5, 2.5)
-	z.position = _spawn_center() + Vector3(cos(a) * r, 0.05, sin(a) * r)
+	z.position = _spawn_center() + Vector3(cos(a) * r, 0.05 + (6.0 if angel else 0.0), sin(a) * r)
 	add_child(z)
 	if boss:
 		hud.flash_message("UN BOSS EST APPARU !")
@@ -1216,6 +1285,7 @@ func max_level() -> int:
 	match zone:
 		2: return wave + 11
 		4: return wave + 20
+		5: return wave + 28     # 4e sphère (nuages) : 29 à 38
 	return 1 if wave <= 1 else roundi(wave * 1.3)
 
 
@@ -1268,11 +1338,13 @@ func _end_wave() -> void:
 			_complete_zone1()
 		elif zone == 2:
 			_complete_zone2()
+		elif zone == 4:
+			_complete_zone4()
 		else:
 			state = "free"
 			Music.play("game")
 			Sfx.play("win")
-			hud.show_center("VICTOIRE !", "Les trois sphères sont sauves. La forêt t'appartient.", 6.0)
+			hud.show_center("VICTOIRE !", "Les quatre sphères sont sauves. La forêt et le ciel t'appartiennent.", 6.0)
 		return
 	state = "break"
 	Music.play("game")
@@ -1687,7 +1759,7 @@ func _on_titan_defeated() -> void:
 
 ## 3e sphère, à l'emplacement du titan : 3 min (+ report éventuel) avant la 1re vague.
 func _start_zone4() -> void:
-	if zone == 4:
+	if zone >= 4:
 		return
 	orb3 = OrbScript.new()
 	orb3.position = ZONE3_CENTER + ORB_OFFSET
@@ -1714,8 +1786,218 @@ func _start_zone4() -> void:
 	hud.show_notice("3e SPHÈRE : défends-la contre 10 nouvelles vagues.\nLa défense commence dans 3 min (ou plus tôt avec E / X près de la sphère).\nDeux coffres gardés sont apparus dans la zone volcanique.", 9.0)
 
 
+# ------------------------------------------------------------------ zone céleste (4e sphère)
+
+func _complete_zone4() -> void:
+	state = "explore"
+	Music.play("game")
+	Sfx.play("win")
+	for p in players:
+		p.wood = mini(p.wood + 200, p.RES_MAX)
+		if not p.dead:
+			p.hp = p.max_hp()
+	hud.show_center("VICTOIRE !", "La 3e sphère est sauve... un escalier de nuages s'élève vers le ciel !", 5.0)
+	_unlock_sky()
+
+
+func _unlock_sky() -> void:
+	if sky_unlocked:
+		return
+	sky_unlocked = true
+	_build_sky()
+	# la 4e sphère, au centre de l'île
+	orb4 = OrbScript.new()
+	orb4.position = SKY_CENTER + ORB_OFFSET
+	add_child(orb4)
+	orb4.damaged.connect(_on_orb_damaged)
+	orb4.destroyed.connect(_on_orb_destroyed)
+	if orb.damaged.is_connected(_on_orb_damaged):
+		orb.damaged.disconnect(_on_orb_damaged)
+		orb.destroyed.disconnect(_on_orb_destroyed)
+	orb = orb4
+	zone = 5
+	wave = 0
+	countdown = SKY_TIME + carry_time
+	carry_time = 0.0
+	if orb2_beacon and is_instance_valid(orb2_beacon):
+		orb2_beacon.queue_free()
+	orb2_beacon = _make_beacon(Color(0.8, 0.9, 1.0, 0.4))
+	orb2_beacon.position = SKY_CENTER + ORB_OFFSET
+	add_child(orb2_beacon)
+	rebuild_obstacles()
+	hud.show_notice("NOUVELLE ZONE : l'île de nuages, dans le ciel au nord du volcan.\nMonte l'escalier de nuages, puis la passerelle. Défense de la 4e sphère dans 2 min 30.\nNouvelle ressource : les NUAGES (petits nuages à briser à la hache, on passe au travers).\nMurs en nuage : 3× plus solides que la pierre. Attention aux anges squelettes !", 12.0)
+
+
+func _cloud_material(alpha := 1.0) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.93, 0.95, 1.0, alpha)
+	m.roughness = 1.0
+	m.emission_enabled = true
+	m.emission = Color(0.55, 0.6, 0.78)
+	m.emission_energy_multiplier = 0.3
+	m.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP
+	if alpha < 1.0:
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	return m
+
+
+func _build_sky() -> void:
+	var cmat := _cloud_material()
+	# --- escalier en spirale (1,25 tour) puis passerelle jusqu'à l'île
+	var stairs := StaticBody3D.new()
+	stairs.collision_layer = 1
+	stairs.collision_mask = 0
+	add_child(stairs)
+	# arbres / rochers qui gêneraient l'escalier : retirés
+	for n in get_tree().get_nodes_in_group("tree") + get_tree().get_nodes_in_group("rock"):
+		if Vector2(n.global_position.x - STAIR_CENTER.x, n.global_position.z - STAIR_CENTER.z).length() < STAIR_RADIUS + 6.0:
+			if n.is_in_group("rock"):
+				rocks.erase(n)
+			n.queue_free()
+	var segs := 44
+	var a_end := -PI * 0.5                  # le haut de l'escalier pointe vers le nord (vers l'île)
+	var a_start := a_end - TAU * 1.25
+	var prev := Vector3.ZERO
+	for i in segs + 1:
+		var t := float(i) / segs
+		var a := lerpf(a_start, a_end, t)
+		var pt := STAIR_CENTER + Vector3(cos(a) * STAIR_RADIUS, t * SKY_Y, sin(a) * STAIR_RADIUS)
+		if i > 0:
+			var mid := (prev + pt) * 0.5
+			var dir := pt - prev
+			var len := dir.length()
+			var basis := Basis.looking_at(dir.normalized(), Vector3.UP)
+			var cs := CollisionShape3D.new()
+			var bs := BoxShape3D.new()
+			bs.size = Vector3(3.6, 0.5, len + 0.5)
+			cs.shape = bs
+			cs.transform = Transform3D(basis, mid - basis.y * 0.25)
+			stairs.add_child(cs)
+			# nuages qui forment les marches (apparaissent un à un)
+			var step := Node3D.new()
+			step.position = mid
+			stairs.add_child(step)
+			for k in 3:
+				var off := basis.x * (k - 1) * 1.1
+				Mats.sphere(step, rng.randf_range(0.75, 1.0), cmat, off + Vector3(0, -0.45, 0), 10).scale = Vector3(1.0, 0.55, 1.0)
+			step.scale = Vector3.ONE * 0.01
+			var tw := step.create_tween()
+			tw.tween_interval(i * 0.06)
+			tw.tween_property(step, "scale", Vector3.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		prev = pt
+	# passerelle droite (au-dessus du mur de tempête du volcan)
+	var bridge_len := BRIDGE_Z.y - BRIDGE_Z.x
+	var bcs := CollisionShape3D.new()
+	var bbs := BoxShape3D.new()
+	bbs.size = Vector3(BRIDGE_HALF * 2.0, 0.6, bridge_len)
+	bcs.shape = bbs
+	bcs.position = Vector3(SKY_CENTER.x, SKY_Y - 0.3, (BRIDGE_Z.x + BRIDGE_Z.y) * 0.5)
+	stairs.add_child(bcs)
+	for i in int(bridge_len / 1.6):
+		var z := BRIDGE_Z.y - i * 1.6
+		for side in [-1.0, 0.0, 1.0]:
+			Mats.sphere(stairs, rng.randf_range(0.8, 1.05), cmat, Vector3(SKY_CENTER.x + side * 1.3, SKY_Y - 0.55, z), 10).scale = Vector3(1, 0.55, 1)
+
+	# --- l'île : grand disque de nuage (sol à SKY_Y), bord en gros « moutons »
+	var island := StaticBody3D.new()
+	island.collision_layer = 1
+	island.collision_mask = 0
+	add_child(island)
+	var ics := CollisionShape3D.new()
+	var cyl := CylinderShape3D.new()
+	cyl.radius = SKY_RADIUS + 2.0
+	cyl.height = 2.0
+	ics.shape = cyl
+	ics.position = SKY_CENTER + Vector3(0, -1.0, 0)
+	island.add_child(ics)
+	var floor_mi := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = SKY_RADIUS + 2.0
+	cm.bottom_radius = SKY_RADIUS - 6.0
+	cm.height = 6.0
+	cm.radial_segments = 64
+	floor_mi.mesh = cm
+	var fm := ShaderMaterial.new()
+	var fsh := Shader.new()
+	fsh.code = CLOUD_GROUND_SHADER
+	fm.shader = fsh
+	floor_mi.material_override = fm
+	floor_mi.position = SKY_CENTER + Vector3(0, -3.0, 0)
+	island.add_child(floor_mi)
+	for i in 70:
+		var a := TAU * i / 70.0 + rng.randf_range(-0.04, 0.04)
+		var r := SKY_RADIUS + rng.randf_range(-1.0, 2.5)
+		var sz := rng.randf_range(2.0, 3.8)
+		Mats.sphere(island, sz, cmat, SKY_CENTER + Vector3(cos(a) * r, rng.randf_range(-2.5, 0.2), sin(a) * r), 10).scale = Vector3(1, 0.65, 1)
+	for i in 26:   # dessous bombé
+		var a := rng.randf() * TAU
+		var r := rng.randf_range(0.0, SKY_RADIUS - 8.0)
+		Mats.sphere(island, rng.randf_range(5.0, 9.0), cmat, SKY_CENTER + Vector3(cos(a) * r, rng.randf_range(-8.0, -5.0), sin(a) * r), 10).scale = Vector3(1, 0.5, 1)
+	# bancs de nuages lointains, sous et autour de l'île
+	var far := _cloud_material(0.85)
+	for i in 40:
+		var a := rng.randf() * TAU
+		var r := rng.randf_range(SKY_RADIUS + 20.0, SKY_RADIUS + 90.0)
+		var c := Mats.sphere(self, rng.randf_range(8.0, 16.0), far, SKY_CENTER + Vector3(cos(a) * r, rng.randf_range(-20.0, 6.0), sin(a) * r), 10)
+		c.scale = Vector3(1.6, 0.5, 1.0)
+		c.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# bord : muret de lumière blanche (limite de la zone)
+	var sh := Shader.new()
+	sh.code = STORM_SHADER
+	var wm := ShaderMaterial.new()
+	wm.shader = sh
+	wm.set_shader_parameter("color", Color(0.75, 0.85, 1.0, 1.0))
+	var wall := MeshInstance3D.new()
+	var wcm := CylinderMesh.new()
+	wcm.top_radius = SKY_RADIUS
+	wcm.bottom_radius = SKY_RADIUS
+	wcm.height = 16.0
+	wcm.radial_segments = 96
+	wcm.cap_top = false
+	wcm.cap_bottom = false
+	wall.mesh = wcm
+	wall.material_override = wm
+	wall.position = SKY_CENTER + Vector3(0, 8.0, 0)
+	wall.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(wall)
+	var sun := OmniLight3D.new()
+	sun.light_color = Color(1.0, 0.92, 0.8)
+	sun.light_energy = 2.5
+	sun.omni_range = 70.0
+	sun.position = SKY_CENTER + Vector3(0, 25, 0)
+	add_child(sun)
+	# petits nuages à récolter (au sol et en l'air)
+	for i in CLOUD_GROUND:
+		spawn_cloud(false)
+	for i in CLOUD_AIR:
+		spawn_cloud(true)
+
+
+## Petit nuage à récolter : au sol ou en l'air ; 1 chance sur 250 d'être magique.
+func spawn_cloud(air: bool) -> void:
+	var c := CloudResScript.new()
+	c.main = self
+	c.floating = air
+	c.magic = rng.randf() < CloudResScript.MAGIC_CHANCE
+	var a := rng.randf() * TAU
+	var r := sqrt(rng.randf_range(0.04, 1.0)) * (SKY_RADIUS - 4.0)
+	if r < 8.0:
+		r += 8.0   # pas sur la sphère
+	var h := rng.randf_range(2.2, 4.5) if air else 0.0
+	c.position = SKY_CENTER + Vector3(cos(a) * r, h, sin(a) * r)
+	add_child(c)
+
+
+func on_cloud_harvested(c: Node) -> void:
+	var air: bool = c.floating
+	get_tree().create_timer(rng.randf_range(12.0, 25.0), false).timeout.connect(func(): spawn_cloud(air))
+
+
 ## Où réapparaît un joueur qui n'a plus de vie : loin de la sphère, ou à l'entrée de l'arène du titan.
 func respawn_anchor() -> Vector3:
+	if zone == 5:
+		var a := rng.randf_range(0.3, PI - 0.3)
+		return SKY_CENTER + Vector3(cos(a), 0, sin(a)) * 22.0
 	if zone == 3:
 		return ZONE3_CENTER + Vector3(ZONE3_RADIUS - 6.0, 0, rng.randf_range(-4.0, 4.0))
 	var a := rng.randf() * TAU
@@ -1740,16 +2022,22 @@ func _lava_damage(p, delta: float) -> void:
 func _update_biome(delta: float) -> void:
 	if not zone3_unlocked or world_env == null:
 		return
+	# dans le ciel : brouillard clair et bleuté, ni braises ni lucioles
+	var sky_k := clampf((player.global_position.y - (SKY_Y - 12.0)) / 10.0, 0.0, 1.0) if sky_unlocked else 0.0
 	var d := Vector2(player.global_position.x - ZONE3_CENTER.x, player.global_position.z - ZONE3_CENTER.z).length()
 	var k := clampf((ZONE3_RADIUS + 20.0 - d) / 30.0, 0.0, 1.0)
 	var cur: float = get_meta("biome_k", 0.0)
 	cur = move_toward(cur, k, delta * 0.5)
 	set_meta("biome_k", cur)
-	world_env.fog_light_color = Color(0.17, 0.17, 0.38).lerp(Color(0.38, 0.12, 0.06), cur)
-	world_env.ambient_light_color = Color(0.22, 0.24, 0.5).lerp(Color(0.5, 0.2, 0.12), cur)
-	world_env.fog_density = lerpf(0.011, 0.016, cur)
-	embers.emitting = cur > 0.3
-	fireflies.emitting = cur < 0.7
+	var sk: float = get_meta("sky_k", 0.0)
+	sk = move_toward(sk, sky_k, delta * 0.5)
+	set_meta("sky_k", sk)
+	world_env.fog_light_color = Color(0.17, 0.17, 0.38).lerp(Color(0.38, 0.12, 0.06), cur).lerp(Color(0.62, 0.7, 0.92), sk)
+	world_env.ambient_light_color = Color(0.22, 0.24, 0.5).lerp(Color(0.5, 0.2, 0.12), cur).lerp(Color(0.6, 0.65, 0.85), sk)
+	world_env.ambient_light_energy = lerpf(0.35, 0.7, sk)
+	world_env.fog_density = lerpf(lerpf(0.011, 0.016, cur), 0.006, sk)
+	embers.emitting = cur > 0.3 and sk < 0.5
+	fireflies.emitting = cur < 0.7 and sk < 0.5
 	embers.global_position = player.global_position + Vector3(0, 1.5, 0)
 
 
@@ -1766,6 +2054,7 @@ func skip_zone() -> void:
 	to_spawn = 0
 	bosses_left = 0
 	archers_left = 0
+	angels_left = 0
 	match zone:
 		1:
 			if state != "explore":
@@ -1784,6 +2073,11 @@ func skip_zone() -> void:
 				titan.die()
 			_teleport_players(ZONE3_CENTER + Vector3(16.0, 0.5, 0))
 		4:
+			wave = TOTAL_WAVES
+			state = "wave"
+			_end_wave()
+			_teleport_players(SKY_CENTER + Vector3(0, 0.6, 20))
+		5:
 			wave = TOTAL_WAVES
 			state = "wave"
 			_end_wave()
@@ -1828,8 +2122,8 @@ func orb_launch_text() -> String:
 		"break":
 			return "LANCER LA VAGUE %d" % (wave + 1)
 		"explore":
-			if zone == 2 or zone == 4:
-				return "LANCER LE COMBAT (%de SPHÈRE)" % (2 if zone == 2 else 3)
+			if zone == 2 or zone == 4 or zone == 5:
+				return "LANCER LE COMBAT (%de SPHÈRE)" % {2: 2, 4: 3, 5: 4}[zone]
 	return ""
 
 
@@ -1844,7 +2138,7 @@ func orb_launch() -> void:
 			_carry_over(countdown)
 			_start_wave(wave + 1)
 		"explore":
-			if zone == 2 or zone == 4:
+			if zone == 2 or zone == 4 or zone == 5:
 				if not Settings.test_mode:
 					_carry_over(countdown)
 				if orb2_beacon and is_instance_valid(orb2_beacon):
@@ -2068,8 +2362,15 @@ func spawn_resource_drop(kind: String, amount: int, pos: Vector3, from_player) -
 	d.kind = kind
 	d.amount = amount
 	d.dropper = from_player
-	d.position = Vector3(pos.x, 0.05, pos.z)
+	d.position = Vector3(pos.x, _floor_y(pos) + 0.05, pos.z)
 	add_child(d)
+
+
+## Hauteur du sol sous un point (île de nuages, constructions, terrain).
+func _floor_y(pos: Vector3) -> float:
+	var q := PhysicsRayQueryParameters3D.create(pos + Vector3.UP * 1.5, pos + Vector3.DOWN * 80.0, 1 | 8)
+	var r := get_world_3d().direct_space_state.intersect_ray(q)
+	return r.position.y if not r.is_empty() else 0.0
 
 
 ## Souris visible si le joueur clavier/souris a un menu ouvert, ou si le jeu est en pause.

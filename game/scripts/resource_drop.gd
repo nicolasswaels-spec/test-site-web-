@@ -3,7 +3,7 @@ extends Node3D
 
 const Mats = preload("res://scripts/mats.gd")
 const NAMES := {"wood": "BOIS", "stone": "PIERRE", "coins": "PIÈCES", "magic_wood": "BOIS MAGIQUE", "magic_stone": "PIERRE MAGIQUE",
-	"bone": "OS", "big_bone": "OS IMPOSANT", "arrow_bone": "OS EN FLÈCHE", "bone_pile": "TAS D'OS IMPOSANT"}
+	"cloud": "NUAGE", "magic_cloud": "NUAGE MAGIQUE", "bone": "OS", "big_bone": "OS IMPOSANT", "arrow_bone": "OS EN FLÈCHE", "bone_pile": "TAS D'OS IMPOSANT"}
 
 var main
 var kind := "wood"
@@ -35,6 +35,10 @@ func _ready() -> void:
 			Mats.sphere(model, 0.13, st, Vector3(0.0, 0.32, -0.02), 6)
 		"bone", "big_bone", "arrow_bone", "bone_pile":
 			_bone_model()
+		"cloud", "magic_cloud":
+			var cm := Mats.col(Color(0.95, 0.97, 1.0) if kind == "cloud" else Color(1.0, 0.9, 0.6), 1.0, 0.4)
+			for i in 3:
+				Mats.sphere(model, 0.2, cm, Vector3(-0.15 + i * 0.15, 0.2 + (0.08 if i == 1 else 0.0), 0), 8)
 		_:
 			var sack := Mats.col(Color(0.55, 0.42, 0.25))
 			var gold := Mats.col(Color(0.85, 0.65, 0.3), 0.3, 0.5)

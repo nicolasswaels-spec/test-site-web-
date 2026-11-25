@@ -36,7 +36,7 @@ const AXE_STRUCTURE_DAMAGE := 80.0
 const CLIMB_SPEED := 5.0
 const CELL := 4.0
 const BUILD_COST := 10
-const MAT_NAMES := ["BOIS", "PIERRE", "BOIS MAGIQUE", "PIERRE MAGIQUE"]
+const MAT_NAMES := ["BOIS", "PIERRE", "BOIS MAGIQUE", "PIERRE MAGIQUE", "NUAGE"]
 const MAGIC_BUILD_COST := 1   # 1 bois / pierre magique = 1 pièce
 const MAX_HP := 100.0
 const MASK_SHOOT := 1 | 4 | 8 | 16 | 32
@@ -122,15 +122,17 @@ var magic_wood := 0
 var magic_stone := 0
 const MAGIC_MAX := 99
 # os (visibles seulement dans l'inventaire) : leur usage viendra plus tard
+var clouds := 0
+var magic_clouds := 0
 var bones := 0
 var big_bones := 0
 var arrow_bones := 0
 var bone_piles := 0
 ## Type de ressource -> propriété du joueur
 const RES_PROPS := {"wood": "wood", "stone": "stone", "coins": "coins", "magic_wood": "magic_wood", "magic_stone": "magic_stone",
-	"bone": "bones", "big_bone": "big_bones", "arrow_bone": "arrow_bones", "bone_pile": "bone_piles"}
+	"cloud": "clouds", "magic_cloud": "magic_clouds", "bone": "bones", "big_bone": "big_bones", "arrow_bone": "arrow_bones", "bone_pile": "bone_piles"}
 var first_coin := true
-var build_mat := 0   # 0 bois, 1 pierre, 2 bois magique, 3 pierre magique
+var build_mat := 0   # 0 bois, 1 pierre, 2 bois magique, 3 pierre magique, 4 nuage
 var build_target = null
 var crystal_mat: StandardMaterial3D
 var sight_glow: OmniLight3D
@@ -938,6 +940,7 @@ func _process(delta: float) -> void:
 		coins = RES_MAX
 		magic_wood = MAGIC_MAX
 		magic_stone = MAGIC_MAX
+		clouds = RES_MAX
 	# Visée au stick droit (courbe quadratique pour la précision)
 	if not dead and not get_tree().paused and not input_blocked():
 		var look := Input.get_vector(a("look_left"), a("look_right"), a("look_up"), a("look_down"))
@@ -1521,14 +1524,17 @@ func _axe_impact() -> void:
 		return
 	var from := cam.global_position
 	var to := from - cam.global_transform.basis.z * 3.3
-	var q := PhysicsRayQueryParameters3D.create(from, to, 1 | 4 | 8 | 16 | 32)
+	var q := PhysicsRayQueryParameters3D.create(from, to, 1 | 4 | 8 | 16 | 32 | 128)   # 128 : petits nuages
 	q.exclude = [get_rid()]
 	var r := get_world_3d().direct_space_state.intersect_ray(q)
 	if r.is_empty():
 		return
 	var c = r.collider
 	_shake(0.012)
-	if c and c.is_in_group("rock"):
+	if c and c.is_in_group("cloud_res"):
+		c.harvest(self)
+		_shake(0.015)
+	elif c and c.is_in_group("rock"):
 		var got: int = c.mine(AXE_TREE_DAMAGE, r.position, can_mine_stone())
 		var tgt_mult := 1.5 if (c.last_target_hit and has_skill("F5")) else 1.0
 		got = int(round(got * Upg.harvest_mult(upgrades["axe"]["stone"]) * harvest_bonus("stone") * tgt_mult))
@@ -1635,7 +1641,7 @@ func _update_ghost() -> void:
 	ghost.mesh = piece_meshes[build_piece]
 	ghost.global_transform = ghost_info["xform"]
 	ghost_valid = _material_count(build_mat) >= build_cost() and not main.structures.has(ghost_info["key"])
-	ghost_ok_mat.albedo_color = [Color(0.3, 0.7, 1.0, 0.35), Color(0.75, 0.7, 1.0, 0.4), Color(0.3, 1.0, 0.55, 0.4), Color(0.75, 0.45, 1.0, 0.45)][build_mat]
+	ghost_ok_mat.albedo_color = [Color(0.3, 0.7, 1.0, 0.35), Color(0.75, 0.7, 1.0, 0.4), Color(0.3, 1.0, 0.55, 0.4), Color(0.75, 0.45, 1.0, 0.45), Color(0.95, 0.97, 1.0, 0.45)][build_mat]
 	ghost.material_override = ghost_ok_mat if ghost_valid else ghost_bad_mat
 
 
@@ -1645,7 +1651,7 @@ func _place() -> void:
 	if not ghost_valid:
 		if _material_count(build_mat) < build_cost() and hud:
 			hud.flash_message(["Pas assez de bois ! Coupe des arbres (hache)", "Pas assez de pierre ! Casse des rochers (hache)",
-				"Plus de bois magique ! Abats un arbre magique (lueur verte)", "Plus de pierre magique ! Casse un rocher magique (cristaux violets)"][build_mat])
+				"Plus de bois magique ! Abats un arbre magique (lueur verte)", "Plus de pierre magique ! Casse un rocher magique (cristaux violets)", "Pas assez de nuages ! Frappe les petits nuages à la hache"][build_mat])
 		build_cd = 0.4
 		return
 	_spend(build_mat, build_cost())
@@ -1660,14 +1666,14 @@ func can_mine_stone() -> bool:
 
 
 func _material_count(m: int) -> int:
-	return [wood, stone, magic_wood, magic_stone][m]
+	return [wood, stone, magic_wood, magic_stone, clouds][m]
 
 
 ## Coût d'une pièce dans le matériau choisi (10 bois / pierre, ou 1 bois / pierre magique).
 func build_cost(m := -1) -> int:
 	if m < 0:
 		m = build_mat
-	if m >= 2:
+	if m == 2 or m == 3:
 		return MAGIC_BUILD_COST
 	return 8 if has_skill("F8") else BUILD_COST
 
@@ -1680,18 +1686,20 @@ func _spend(m: int, amount: int) -> void:
 		1: stone -= amount
 		2: magic_wood -= amount
 		3: magic_stone -= amount
+		4: clouds -= amount
 
 
 ## Matériau suivant : bois → pierre (si débloquée) → bois magique → pierre magique (si on en a).
 func _toggle_material() -> void:
-	var order := [0, 1, 2, 3]
+	var order := [0, 1, 4, 2, 3]
 	var next := build_mat
-	for k in range(1, 5):
-		var m: int = order[(build_mat + k) % 4]
+	var at := order.find(build_mat)
+	for k in range(1, 6):
+		var m: int = order[(at + k) % 5]
 		if m == 1 and stone <= 0 and not can_mine_stone():
 			continue
 		if m >= 2 and _material_count(m) <= 0:
-			continue
+			continue   # bois / pierre magiques, nuage : seulement si on en a
 		next = m
 		break
 	if next == build_mat:

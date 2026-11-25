@@ -21,9 +21,10 @@ var title: Label
 const DROP_STEPS := [1, 10, 50, 100, 500, -1]   # -1 = tout
 var drop_idx := {}
 
-const RES_MAIN := ["wood", "stone", "coins", "magic_wood", "magic_stone"]
+const RES_MAIN := ["wood", "stone", "cloud", "coins", "magic_wood", "magic_stone", "magic_cloud"]
 const RES_BONES := ["bone", "big_bone", "arrow_bone", "bone_pile"]
 const RES_NAMES := {"wood": "BOIS", "stone": "PIERRE", "coins": "PIÈCES", "magic_wood": "BOIS MAGIQUE", "magic_stone": "PIERRE MAGIQUE",
+	"cloud": "NUAGE", "magic_cloud": "NUAGE MAGIQUE",
 	"bone": "OS", "big_bone": "OS IMPOSANT", "arrow_bone": "OS EN FLÈCHE", "bone_pile": "TAS D'OS IMPOSANT"}
 const RES_DESC := {
 	"wood": "Se récolte à la hache sur les arbres. Construction, réparations, améliorations.",
@@ -31,6 +32,8 @@ const RES_DESC := {
 	"coins": "Pièces métalliques ramassées au sol. 2 pièces = des barbelés sur un sol.",
 	"magic_wood": "Arbre magique abattu. 1 = une pièce moussue, 5× plus solide qu'une pièce en bois au maximum.",
 	"magic_stone": "Rocher magique cassé. 1 = une pièce moussue, 5× plus solide qu'une pièce en pierre au maximum.",
+	"cloud": "Petits nuages de l'île céleste (un coup de hache = 10). Murs en nuage : 3× plus solides que la pierre.",
+	"magic_cloud": "Nuage magique (1 chance sur 250). Pas de construction pour l'instant.",
 	"bone": "Laissé par un squelette (une chance sur deux). Son usage arrive bientôt.",
 	"big_bone": "Laissé par les boss des défenses. Son usage arrive bientôt.",
 	"arrow_bone": "Laissé par les squelettes archers. Son usage arrive bientôt.",
@@ -203,13 +206,10 @@ func _select(key: String, then_focus := "") -> void:
 func _build_inventory() -> Control:
 	title.text = "Choisis une case : arme → emplacement 1 ou 2 · ressource → déposer au sol"
 	var first: Control = null
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 30)
-	body.add_child(row)
 	for grp in [["RESSOURCES", RES_MAIN], ["OS", RES_BONES]]:
 		var col := VBoxContainer.new()
 		col.add_theme_constant_override("separation", 4)
-		row.add_child(col)
+		body.add_child(col)
 		_section(col, grp[0])
 		var tiles := HBoxContainer.new()
 		tiles.add_theme_constant_override("separation", 8)
@@ -217,7 +217,7 @@ func _build_inventory() -> Control:
 		for kind in grp[1]:
 			var k: String = kind
 			var n: int = p.res_count(k)
-			var b := _tile(tiles, "r:" + k, k, str(n), Vector2(92, 104), Color(0.16, 0.16, 0.2, 0.95), func(): _select("r:" + k, "act0"), n == 0)
+			var b := _tile(tiles, "r:" + k, k, str(n), Vector2(88, 96), Color(0.16, 0.16, 0.2, 0.95), func(): _select("r:" + k, "act0"), n == 0)
 			if first == null:
 				first = b
 	_section(body, "ARMES")

@@ -158,7 +158,7 @@ var hp_label: Label
 var skill_label: Label   # bouclier / boule de feu (au-dessus de la vie)
 var ammo_label: Label
 var info_label: Label
-const RES_KINDS := ["wood", "magic_wood", "stone", "magic_stone", "coins"]
+const RES_KINDS := ["wood", "magic_wood", "stone", "magic_stone", "cloud", "magic_cloud", "coins"]
 var res_rows := {}     # type de ressource -> {row, label, pop}
 var build_prompt: Label
 var notice_label: Label
@@ -259,7 +259,8 @@ func _ready() -> void:
 	_place(res_col, 1.0, 0.0, 1.0, 0.0, -260, 238, -16, 440)
 	root.add_child(res_col)
 	var colors := {"wood": Color(0.95, 0.78, 0.55), "magic_wood": Color(0.55, 1.0, 0.7), "stone": Color(0.8, 0.8, 0.95),
-		"magic_stone": Color(0.8, 0.65, 1.0), "coins": Color(0.75, 0.9, 1.0)}
+		"magic_stone": Color(0.8, 0.65, 1.0), "cloud": Color(0.92, 0.95, 1.0), "magic_cloud": Color(1.0, 0.9, 0.6),
+		"coins": Color(0.75, 0.9, 1.0)}
 	for kind in RES_KINDS:
 		var row := HBoxContainer.new()
 		row.alignment = BoxContainer.ALIGNMENT_END
@@ -481,9 +482,11 @@ func update_player(p) -> void:
 		extra += "   FEU %s" % ("PRÊT (C / ◀)" if p.fireball_cd <= 0.0 else "%d s" % int(ceil(p.fireball_cd)))
 	hp_label.text = "%d PV      VIES %d" % [int(ceil(p.hp)), p.lives]
 	skill_label.text = extra.strip_edges()
-	var counts := {"wood": p.wood, "magic_wood": p.magic_wood, "stone": p.stone, "magic_stone": p.magic_stone, "coins": p.coins}
+	var counts := {"wood": p.wood, "magic_wood": p.magic_wood, "stone": p.stone, "magic_stone": p.magic_stone,
+		"cloud": p.clouds, "magic_cloud": p.magic_clouds, "coins": p.coins}
 	var shown := {"wood": true, "magic_wood": p.magic_wood > 0, "stone": p.stone > 0 or p.can_mine_stone(),
-		"magic_stone": p.magic_stone > 0, "coins": p.coins > 0 or not p.first_coin}
+		"magic_stone": p.magic_stone > 0, "cloud": p.clouds > 0 or (p.main != null and p.main.sky_unlocked),
+		"magic_cloud": p.magic_clouds > 0, "coins": p.coins > 0 or not p.first_coin}
 	for kind in RES_KINDS:
 		var r: Dictionary = res_rows[kind]
 		r["row"].visible = shown[kind]
@@ -839,7 +842,7 @@ func set_enemy(z) -> void:
 		enemy_box.visible = false
 		return
 	enemy_box.visible = true
-	var names := {"minion": "SQUELETTE", "rogue": "SQUELETTE À CAPUCHE", "boss": "BOSS", "titan": "TITAN DE LAVE", "archer": "SQUELETTE ARCHER"}
+	var names := {"minion": "SQUELETTE", "rogue": "SQUELETTE À CAPUCHE", "boss": "BOSS", "titan": "TITAN DE LAVE", "archer": "SQUELETTE ARCHER", "angel": "ANGE SQUELETTE"}
 	var lv: String = ("  NIV %d" % z.level) if z.get("level") != null and z.kind != "titan" else ""
 	enemy_name.text = "%s%s  %d / %d" % [names.get(z.kind, "SQUELETTE"), lv, int(ceil(maxf(z.hp, 0.0))), int(z.max_hp)]
 	if z.is_frozen():

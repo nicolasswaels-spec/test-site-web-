@@ -5,7 +5,9 @@ extends StaticBody3D
 const Mats = preload("res://scripts/mats.gd")
 
 enum { WALL, FLOOR, RAMP }
-enum { WOOD, STONE, MAGIC_WOOD, MAGIC_STONE }
+enum { WOOD, STONE, MAGIC_WOOD, MAGIC_STONE, CLOUD }
+## Nuage : 3× les PV d'une pièce en pierre de base (même système d'amélioration, payé en nuages).
+const CLOUD_MULT := 3.0
 const SIZES := [Vector3(4.0, 4.0, 0.22), Vector3(4.0, 0.22, 4.0), Vector3(4.0, 0.22, 5.66)]
 const BASE_HP := [220.0, 150.0, 150.0]
 const STONE_MULT := 2.0
@@ -49,7 +51,7 @@ void fragment() {
 """
 const BUILD_TIME := 1.5
 const PIECE_NAMES := ["MUR", "SOL", "RAMPE"]
-const MAT_NAMES := ["BOIS", "PIERRE", "BOIS MAGIQUE", "PIERRE MAGIQUE"]
+const MAT_NAMES := ["BOIS", "PIERRE", "BOIS MAGIQUE", "PIERRE MAGIQUE", "NUAGE"]
 
 const SHADER := """
 shader_type spatial;
@@ -58,6 +60,7 @@ uniform float flash = 0.0;
 uniform int axis = 0;
 uniform int stone = 0;
 uniform int magic = 0;
+uniform int cloud = 0;
 uniform mat4 to_local = mat4(1.0);
 varying vec3 lp;
 void vertex() { lp = (to_local * MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
@@ -91,6 +94,13 @@ void fragment() {
 		vec3 moss_col = mix(vec3(0.10, 0.35, 0.12), vec3(0.25, 0.65, 0.22), hash2(floor(vec2(along, coord) * 13.0)));
 		c = mix(c, moss_col, moss * 0.85);
 		EMISSION = vec3(0.10, 0.85, 0.45) * moss * 0.25 * (0.7 + 0.3 * sin(TIME * 1.5 + along));
+	}
+	if (cloud == 1) {
+		// nuage : blanc cotonneux, légers reflets bleutés, gros « moutons » qui ondulent
+		float puff = hash2(floor(vec2(along, coord) * 2.2)) * 0.5 + hash2(floor(vec2(along, coord) * 5.0 + 3.0)) * 0.3;
+		float wob = 0.5 + 0.5 * sin(along * 3.0 + coord * 2.0 + TIME * 0.8);
+		c = mix(vec3(0.78, 0.84, 0.98), vec3(1.0, 1.0, 1.0), clamp(puff + wob * 0.3, 0.0, 1.0));
+		EMISSION = vec3(0.25, 0.28, 0.35) * (0.4 + 0.3 * wob);
 	}
 	// fissures avec les dégâts
 	float crack = step(0.985 - damage * 0.12, hash2(floor(vec2(along, coord) * 9.0)));
@@ -208,18 +218,25 @@ func _compute_max_hp() -> float:
 	var v: float = BASE_HP[piece]
 	if material_type == STONE or material_type == MAGIC_STONE:
 		v *= STONE_MULT
+	if material_type == CLOUD:
+		v *= STONE_MULT * CLOUD_MULT
 	if is_magic():
 		return v * UPGRADE_MULTS[MAX_LEVEL] * MAGIC_MULT
 	return v * UPGRADE_MULTS[level]
 
 
 func is_magic() -> bool:
-	return material_type >= MAGIC_WOOD
+	return material_type == MAGIC_WOOD or material_type == MAGIC_STONE
 
 
-## Matériau utilisé pour réparer / améliorer (0 bois, 1 pierre).
+## Matériau utilisé pour réparer / améliorer (index du joueur : 0 bois, 1 pierre, 4 nuage).
 func repair_material() -> int:
-	return material_type % 2
+	return [0, 1, 0, 1, 4][material_type]
+
+
+## Famille visuelle / sonore : 0 bois, 1 pierre, 2 nuage.
+func family() -> int:
+	return [0, 1, 0, 1, 2][material_type]
 
 
 ## Les blocs pleins de la pièce selon sa modification : liste de [centre, taille] en local.
@@ -278,14 +295,15 @@ func _rebuild_collision() -> void:
 func _rebuild_visual() -> void:
 	for c in visual.get_children():
 		c.queue_free()
-	mat.set_shader_parameter("stone", material_type % 2)
+	mat.set_shader_parameter("stone", 1 if family() == 1 else 0)
+	mat.set_shader_parameter("cloud", 1 if family() == 2 else 0)
 	mat.set_shader_parameter("magic", 1 if is_magic() else 0)
 	if is_inside_tree():
 		mat.set_shader_parameter("to_local", Projection(global_transform.affine_inverse()))
 	var size: Vector3 = SIZES[piece]
 	for b in _blocks():
 		Mats.box(visual, b[1], mat, b[0])
-	var frame := Mats.col(Color(0.30, 0.18, 0.10)) if material_type % 2 == WOOD else Mats.col(Color(0.22, 0.22, 0.28))
+	var frame: StandardMaterial3D = [Mats.col(Color(0.30, 0.18, 0.10)), Mats.col(Color(0.22, 0.22, 0.28)), Mats.col(Color(0.85, 0.9, 1.0), 0.9, 0.2)][family()]
 	if is_magic():
 		frame = Mats.col(Color(0.16, 0.42, 0.20), 0.9, 0.25)
 	var hx := size.x * 0.5
@@ -303,7 +321,7 @@ func _rebuild_visual() -> void:
 		elif variant == 2:  # encadrement de fenêtre
 			Mats.box(visual, Vector3(2.0, 0.14, 0.3), frame, Vector3(0, 1.27, 0))
 			Mats.box(visual, Vector3(2.0, 0.14, 0.3), frame, Vector3(0, -1.27, 0))
-		if material_type % 2 == WOOD and variant == 0:
+		if family() == 0 and variant == 0:
 			Mats.box(visual, Vector3(0.18, size.y * 1.3, 0.26), frame, Vector3.ZERO, Vector3(0, 0, 45))
 	else:
 		var hz := size.z * 0.5
@@ -551,7 +569,7 @@ func take_damage(amount: float) -> void:
 		return
 	hp -= amount
 	flash = 1.0
-	Sfx.play_3d("chop" if material_type % 2 == WOOD else "thud", global_position, -6.0, 0.8)
+	Sfx.play_3d("chop" if family() == 0 else "thud", global_position, -6.0, 0.8 if family() != 2 else 1.4)
 	if hp <= 0.0:
 		_break()
 
@@ -560,7 +578,7 @@ func _break() -> void:
 	if main:
 		if main.structures.get(key) == self:
 			main.structures.erase(key)
-		var c := Color(0.6, 0.4, 0.2) if material_type % 2 == WOOD else Color(0.45, 0.45, 0.52)
+		var c: Color = [Color(0.6, 0.4, 0.2), Color(0.45, 0.45, 0.52), Color(0.95, 0.97, 1.0)][family()]
 		main.spawn_impact(global_position, Vector3.UP, c, 24, 2.0)
 	Sfx.play_3d("break", global_position, 2.0)
 	queue_free()

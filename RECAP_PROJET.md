@@ -34,6 +34,8 @@ The Pathless).
   10 vagues plus dures, qui démarrent seules au bout de 2 min).
 - Zone 3 : volcan à l'ouest de la zone 2, TITAN DE LAVE (boss immobile, 4 attaques dont une invocation de squelettes), rejoint en 1 min.
 - Zone « 4 » : 3e sphère à la place du titan, dans le volcan, défense au bout de 3 min, avec des squelettes archers.
+- Zone 5 (ciel) : escalier de nuages au nord du volcan → île de nuages (SKY_Y 32), 4e sphère, 10 vagues après 2 min 30,
+  anges squelettes volants, ressource NUAGE (murs ×3 pierre), nuage magique 1/250. Code : main.gd (_build_sky, spawn_cloud), cloud_res.gd.
 - Arbres / rochers magiques (4 par zone) : bois / pierre magique → pièces 5× plus solides.
 - Récolte : bois (arbres) et pierre (rochers, récolte débloquée par la hache « bois » niveau 5 ; coffres) avec 3 cibles bonus qui apparaissent au 1er coup (+100 % sur le coup, +80 % du gain final par cible) ;
   pièces métalliques au sol (barbelés).
@@ -75,6 +77,7 @@ scripts/
   inventory_ui.gd      inventaire en cases (ressources, os, armes + fiche d'actions) et page Améliorations
   menu.gd              menu principal
   skills.gd            arbre de compétences (données : effets, parents, prérequis) ; effets codés dans player.gd
+  cloud_res.gd         petits nuages à récolter (couche 128 : traversables mais touchés par la hache)
   titan.gd             titan de lave (boss de la zone volcanique : boules de feu, onde de choc, éruptions)
   orb.gd               sphère à défendre
   tree.gd, rock.gd     ressources à la hache ; harvest.gd = cibles et bonus (HIT_BONUS, FINAL_PER_HIT) ; weak_spot.gd = cible

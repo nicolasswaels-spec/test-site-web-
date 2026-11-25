@@ -78,6 +78,9 @@ const ARROW_DAMAGE := 4.0
 const ARROW_CD := 3.8
 const ARROW_SPEED := 26.0
 var shoot_cd := 2.5
+var angel := false         # ange squelette (4e sphère) : vole et tire ; beaucoup de PV, très vulnérable à la tête
+var wings: Array[Node3D] = []
+var fly_t := 0.0
 var summoned := false      # invoqué par le titan : sort de terre et traque les joueurs
 var guard_group = null     # coffre gardé (les gardiens d'un même coffre réagissent ensemble)
 var charging := false
@@ -129,7 +132,7 @@ func _build_model(s: float) -> void:
 	add_child(visual)
 	var idx := 0 if archer else randi() % MODELS.size()
 	var scene: PackedScene = BOSS_MODEL if is_boss else MODELS[idx]
-	kind = "boss" if is_boss else ("archer" if archer else ("rogue" if idx == 1 else "minion"))
+	kind = "boss" if is_boss else ("angel" if angel else ("archer" if archer else ("rogue" if idx == 1 else "minion")))
 	var model := scene.instantiate() as Node3D
 	model.rotation.y = PI   # le modèle regarde vers +Z, le jeu vers -Z
 	model.scale = Vector3.ONE * (1.8 / MODEL_HEIGHT) * s
@@ -141,6 +144,8 @@ func _build_model(s: float) -> void:
 			mi.material_override = _eye_material()
 	if archer:
 		_add_bow(model)
+	if angel:
+		_add_wings(model)
 	# Animations en boucle (l'import glTF ne les marque pas comme telles)
 	var walk := anim.get_animation(ANIM_WALK)
 	walk.loop_mode = Animation.LOOP_LINEAR
@@ -184,7 +189,9 @@ func _physics_process(delta: float) -> void:
 		rise_t -= delta
 		return
 
-	if not is_on_floor():
+	if angel:
+		pass   # vole : l'altitude est gérée dans _archer_logic
+	elif not is_on_floor():
 		velocity.y -= GRAVITY * delta
 	else:
 		velocity.y = -0.5
@@ -414,6 +421,13 @@ func _archer_logic(delta: float) -> void:
 			var tw := create_tween()
 			tw.tween_interval(0.35)
 			tw.tween_callback(_shoot_arrow)
+	if angel:
+		# vol stationnaire à ~6 m au-dessus de l'île, ailes qui battent
+		fly_t += delta
+		var alt: float = (main.SKY_Y if main and main.get("sky_unlocked") else 0.0) + 6.0 + sin(fly_t * 1.3) * 0.8
+		velocity.y = (alt - global_position.y) * 1.8
+		for i in wings.size():
+			wings[i].rotation.y = (0.35 + sin(fly_t * 9.0) * 0.55) * (1.0 if i == 0 else -1.0)
 	if dir != Vector3.ZERO and attack_anim <= 0.0:
 		dir += main.avoidance(self) * 0.6
 		dir.y = 0.0
@@ -434,6 +448,30 @@ func _archer_logic(delta: float) -> void:
 	_animate(delta)
 
 
+## Ange : deux grandes ailes blanches dans le dos et une auréole dorée.
+func _add_wings(model: Node3D) -> void:
+	var feather := Mats.col(Color(0.95, 0.96, 1.0), 0.8, 0.25)
+	var gold := Mats.col(Color(1.0, 0.82, 0.35), 0.3, 2.5)
+	for side in [-1.0, 1.0]:
+		var pivot := Node3D.new()
+		pivot.position = Vector3(side * 0.12, 1.25, 0.18)
+		model.add_child(pivot)
+		var w := Node3D.new()
+		w.position = Vector3(side * 0.55, 0.1, 0)
+		pivot.add_child(w)
+		for k in 4:
+			Mats.box(w, Vector3(0.95 - k * 0.15, 0.12, 0.05), feather, Vector3(side * k * 0.08, 0.25 - k * 0.2, 0.0), Vector3(0, 0, side * (10 + k * 12)))
+		wings.append(pivot)
+	var halo := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.18
+	tm.outer_radius = 0.24
+	halo.mesh = tm
+	halo.material_override = gold
+	halo.position = Vector3(0, 2.25, 0)
+	model.add_child(halo)
+
+
 func _clear_shot(p) -> bool:
 	var from := global_position + Vector3.UP * 1.5
 	var q := PhysicsRayQueryParameters3D.create(from, p.global_position + Vector3.UP * 1.2, 1 | 8)
@@ -449,6 +487,7 @@ func _shoot_arrow() -> void:
 	aim += Vector3(randf_range(-0.6, 0.6), randf_range(-0.3, 0.3), randf_range(-0.6, 0.6))
 	var ar := Arrow.new()
 	ar.main = main
+	ar.damage = 6.0 if angel else ARROW_DAMAGE
 	ar.velocity = (aim - from).normalized() * ARROW_SPEED
 	main.add_child(ar)
 	ar.global_position = from
@@ -457,6 +496,7 @@ func _shoot_arrow() -> void:
 
 class Arrow extends Node3D:
 	var main
+	var damage := 4.0
 	var velocity := Vector3.ZERO
 	var life := 3.0
 	var stuck := false
@@ -489,7 +529,7 @@ class Arrow extends Node3D:
 			var ab := to - from
 			var t := clampf((c - from).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
 			if (from + ab * t).distance_to(c) < 0.75:
-				p.take_damage(ARROW_DAMAGE)
+				p.take_damage(damage)
 				queue_free()
 				return
 		var q := PhysicsRayQueryParameters3D.create(from, to, 1 | 8 | 16)
@@ -635,6 +675,8 @@ func take_damage(amount: float, headshot := false) -> void:
 		main.alert_guards(guard_group)
 	if is_frozen():
 		amount *= vuln_mult()
+	if angel and headshot:
+		amount *= 2.5      # ange : tir à la tête très efficace (×5 au total avec le ×2 de base)
 	hp -= amount
 	flash_t = 0.08
 	for mi in meshes:

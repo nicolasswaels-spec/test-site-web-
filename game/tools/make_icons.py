@@ -215,3 +215,22 @@ def shock_icon():
     return glow(im, (255, 190, 110), 18, 1.4)
 
 save(shock_icon(), "w_shock")
+
+
+def cloud_icon(magic):
+    im = Image.new("RGBA", (S, S), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
+    base = (236, 242, 255) if not magic else (255, 238, 180)
+    shade = (196, 208, 236) if not magic else (236, 200, 120)
+    for (x, y, r) in [(170, 300, 90), (260, 250, 115), (350, 300, 90), (250, 330, 100)]:
+        d.ellipse([x - r, y - r + 12, x + r, y + r + 12], fill=shade)
+    for (x, y, r) in [(170, 290, 85), (260, 240, 110), (350, 290, 85), (250, 315, 95)]:
+        d.ellipse([x - r, y - r, x + r, y + r], fill=base)
+    d.ellipse([200, 180, 260, 225], fill=(255, 255, 255))
+    if magic:
+        for (x, y) in [(120, 150), (400, 170), (380, 400)]:
+            d.polygon([(x, y - 28), (x + 8, y - 8), (x + 28, y), (x + 8, y + 8), (x, y + 28), (x - 8, y + 8), (x - 28, y), (x - 8, y - 8)], fill=(255, 230, 140))
+        return glow(im, (255, 210, 110), 24, 1.8)
+    return glow(im, (170, 200, 255), 14, 0.8)
+
+save(cloud_icon(False), "cloud")
+save(cloud_icon(True), "magic_cloud")
