@@ -99,8 +99,8 @@ void fragment() {
 		// nuage : blanc cotonneux, légers reflets bleutés, gros « moutons » qui ondulent
 		float puff = hash2(floor(vec2(along, coord) * 2.2)) * 0.5 + hash2(floor(vec2(along, coord) * 5.0 + 3.0)) * 0.3;
 		float wob = 0.5 + 0.5 * sin(along * 3.0 + coord * 2.0 + TIME * 0.8);
-		c = mix(vec3(0.78, 0.84, 0.98), vec3(1.0, 1.0, 1.0), clamp(puff + wob * 0.3, 0.0, 1.0));
-		EMISSION = vec3(0.25, 0.28, 0.35) * (0.4 + 0.3 * wob);
+		c = mix(vec3(0.62, 0.70, 0.90), vec3(0.95, 0.96, 1.0), clamp(puff + wob * 0.3, 0.0, 1.0));
+		EMISSION = vec3(0.08, 0.09, 0.13) * (0.4 + 0.3 * wob);
 	}
 	// fissures avec les dégâts
 	float crack = step(0.985 - damage * 0.12, hash2(floor(vec2(along, coord) * 9.0)));

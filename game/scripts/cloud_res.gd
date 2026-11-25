@@ -56,7 +56,7 @@ static func _material() -> StandardMaterial3D:
 		_mat.roughness = 1.0
 		_mat.emission_enabled = true
 		_mat.emission = Color(0.55, 0.6, 0.75)
-		_mat.emission_energy_multiplier = 0.35
+		_mat.emission_energy_multiplier = 0.2
 		_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP
 	return _mat
 

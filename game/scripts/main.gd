@@ -130,8 +130,8 @@ float noise(vec2 p) {
 void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
 	float n = noise(wp.xz * 0.15 + TIME * 0.03) * 0.6 + noise(wp.xz * 0.6) * 0.4;
-	ALBEDO = mix(vec3(0.80, 0.85, 0.97), vec3(1.0, 1.0, 1.0), n);
-	EMISSION = vec3(0.30, 0.33, 0.42) * (0.6 + 0.4 * n);
+	ALBEDO = mix(vec3(0.62, 0.68, 0.86), vec3(0.88, 0.90, 0.98), n);
+	EMISSION = vec3(0.10, 0.11, 0.16) * (0.6 + 0.4 * n);
 	ROUGHNESS = 1.0;
 }
 """
@@ -1830,11 +1830,11 @@ func _unlock_sky() -> void:
 
 func _cloud_material(alpha := 1.0) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.93, 0.95, 1.0, alpha)
+	m.albedo_color = Color(0.85, 0.88, 0.97, alpha)
 	m.roughness = 1.0
 	m.emission_enabled = true
-	m.emission = Color(0.55, 0.6, 0.78)
-	m.emission_energy_multiplier = 0.3
+	m.emission = Color(0.45, 0.5, 0.68)
+	m.emission_energy_multiplier = 0.15
 	m.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP
 	if alpha < 1.0:
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -1962,7 +1962,7 @@ func _build_sky() -> void:
 	add_child(wall)
 	var sun := OmniLight3D.new()
 	sun.light_color = Color(1.0, 0.92, 0.8)
-	sun.light_energy = 2.5
+	sun.light_energy = 0.8
 	sun.omni_range = 70.0
 	sun.position = SKY_CENTER + Vector3(0, 25, 0)
 	add_child(sun)
@@ -2032,9 +2032,9 @@ func _update_biome(delta: float) -> void:
 	var sk: float = get_meta("sky_k", 0.0)
 	sk = move_toward(sk, sky_k, delta * 0.5)
 	set_meta("sky_k", sk)
-	world_env.fog_light_color = Color(0.17, 0.17, 0.38).lerp(Color(0.38, 0.12, 0.06), cur).lerp(Color(0.62, 0.7, 0.92), sk)
+	world_env.fog_light_color = Color(0.17, 0.17, 0.38).lerp(Color(0.38, 0.12, 0.06), cur).lerp(Color(0.42, 0.48, 0.72), sk)
 	world_env.ambient_light_color = Color(0.22, 0.24, 0.5).lerp(Color(0.5, 0.2, 0.12), cur).lerp(Color(0.6, 0.65, 0.85), sk)
-	world_env.ambient_light_energy = lerpf(0.35, 0.7, sk)
+	world_env.ambient_light_energy = lerpf(0.35, 0.45, sk)
 	world_env.fog_density = lerpf(lerpf(0.011, 0.016, cur), 0.006, sk)
 	embers.emitting = cur > 0.3 and sk < 0.5
 	fireflies.emitting = cur < 0.7 and sk < 0.5
