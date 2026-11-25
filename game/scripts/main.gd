@@ -187,6 +187,7 @@ var wave := 0
 var to_spawn := 0
 var bosses_left := 0
 var archers_left := 0   # archers (3e sphère seulement)
+var wave_levels: Array = []   # niveaux des squelettes restant à faire apparaître
 var spawn_timer := 0.0
 var spawn_interval := 1.0
 var countdown := 0.0
@@ -1112,6 +1113,7 @@ func _start_wave(n: int) -> void:
 	to_spawn = (3 + (d - 1) * 2) if zone == 1 else int(round((5 + (d - 1) * 3) * LATE_COUNT_MULT))
 	bosses_left = n / 5   # mini-boss à la vague 5, deux boss à la vague 10
 	archers_left = (1 + n / 3) if zone == 4 else 0   # peu nombreux : 1 à 4
+	wave_levels = _wave_levels(to_spawn)
 	spawn_interval = maxf(0.3, 1.3 - d * 0.09)
 	spawn_timer = 1.5
 
@@ -1180,8 +1182,11 @@ func _update_spawning(delta: float) -> void:
 func _spawn_zombie(boss: bool, archer := false) -> void:
 	var z := ZombieScript.new()
 	z.archer = archer
-	# niveau : autour du niveau de base de la vague (quelques-uns plus faibles ou plus forts)
-	z.set_level(_roll_level(boss))
+	# niveau : les boss sont au niveau maximum de la vague ; les autres suivent la liste de la vague
+	var lvl := max_level()
+	if not boss:
+		lvl = wave_levels.pop_back() if not archer and not wave_levels.is_empty() else _roll_level()
+	z.set_level(lvl)
 	if archer:
 		z.max_hp *= 0.6
 	if boss:
@@ -1202,34 +1207,50 @@ func _spawn_zombie(boss: bool, archer := false) -> void:
 		hud.flash_message("UN BOSS EST APPARU !")
 
 
-## Niveau de base d'une vague : zone 1 = numéro de vague (1 à 10) ; 2e sphère = 11 à 20 ;
-## 3e sphère = 16 à 25 (même difficulté qu'avant le système de niveaux).
-func base_level() -> int:
+## Niveau MAXIMUM des squelettes d'une vague (1 ou 2 squelettes l'ont forcément, les autres
+## sont nettement plus bas). Il monte à chaque vague et redescend au début de chaque nouvelle sphère :
+##   zone 1 : 1, 3, 4, 5, 7, 8, 9, 10, 12, 13 ; 2e sphère : 12 à 21 ; 3e sphère : 21 à 30.
+func max_level() -> int:
 	match zone:
-		2: return wave + 10
-		4: return wave + 15
-	return wave
+		2: return wave + 11
+		4: return wave + 20
+	return 1 if wave <= 1 else roundi(wave * 1.3)
 
 
-## Tirage du niveau d'un squelette : 10 % base-2, 25 % base-1, 40 % base, 18 % base+1, 7 % base+2.
-## Les boss sont toujours au niveau de base.
-func _roll_level(boss := false) -> int:
-	var b := base_level()
-	if boss:
-		return b
+## Niveaux de tous les squelettes d'une vague (hors boss et archers), mélangés.
+func _wave_levels(count: int) -> Array:
+	var m := max_level()
+	var out := []
+	var forced := 2 if count >= 15 else 1
+	for i in count:
+		out.append(m if i < forced else _roll_level(count >= 20))
+	out.shuffle()
+	return out
+
+
+## Niveau d'un squelette sous le maximum : grosse disparité (souvent 1 à 6 niveaux de moins,
+## parfois bien plus) ; dans les grosses vagues, de très rares niveaux 1-2.
+func _roll_level(big_wave := false) -> int:
+	var m := max_level()
+	if big_wave and rng.randf() < 0.015:
+		return rng.randi_range(1, 2)
 	var r := rng.randf()
-	var off := 0
-	if r < 0.10:
-		off = -2
-	elif r < 0.35:
-		off = -1
-	elif r < 0.75:
-		off = 0
+	var below := 1
+	if r < 0.20:
+		below = 1
+	elif r < 0.40:
+		below = 2
+	elif r < 0.58:
+		below = 3
+	elif r < 0.73:
+		below = 4
+	elif r < 0.85:
+		below = 5
 	elif r < 0.93:
-		off = 1
+		below = 6
 	else:
-		off = 2
-	return maxi(1, b + off)
+		below = rng.randi_range(7, 10)
+	return clampi(m - below, 1, m)
 
 
 func _end_wave() -> void:

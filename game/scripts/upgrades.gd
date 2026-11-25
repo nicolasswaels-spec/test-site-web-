@@ -66,8 +66,8 @@ const CRAFTS := [
 
 
 # ------------------------------------------------------------------ onde de choc
-## Dégâts 225 -> 400 (10 niveaux : de quoi tuer tout juste un squelette de vague 1 de la 2e sphère,
-## puis, au maximum, un squelette de vague 5 de la zone volcanique), rechargement 4 s -> 2 s (4 niveaux), portée 6 -> 12 m (6 niveaux).
+## Dégâts 225 -> 440 (10 niveaux : de quoi tuer tout juste un squelette de vague 1 de la 2e sphère,
+## puis, au maximum, un squelette moyen (niveau 22) de la vague 5 de la zone volcanique), rechargement 4 s -> 2 s (4 niveaux), portée 6 -> 12 m (6 niveaux).
 ## Coûts en bois, pierre, pièces et os ; le dernier niveau de chaque branche demande aussi 1 os imposant.
 const SHOCK_LEVELS := {"damage": 10, "cooldown": 4, "range": 6}
 const SHOCK_COSTS := {
@@ -81,7 +81,7 @@ const SHOCK_COSTS := {
 		"coins": [2, 5, 8, 12, 16, 22], "bone": [6, 10, 14, 18, 24, 30]},
 }
 const SHOCK_BASE_DAMAGE := 225.0
-const SHOCK_DAMAGE_STEP := 17.5
+const SHOCK_DAMAGE_STEP := 21.5
 const SHOCK_BASE_COOLDOWN := 4.0
 const SHOCK_BASE_RANGE := 6.0
 const SHOCK_HALF_ANGLE := 60.0    # cône de 120°

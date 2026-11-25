@@ -50,7 +50,7 @@ The Pathless).
 - Os : os (50 % par squelette), os imposant (boss), os en flèche (archer), tas d'os imposant (titan) ;
   visibles seulement dans l'inventaire, usage à définir.
 - Menu de la sphère (E / X) : LANCER + CRÉATION D'ARME (dès la 2e sphère : cryo, onde de choc).
-- Onde de choc : 1 os par tir, cône 120°, 6 m, 225 dégâts (400 max), 4 s ; améliorations dégâts / rechargement / portée.
+- Onde de choc : 1 os par tir, cône 120°, 6 m, 225 dégâts (440 max), 4 s ; améliorations dégâts / rechargement / portée.
 - Musique : fichiers à déposer dans `game/assets/music/` (`menu`, `game`, `battle` en mp3/ogg/wav).
 
 ## Organisation du code (`game/`)
@@ -101,7 +101,7 @@ assets/                modèles 3D CC0 : nature (Quaternius), skeletons, chests,
 - `scripts/upgrades.gd` : coûts et effets de toutes les améliorations, recettes de création d'arme (CRAFTS),
   onde de choc (SHOCK_COSTS, SHOCK_LEVELS, SHOCK_HALF_ANGLE).
 - `scripts/zombie.gd` : niveaux des squelettes (level_hp, level_speed, level_struct_damage, level_player_damage),
-  portées de chasse, effets de la glace. `main.gd` : base_level() et _roll_level() (répartition des niveaux).
+  portées de chasse, effets de la glace. `main.gd` : max_level(), _wave_levels() et _roll_level() (répartition des niveaux).
 - `scripts/chest.gd` : probabilités et contenu du butin.
 - `scripts/orb.gd` : PV de la sphère.
 - `scripts/titan.gd` : PV et dégâts du titan (BASE_HP, FIREBALL_*, SLAM_*, ERUPT_*).
