@@ -219,20 +219,25 @@ func _ready() -> void:
 	_apply_layers(ghost, view_layer())
 
 
-## Bras à la 1re personne : main (gant) posée sur l'arme + avant-bras (manche) vers le coude.
-func _add_arm(parent: Node3D, hand: Vector3, elbow: Vector3) -> void:
-	var sleeve := Mats.col(SLEEVE_COLORS[index % 2], 0.85)
-	var glove := Mats.col(Color(0.30, 0.19, 0.11), 0.8)
-	Mats.box(parent, Vector3(0.075, 0.085, 0.1), glove, hand)
-	var dir := elbow - hand
-	var mi := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(0.085, 0.085, dir.length())
-	mi.mesh = bm
-	mi.material_override = sleeve
-	var up := Vector3.UP if absf(dir.normalized().y) < 0.95 else Vector3.RIGHT
-	mi.transform = Transform3D(Basis.looking_at(dir.normalized(), up), hand + dir * 0.5)
-	parent.add_child(mi)
+const FP_ARMS := [preload("res://assets/characters/fp_arm_r.glb"), preload("res://assets/characters/fp_arm_l.glb")]
+static var arm_roll := [PI / 2, PI / 2]   # rotation du bras autour de son axe (paume vers l'arme), par côté
+const ARM_SCALE := 0.75
+
+
+## Bras du voyageur (manche, brassard, gant découpés du modèle 3D) : poignet sur la main,
+## bras tendu vers « elbow » (point hors de l'écran, côté épaule). side : 0 = droit, 1 = gauche.
+func _add_arm(parent: Node3D, hand: Vector3, elbow: Vector3, side := 0) -> void:
+	var m: Node3D = FP_ARMS[side].instantiate()
+	var y := (elbow - hand).normalized()
+	var outward := Vector3.RIGHT if side == 0 else Vector3.LEFT
+	var x := (outward - y * outward.dot(y)).normalized()
+	var z := x.cross(y)
+	var b := Basis(x, y, z)
+	b = (Basis(y, arm_roll[side]) * b).scaled(Vector3.ONE * ARM_SCALE)
+	m.transform = Transform3D(b, hand)
+	parent.add_child(m)
+	for mi in m.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 func _build_arms() -> void:
@@ -244,9 +249,9 @@ func _build_arms() -> void:
 		var hl: Vector3 = d["hand_l"]
 		_add_arm(g, hr, hr + Vector3(0.14, -0.32, 0.3))
 		if hl.z < hr.z - 0.15:
-			_add_arm(g, hl, hl + Vector3(-0.22, -0.34, 0.3))     # arme longue : main sous le garde-main
+			_add_arm(g, hl, hl + Vector3(-0.22, -0.34, 0.3), 1)     # arme longue : main sous le garde-main
 		else:
-			_add_arm(g, hl, hl + Vector3(-0.17, -0.3, 0.2))      # pistolet : main en soutien
+			_add_arm(g, hl, hl + Vector3(-0.17, -0.3, 0.2), 1)      # pistolet : main en soutien
 	var h: Node3D = axe_pivot.get_child(0)
 	_add_arm(h, Vector3(0, -0.04, 0), Vector3(0.06, -0.42, 0.18))
 
@@ -259,26 +264,26 @@ func _apply_layers(n: Node, mask: int) -> void:
 
 
 ## Petit personnage visible par l'autre joueur (couleur du joueur, étiquette J1 / J2).
-const AVATAR_MODELS := [preload("res://assets/characters/Rogue_Hooded.glb"), preload("res://assets/characters/Barbarian.glb")]
-const SLEEVE_COLORS := [Color(0.22, 0.34, 0.24), Color(0.48, 0.22, 0.14)]
+## Voyageur encapuchonné (visuel OpenArt → modèle 3D, squelette et animations Meshy,
+## assemblé par tools/blender/assemble_character.py) : le même pour les deux joueurs.
+const AVATAR_MODEL := preload("res://assets/characters/traveler.glb")
 var avatar_anim: AnimationPlayer
 
 
-## Personnage (pack KayKit Adventurers, CC0) visible par l'autre joueur :
-## J1 = voleur encapuchonné, J2 = barbare. Les accessoires (armes, bouclier…) sont masqués.
+## Personnage visible par l'autre joueur (le voyageur encapuchonné, étiquette J1 / J2 au-dessus).
 func _build_avatar() -> void:
 	avatar = Node3D.new()
 	add_child(avatar)
 	var col: Color = PLAYER_COLORS[index % 2]
-	var model: Node3D = AVATAR_MODELS[index % 2].instantiate()
+	var model: Node3D = AVATAR_MODEL.instantiate()
 	model.rotation.y = PI          # le modèle regarde vers +Z, le joueur vers -Z
-	model.scale = Vector3.ONE * 0.8
+	model.scale = Vector3.ONE * 1.0  # 1,75 m
 	avatar.add_child(model)
 	for mi in model.find_children("*", "MeshInstance3D", true, false):
 		var keep: bool = mi.get_parent() is Skeleton3D or mi.name.ends_with("_Cape") or mi.name.ends_with("_Hat")
 		mi.visible = keep
 	avatar_anim = model.find_child("AnimationPlayer", true, false)
-	for an in ["Idle", "Walking_A", "Running_A", "Jump_Idle"]:
+	for an in ["Idle", "Walking_A", "Running_A", "Jump_Idle"]:   # Death_A : jouée une fois
 		if avatar_anim.has_animation(an):
 			avatar_anim.get_animation(an).loop_mode = Animation.LOOP_LINEAR
 	avatar_anim.play("Idle")
