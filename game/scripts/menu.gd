@@ -1,16 +1,15 @@
 extends Control
-## Menu principal : illustration animée — la keyart (forêt au crépuscule, sphère turquoise) et le
-## voyageur encapuchonné rendu dans Blender (tools/blender/render_menu_character.py), avec parallaxe
-## (souris + lent balancement), respiration, yeux et sphère qui pulsent, brume et lucioles.
+## Menu principal : illustration animée — le voyageur encapuchonné avachi dans l'herbe près de la
+## sphère (image OpenArt), avec parallaxe (souris + lent balancement), yeux et sphère qui pulsent,
+## brume et lucioles.
 ## À gauche le logo et les boutons ; écran « COMMANDES » séparé.
 
 const UI = preload("res://scripts/ui.gd")
-const KEYART := "res://assets/ui/keyart.jpg"
-const HERO := "res://assets/ui/menu_character.png"
-const HERO_EYES := "res://assets/ui/menu_character_eyes.png"
+const KEYART := "res://assets/ui/menu_art.jpg"        # illustration OpenArt : le voyageur avachi près de la sphère
+const HERO_EYES := "res://assets/ui/menu_eyes.png"     # lueur des yeux (calque additif, même cadrage)
 const ART_SIZE := Vector2(1920, 1080)
-const ORB_PX := Vector2(1374, 640)       # sphère de la keyart (pixels de l'image 1920×1080)
-const HERO_FEET := Vector2(1600, 1000)   # pieds du personnage (pivot de la respiration)
+const BG_ZOOM := 1.06                                  # marge pour la parallaxe
+const ORB_PX := Vector2(1332, 636)       # sphère dans l'illustration (pixels de l'image 1920×1080)
 
 const FOG_SHADER := """
 shader_type canvas_item;
@@ -42,7 +41,6 @@ void fragment() {
 var t := 0.0
 var art: Control           # scène 1920×1080, mise à l'échelle pour couvrir l'écran
 var bg: TextureRect
-var hero: TextureRect
 var eyes: TextureRect
 var orb_glow: TextureRect
 var fog_mat: ShaderMaterial
@@ -119,8 +117,12 @@ func _build_art() -> void:
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	clip.add_child(art)
 	# fond un peu plus grand que l'écran : marge pour la parallaxe
-	bg = _layer(KEYART, ART_SIZE * 1.06, -ART_SIZE * 0.03)
-	orb_glow = _glow_sprite(ORB_PX, 150.0, Color(0.25, 0.95, 0.9, 0.35))
+	bg = _layer(KEYART, ART_SIZE * BG_ZOOM, -ART_SIZE * (BG_ZOOM - 1.0) * 0.5)
+	eyes = _layer(HERO_EYES, ART_SIZE * BG_ZOOM, bg.position)
+	var em := CanvasItemMaterial.new()
+	em.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	eyes.material = em
+	orb_glow = _glow_sprite(_orb_pos(), 130.0, Color(0.25, 0.95, 0.9, 0.35))
 	var fog := ColorRect.new()
 	fog.size = ART_SIZE * 1.1
 	fog.position = -ART_SIZE * 0.05
@@ -131,14 +133,6 @@ func _build_art() -> void:
 	fog_mat.shader = fsh
 	fog.material = fog_mat
 	art.add_child(fog)
-	if ResourceLoader.exists(HERO):
-		hero = _layer(HERO, ART_SIZE)
-		hero.pivot_offset = HERO_FEET
-		eyes = _layer(HERO_EYES, ART_SIZE)
-		eyes.pivot_offset = HERO_FEET
-		var em := CanvasItemMaterial.new()
-		em.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
-		eyes.material = em
 	# lucioles
 	flies = CPUParticles2D.new()
 	flies.amount = 46
@@ -166,6 +160,11 @@ func _build_art() -> void:
 	get_viewport().size_changed.connect(_fit_art)
 
 
+## Position de la sphère une fois l'illustration agrandie (BG_ZOOM) et centrée.
+func _orb_pos() -> Vector2:
+	return ORB_PX * BG_ZOOM - ART_SIZE * (BG_ZOOM - 1.0) * 0.5
+
+
 ## La scène 1920×1080 couvre tout l'écran (recadrée au besoin), centrée.
 func _fit_art() -> void:
 	var vs := get_viewport_rect().size
@@ -184,21 +183,16 @@ func _process(delta: float) -> void:
 	var vs := get_viewport_rect().size
 	var m := (get_viewport().get_mouse_position() / vs - Vector2(0.5, 0.5)) * 2.0
 	m = m.clamp(Vector2(-1, -1), Vector2(1, 1)) + Vector2(sin(t * 0.11), sin(t * 0.07) * 0.5) * 0.35
-	bg.position = -ART_SIZE * 0.03 - m * 14.0
-	orb_glow.position = ORB_PX - orb_glow.size * 0.5 - m * 14.0
+	bg.position = -ART_SIZE * (BG_ZOOM - 1.0) * 0.5 - m * 14.0
+	eyes.position = bg.position
+	orb_glow.position = _orb_pos() - orb_glow.size * 0.5 - m * 14.0
 	orb_glow.modulate.a = 0.75 + 0.25 * sin(t * 1.7)
 	orb_glow.scale = Vector2.ONE * (1.0 + 0.06 * sin(t * 1.7))
 	fog_mat.set_shader_parameter("t", t)
 	flies.position = Vector2(960, 720) - m * 40.0
-	if hero:
-		hero.position = -m * 28.0
-		var br := sin(t * 1.6)               # respiration
-		hero.scale = Vector2(1.0 + 0.003 * br, 1.0 + 0.007 * br)
-		eyes.position = hero.position
-		eyes.scale = hero.scale
-		# yeux : pulsation lente + clignement de temps en temps
-		var blink := 0.0 if fmod(t, 5.3) < 0.12 else 1.0
-		eyes.modulate.a = (0.65 + 0.35 * sin(t * 2.3)) * blink
+	# yeux : pulsation lente + clignement de temps en temps
+	var blink := 0.0 if fmod(t, 5.3) < 0.12 else 1.0
+	eyes.modulate.a = (0.45 + 0.55 * (0.5 + 0.5 * sin(t * 2.3))) * blink
 
 
 # ------------------------------------------------------------------ interface

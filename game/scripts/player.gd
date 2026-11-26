@@ -943,6 +943,10 @@ func _animate_avatar() -> void:
 
 func _process(delta: float) -> void:
 	_animate_avatar()
+	if zeus_ray_boost > 0.0:
+		zeus_ray_boost = move_toward(zeus_ray_boost, 0.0, delta * 2.5)
+		for m in zeus_ray_mats:
+			m.set_shader_parameter("boost", zeus_ray_boost)
 	_update_skills(delta)
 	if test_mode:
 		wood = RES_MAX
@@ -1189,6 +1193,7 @@ func zeus_level(branch: String) -> int:
 ## sur la carte (anges compris). Moins de cibles seulement s'il y a moins de N ennemis.
 ## Puis le « toucher divin » augmente tes dégâts quelques secondes (relancé à chaque tir).
 func _shoot_zeus() -> void:
+	zeus_ray_boost = 1.0
 	var n: int = Upg.ZEUS_TARGETS[zeus_level("targets")]
 	var dmg: float = Upg.ZEUS_DAMAGE[zeus_level("damage")]
 	var cands := []
@@ -1273,9 +1278,72 @@ func _spawn_bolt(a: Vector3, b: Vector3) -> void:
 ## Éclair de Zeus en main (modèle Blender, tools/blender/zeus.py) : marbre et or, éclair de cristal
 ## tenu par trois griffes, volutes de nuage.
 func _build_zeus() -> void:
-	_gun_from_model(W.ZEUS, "res://assets/weapons/zeus.glb", HIP_POS, -0.6, 0.82,
-		Color(0.6, 0.85, 1.0), Color(0.7, 0.85, 1.0), 6.0)
+	var g := _gun_from_model(W.ZEUS, "res://assets/weapons/zeus.glb", HIP_POS + Vector3(0, 0.02, 0), -0.66, 0.62,
+		Color(0.6, 0.85, 1.0), Color(0.7, 0.85, 1.0), 6.0, 0.06)
 	gun_data[W.ZEUS]["glow"].light_energy = 0.6
+	gun_data[W.ZEUS]["glow"].light_color = Color(1.0, 0.97, 0.9)
+	_add_light_rays(g)
+
+
+const RAY_SHADER := """
+shader_type spatial;
+render_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabled;
+uniform float phase = 0.0;
+uniform float h = 0.1;
+uniform float boost = 0.0;
+varying float t;
+void vertex() { t = clamp(VERTEX.y / h + 0.5, 0.0, 1.0); }
+void fragment() {
+	// rayon : intense à la sortie de la fissure, s'estompe vers le bout ; bords doux (vu de face)
+	float face = abs(dot(normalize(NORMAL), normalize(VIEW)));
+	float flick = 0.55 + 0.45 * sin(TIME * 2.3 + phase) * sin(TIME * 1.3 + phase * 1.7);
+	ALBEDO = vec3(1.0, 0.96, 0.88) * 1.6;
+	ALPHA = (1.0 - t) * (1.0 - t) * pow(face, 2.0) * (flick + boost * 1.5) * 0.55;
+}
+"""
+var zeus_ray_mats: Array[ShaderMaterial] = []
+var zeus_ray_boost := 0.0
+
+
+## Rayons de lumière blanche qui sortent des fissures du canon de Zeus (comme le soleil à travers
+## les nuages) : cônes additifs le long du canon, qui scintillent et s'embrasent à chaque tir.
+## Positions en coordonnées Blender du modèle (X = avant, Z = haut), converties comme _attach_model.
+func _add_light_rays(g: Node3D) -> void:
+	var sh := Shader.new()
+	sh.code = RAY_SHADER
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	for i in 12:
+		var bx := rng.randf_range(-0.13, 0.06)                 # le long du canon de marbre
+		var a := rng.randf_range(-PI * 0.95, PI * 0.95) + PI * 0.5   # surtout vers le haut et les côtés
+		var radial := Vector3(0, cos(a), sin(a))
+		var base_bl := Vector3(bx, 0.0, 0.03) + radial * 0.034
+		var dir_bl := (radial + Vector3(rng.randf_range(-0.4, 0.4), 0, 0)).normalized()
+		var to_g := func(v: Vector3) -> Vector3: return Vector3(-v.y, v.z, -v.x)   # Blender -> Godot (modèle tourné de 90°)
+		var base: Vector3 = to_g.call(base_bl)
+		var dir: Vector3 = to_g.call(dir_bl)
+		var hgt := rng.randf_range(0.07, 0.16)
+		var cm := CylinderMesh.new()
+		cm.height = hgt
+		cm.bottom_radius = rng.randf_range(0.003, 0.006)
+		cm.top_radius = rng.randf_range(0.022, 0.04)
+		cm.radial_segments = 12
+		cm.rings = 1
+		cm.cap_top = false
+		cm.cap_bottom = false
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		m.set_shader_parameter("phase", rng.randf() * TAU)
+		m.set_shader_parameter("h", hgt)
+		zeus_ray_mats.append(m)
+		var mi := MeshInstance3D.new()
+		mi.mesh = cm
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var up := Vector3.FORWARD if absf(dir.dot(Vector3.FORWARD)) < 0.9 else Vector3.RIGHT
+		var x := up.cross(dir).normalized()
+		mi.transform = Transform3D(Basis(x, dir, x.cross(dir)), base + dir * hgt * 0.5)
+		g.add_child(mi)
 
 
 # ------------------------------------------------------------------ fusil de précision
