@@ -352,16 +352,13 @@ func _rebuild_visual() -> void:
 	for b in _blocks():
 		Mats.box(visual, b[1], mat, b[0])
 	if tx:
-		# la texture peinte montre déjà le cadre et les renforts du niveau
-		if family() == 2:
-			_cloud_trim(size)
+		# la texture peinte montre déjà le cadre et les renforts du niveau (nuage : sans boules autour)
 		return
 	var frame: StandardMaterial3D = [Mats.col(Color(0.30, 0.18, 0.10)), Mats.col(Color(0.22, 0.22, 0.28)), Mats.col(Color(0.85, 0.9, 1.0), 0.9, 0.2)][family()]
 	if is_magic():
 		frame = Mats.col(Color(0.16, 0.42, 0.20), 0.9, 0.25)
 	var hx := size.x * 0.5
 	if family() == 2:
-		_cloud_trim(size)
 		return
 	if piece == WALL:
 		var hy := size.y * 0.5
@@ -640,35 +637,3 @@ func _break() -> void:
 	queue_free()
 
 
-## Pièce en nuage : bords en boules cotonneuses au lieu du cadre (les niveaux restent visibles par la barre).
-func _cloud_trim(size: Vector3) -> void:
-	var puff := Mats.col(Color(0.92, 0.94, 1.0), 1.0, 0.12)
-	var shade := Mats.col(Color(0.78, 0.82, 0.96), 1.0, 0.08)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = hash(key)
-	var hx := size.x * 0.5
-	if piece == WALL:
-		var hy := size.y * 0.5
-		var pts: Array[Vector3] = []
-		for i in 9:
-			var t := -hx + i * size.x / 8.0
-			pts.append(Vector3(t, hy, 0))
-			if variant != 1:
-				pts.append(Vector3(t, -hy, 0))
-		for i in range(1, 8):
-			var t := -hy + i * size.y / 8.0
-			pts.append(Vector3(hx, t, 0))
-			pts.append(Vector3(-hx, t, 0))
-		for pt in pts:
-			var r := rng.randf_range(0.28, 0.42)
-			Mats.sphere(visual, r, puff if rng.randf() < 0.7 else shade, pt + Vector3(0, 0, rng.randf_range(-0.05, 0.05)), 8)
-	else:
-		var hz := size.z * 0.5
-		for i in 9:
-			var t := -hx + i * size.x / 8.0
-			for z in [-hz, hz]:
-				Mats.sphere(visual, rng.randf_range(0.22, 0.34), puff if rng.randf() < 0.7 else shade, Vector3(t, 0.05, z), 8)
-		for i in range(1, 8):
-			var t := -hz + i * size.z / 8.0
-			for x in [-hx, hx]:
-				Mats.sphere(visual, rng.randf_range(0.22, 0.34), puff if rng.randf() < 0.7 else shade, Vector3(x, 0.05, t), 8)

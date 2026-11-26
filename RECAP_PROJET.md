@@ -72,6 +72,10 @@ The Pathless).
   image fixe menu_art.jpg en secours (animée par code : yeux, sphère, brume, lucioles).
 - Armes Meshy (en cours, une par une avec validation) : visuel OpenArt -> image-to-3d Meshy -> glow_weapon.py (émission)
   -> finalize_meshy_weapon.py (orientation, taille, repères). Fait : Éclair de Zeus (rayons de lumière : _add_light_rays).
+- Sphères : socle Meshy (orb_altar.glb, prepare_orb.py), sphère animée turquoise (orb.gd, CORE_Y 1.78) ; les sphères
+  volcan / nuages sont centrées sur une case (main.gd : orb_cell()).
+- Armes et bras : matériaux Meshy rendus mats (player.gd : matte()) car trop brillants sur un vrai GPU ;
+  bras avec coude (os « upper » orienté vers l'épaule chaque image : _update_arms()).
 - Musique : fichiers à déposer dans `game/assets/music/` (mp3/ogg/wav) : menu, game, battle, volcano, volcano_battle,
   volcano_boss, sky, sky_battle, sky_boss, endless (+ boss en secours) ; main.gd : music_region(), music.gd : play_region / play_any.
 

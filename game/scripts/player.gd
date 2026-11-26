@@ -21,7 +21,7 @@ const MOUSE_SENS := 0.0025
 ## Caractéristiques des armes à feu (munitions illimitées, seul le chargeur compte)
 const GUNS := {
 	W.PISTOL: {"mag": 12, "interval": 0.2, "damage": 34.0, "reload": 1.2, "auto": false, "spread": 0.012, "kick": 0.02},
-	W.RIFLE: {"mag": 30, "interval": 0.1, "damage": 24.0, "reload": 1.6, "auto": true, "spread": 0.022, "kick": 0.011},
+	W.RIFLE: {"mag": 27, "interval": 0.111, "damage": 21.6, "reload": 1.6, "auto": true, "spread": 0.022, "kick": 0.011},
 	# rayon de glace continu : très faibles dégâts, ralentit (70 % de vitesse) et rend vulnérable (+10 %) pendant 3 s
 	W.CRYO: {"mag": 0, "interval": 0.1, "damage": 42.0, "reload": 0.0, "auto": true, "spread": 0.0, "kick": 0.0},
 	W.ZEUS: {"mag": 0, "interval": 1.5, "damage": 1000.0, "reload": 0.0, "auto": false, "spread": 0.0, "kick": 0.0},
@@ -79,7 +79,7 @@ var divine_t := 0.0      # toucher divin : bonus de dégâts temporaire après u
 var divine_boost := 0.0
 var sniper_cd := 0.0
 var shock_cd := 0.0   # rechargement de l'onde de choc (indépendant des autres armes)
-var mags := {W.PISTOL: 12, W.RIFLE: 30, W.CRYO: 0, W.SHOCK: 0, W.SNIPER: 0, W.ZEUS: 0}
+var mags := {W.PISTOL: 12, W.RIFLE: 27, W.CRYO: 0, W.SHOCK: 0, W.SNIPER: 0, W.ZEUS: 0}
 var cryo_beam: MeshInstance3D
 var cryo_beam_t := 0.0
 ## Deux armes à feu équipées (choisies dans l'inventaire) ; la hache est toujours là.
@@ -232,7 +232,9 @@ const GRIPS := {
 	"support": {"curl": 0.5, "thumb": 0.25, "opp": 0.3},
 	"fist": {"curl": 1.0, "thumb": 0.6, "opp": 0.9},
 }
-var arm_rigs: Array = []        # [{skel, ...}] : pour les animations de doigts (rechargement...)
+var arm_rigs: Array = []        # [{skel, side}] : coude orienté vers l'épaule, animations de doigts
+## Épaules (repère de la caméra) : le haut du bras part du coude vers ce point, hors de l'écran.
+const SHOULDERS := [Vector3(0.24, -0.34, 0.18), Vector3(-0.24, -0.34, 0.18)]
 
 
 ## Place un bras : centre de la paume sur « hand », avant-bras vers « elbow » (hors de l'écran),
@@ -259,9 +261,39 @@ func _add_arm(parent: Node3D, hand: Vector3, elbow: Vector3, side := 0, palm_dir
 	parent.add_child(m)
 	for mi in m.find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		for i in (mi as MeshInstance3D).mesh.get_surface_count():
+			var sm := (mi as MeshInstance3D).mesh.surface_get_material(i) as StandardMaterial3D
+			if sm:
+				matte(sm)
 	if skel:
 		set_grip(skel, GRIPS[grip])
-		arm_rigs.append(skel)
+		arm_rigs.append({"skel": skel, "side": side})
+
+
+## Coude : l'os « upper » (haut du bras) vise l'épaule, quelle que soit la position de la main
+## (arme qui recule, coup de hache...). Appelé à chaque image pour les bras visibles.
+func _update_arms() -> void:
+	for a in arm_rigs:
+		var skel: Skeleton3D = a["skel"]
+		if not is_instance_valid(skel) or not skel.is_visible_in_tree():
+			continue
+		var ui := skel.find_bone("upper")
+		if ui < 0:
+			continue
+		var pi := skel.get_bone_parent(ui)
+		var parent_g := skel.get_bone_global_pose(pi)
+		var rest_l := skel.get_bone_rest(ui)
+		var cur_g := parent_g * rest_l
+		var to_skel := skel.global_transform.affine_inverse() * cam.global_transform
+		var shoulder: Vector3 = to_skel * SHOULDERS[a["side"]]
+		var rest_dir := cur_g.basis.y.normalized()          # l'os est orienté selon son axe Y
+		var want := (shoulder - cur_g.origin).normalized()
+		if want.length() < 0.5:
+			continue
+		var q := Quaternion(rest_dir, want)
+		var g_basis := Basis(q) * cur_g.basis
+		var local := parent_g.basis.inverse() * g_basis
+		skel.set_bone_pose_rotation(ui, local.get_rotation_quaternion())
 
 
 ## Plie les doigts : chaque phalange tourne autour de (direction de l'os × normale de la paume).
@@ -429,10 +461,22 @@ func _tune_model(n: Node, crystal: StandardMaterial3D) -> void:
 		else:
 			for i in mi.mesh.get_surface_count():
 				var m := mi.mesh.surface_get_material(i) as StandardMaterial3D
-				if m and m.emission_enabled:
-					m.emission_energy_multiplier = maxf(m.emission_energy_multiplier, 2.5)
+				if m:
+					matte(m)
 	for c in n.get_children():
 		_tune_model(c, crystal)
+
+
+## Matériaux Meshy (armes, bras) : très brillants d'origine (rugosité ~0,35), ils reflètent le ciel
+## clair et ressortent presque blancs sur un vrai GPU. On les rend mats, façon peinture stylisée,
+## et on modère l'émission (sinon le halo lumineux de l'écran les blanchit aussi).
+static func matte(m: StandardMaterial3D) -> void:
+	m.roughness_texture = null
+	m.roughness = 0.78
+	m.metallic = minf(m.metallic, 0.45)
+	m.metallic_specular = 0.25
+	if m.emission_enabled:
+		m.emission_energy_multiplier = clampf(m.emission_energy_multiplier, 0.8, 1.6)
 
 
 ## Cristal du viseur (s'estompe quand on vise, voir _physics_process).
@@ -1006,6 +1050,7 @@ func _animate_avatar() -> void:
 
 func _process(delta: float) -> void:
 	_animate_avatar()
+	_update_arms()
 	if zeus_ray_boost > 0.0:
 		zeus_ray_boost = move_toward(zeus_ray_boost, 0.0, delta * 2.5)
 		for m in zeus_ray_mats:

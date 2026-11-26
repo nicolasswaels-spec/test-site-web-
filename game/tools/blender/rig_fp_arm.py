@@ -192,7 +192,9 @@ def bone(name, h, t, parent=None):
     return name
 
 
-bone("arm", axis_pts(0.02) - np.array([SLEEVE_EXT, 0, 0]), axis_pts(0.2))
+bone("arm", axis_pts(0.02), axis_pts(0.2))
+# bras (au-dessus du coude) : le prolongement de manche, orienté vers l'épaule par le jeu
+bone("upper", axis_pts(0.02), axis_pts(0.02) - np.array([SLEEVE_EXT, 0, 0]), "arm")
 bone("forearm", axis_pts(0.2), axis_pts(WRIST_X), "arm")
 bone("hand", axis_pts(WRIST_X), hand_center + np.array([0.05, 0, 0]), "forearm")
 segs = {}
@@ -229,6 +231,8 @@ for i in range(N):
     else:
         for n in ("arm", "forearm", "hand"):
             allowed[i, idx[n]] = True
+        if P[i, 0] < 0.06:
+            allowed[i, idx["upper"]] = True
         if P[i, 0] > 0.44:      # paume près des jointures : les 1res phalanges tirent un peu
             for nm in chains:
                 allowed[i, idx[nm + "_1"]] = True

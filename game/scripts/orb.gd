@@ -44,7 +44,9 @@ var particles: CPUParticles3D
 var particle_mat: StandardMaterial3D
 var t := 0.0
 var flash := 0.0
-const CORE_Y := 0.95   # sphère réduite (≈ 35 % de la taille d'origine)
+const CORE_Y := 1.78   # au-dessus du socle sculpté (modèle Meshy d'après l'image du menu)
+const ALTAR := "res://assets/orb/orb_altar.glb"
+const SIZE := 1.15      # sphère un peu plus grosse pour aller avec le socle
 
 
 func _ready() -> void:
@@ -52,27 +54,34 @@ func _ready() -> void:
 	collision_layer = 32
 	collision_mask = 0
 
-	# Socle en pierre
-	var stone := Mats.col(Color(0.55, 0.58, 0.68), 0.7)
-	var stone_dark := Mats.col(Color(0.38, 0.40, 0.50), 0.7)
-	Mats.cylinder(self, 0.7, 0.8, 0.22, stone_dark, Vector3(0, 0.11, 0), Vector3.ZERO, 8)
-	Mats.cylinder(self, 0.45, 0.6, 0.25, stone, Vector3(0, 0.33, 0), Vector3.ZERO, 8)
-	for i in 8:
-		var a := TAU * i / 8.0
-		Mats.box(self, Vector3(0.1, 0.35, 0.1), stone, Vector3(cos(a) * 0.65, 0.35, sin(a) * 0.65), Vector3(0, -rad_to_deg(a), 8))
+	# Socle sculpté : dalles de pierre à runes turquoise et pilier au losange lumineux
+	if ResourceLoader.exists(ALTAR):
+		var altar := (load(ALTAR) as PackedScene).instantiate() as Node3D
+		altar.rotation_degrees.y = 90.0
+		add_child(altar)
+	else:
+		var stone := Mats.col(Color(0.55, 0.58, 0.68), 0.7)
+		Mats.cylinder(self, 0.45, 0.6, 1.3, stone, Vector3(0, 0.65, 0), Vector3.ZERO, 8)
 
 	var s1 := CollisionShape3D.new()
 	var sph := SphereShape3D.new()
-	sph.radius = 0.46
+	sph.radius = 0.5
 	s1.shape = sph
 	s1.position.y = CORE_Y
 	add_child(s1)
 	var s2 := CollisionShape3D.new()
 	var cyl := CylinderShape3D.new()
-	cyl.radius = 0.78
-	cyl.height = 0.45
+	cyl.radius = 1.1
+	cyl.height = 0.35
 	s2.shape = cyl
-	s2.position.y = 0.22
+	s2.position.y = 0.17
+	var s3 := CollisionShape3D.new()
+	var pil := CylinderShape3D.new()
+	pil.radius = 0.5
+	pil.height = 1.3
+	s3.shape = pil
+	s3.position.y = 0.65
+	add_child(s3)
 	add_child(s2)
 
 	core = MeshInstance3D.new()
@@ -88,6 +97,7 @@ func _ready() -> void:
 	core_mat.shader = sh
 	core.material_override = core_mat
 	core.position.y = CORE_Y
+	core.scale = Vector3.ONE * SIZE
 	add_child(core)
 
 	var shell := MeshInstance3D.new()
@@ -110,6 +120,7 @@ func _ready() -> void:
 		r.mesh = tm
 		r.material_override = Mats.col(Color(1, 1, 1), 0.3, 1.5)
 		r.position.y = CORE_Y
+		r.scale = Vector3.ONE * SIZE
 		add_child(r)
 		rings.append(r)
 
@@ -122,7 +133,7 @@ func _ready() -> void:
 	particles = CPUParticles3D.new()
 	particles.amount = 40
 	particles.lifetime = 2.5
-	particles.position.y = 0.5
+	particles.position.y = 1.3
 	particles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
 	particles.emission_sphere_radius = 0.7
 	particles.direction = Vector3.UP
@@ -141,7 +152,8 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	t += delta
-	var c := Color.from_hsv(fmod(t * 0.07, 1.0), 0.75, 1.0)
+	# turquoise comme sur l'illustration du menu, qui ondule légèrement
+	var c := Color.from_hsv(0.47 + 0.035 * sin(t * 0.6), 0.72, 1.0)
 	core_mat.set_shader_parameter("base_color", c)
 	shell_mat.set_shader_parameter("base_color", c)
 	light.light_color = c

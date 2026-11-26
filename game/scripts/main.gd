@@ -67,6 +67,13 @@ const SKY_COUNT_MULT := 0.65
 ## un sol posé au pied de la sphère la centre, et 4 murs suffisent à l'entourer.
 const ORB_OFFSET := Vector3(2, 0, 2)
 
+
+## Centre de la case de construction (grille de 4 m, cases centrées sur 2 + 4k) la plus proche d'un point
+## décalé de ORB_OFFSET : la sphère est toujours au milieu d'un sol, jamais au croisement de murs.
+static func orb_cell(center: Vector3) -> Vector3:
+	var p := center + ORB_OFFSET
+	return Vector3((floorf(p.x / 4.0) + 0.5) * 4.0, p.y, (floorf(p.z / 4.0) + 0.5) * 4.0)
+
 const GROUND_SHADER := """
 shader_type spatial;
 render_mode diffuse_lambert_wrap, specular_disabled;
@@ -1844,7 +1851,7 @@ func _start_zone4() -> void:
 	if zone >= 4:
 		return
 	orb3 = OrbScript.new()
-	orb3.position = ZONE3_CENTER + ORB_OFFSET
+	orb3.position = orb_cell(ZONE3_CENTER)
 	add_child(orb3)
 	orb3.damaged.connect(_on_orb_damaged)
 	orb3.destroyed.connect(_on_orb_destroyed)
@@ -1860,7 +1867,7 @@ func _start_zone4() -> void:
 	if orb2_beacon and is_instance_valid(orb2_beacon):
 		orb2_beacon.queue_free()
 	orb2_beacon = _make_beacon()
-	orb2_beacon.position = ZONE3_CENTER + ORB_OFFSET
+	orb2_beacon.position = orb_cell(ZONE3_CENTER)
 	add_child(orb2_beacon)
 	for i in CHESTS_PER_ZONE:
 		_spawn_chest(ZONE3_CENTER, ZONE3_RADIUS, true, 3)
@@ -1913,7 +1920,7 @@ func _start_sky_defense() -> void:
 	if orb4 != null:
 		return
 	orb4 = OrbScript.new()
-	orb4.position = SKY_CENTER + ORB_OFFSET
+	orb4.position = orb_cell(SKY_CENTER)
 	add_child(orb4)
 	orb4.damaged.connect(_on_orb_damaged)
 	orb4.destroyed.connect(_on_orb_destroyed)
@@ -1928,7 +1935,7 @@ func _start_sky_defense() -> void:
 	if orb2_beacon and is_instance_valid(orb2_beacon):
 		orb2_beacon.queue_free()
 	orb2_beacon = _make_beacon(Color(0.8, 0.9, 1.0, 0.4))
-	orb2_beacon.position = SKY_CENTER + ORB_OFFSET
+	orb2_beacon.position = orb_cell(SKY_CENTER)
 	add_child(orb2_beacon)
 	rebuild_obstacles()
 	hud.show_notice("4e SPHÈRE : défends-la contre 10 vagues, dont des anges squelettes volants.\nLa défense commence dans 2 min 30 (ou plus tôt depuis le menu de la sphère).\nMurs en nuage : 3× plus solides que la pierre.", 9.0)

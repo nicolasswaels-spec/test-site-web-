@@ -439,7 +439,7 @@ func _build_upgrades() -> Control:
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(right)
 	_section(right, Upg.ITEMS[selected_item]["name"])
-	var base_mag := 12 if selected_item == "pistol" else 30
+	var base_mag := 12 if selected_item == "pistol" else 27
 	for br in Upg.ITEMS[selected_item]["branches"]:
 		var branch: String = br[0]
 		var lvl: int = p.upgrades[selected_item][branch]

@@ -147,6 +147,8 @@ Menu principal : la caméra avance lentement dans la forêt au crépuscule (vrai
   (`tools/blender/rig_fp_arm.py` → `assets/characters/fp_arm.glb`), doigts pliés par `set_grip()` dans player.gd.
 - Menu principal : vidéo en boucle générée avec OpenArt (Wan 2.7) à partir de l'illustration du voyageur avachi près de la sphère
   (`assets/ui/menu_loop.ogv`, Ogg Theora ; image fixe `menu_art.jpg` en secours).
+- Sphères : socle sculpté (modèle Meshy d'après l'illustration du menu, `assets/orb/orb_altar.glb`, préparé par
+  `tools/blender/prepare_orb.py`) ; sphère animée turquoise par-dessus.
 - Constructions : textures peintes générées avec OpenArt (`assets/structures/<matériau>_<niveau>.jpg` : bois, pierre et nuage
   niveaux 0 à 3, bois et pierre magiques), appliquées par le shader de `structure.gd` (repli sur l'ancien rendu si absentes).
 - Éclair de Zeus : modèle Meshy (visuel OpenArt, marbre fissuré retexturé), lumière des fissures ajoutée par
