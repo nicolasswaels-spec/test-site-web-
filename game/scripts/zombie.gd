@@ -561,7 +561,7 @@ static func level_speed(lvl: int) -> float:
 
 
 static func level_struct_damage(lvl: int) -> float:
-	return 4.5 * pow(1.08, lvl - 1)                           # +8 % par niveau
+	return 4.5 * 1.3 * pow(1.08, lvl - 1)                     # +8 % par niveau (×1,3 : squelettes moins nombreux)
 
 
 static func level_player_damage(lvl: int) -> float:

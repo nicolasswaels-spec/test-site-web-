@@ -58,8 +58,11 @@ const CLOUD_GROUND := 45
 const CLOUD_AIR := 25
 const MAGIC_PER_ZONE := 4                    # arbres magiques et rochers magiques par zone
 const LAVA_DPS := 16.0
-# sphères 2 et 3 : 1/3 de squelettes en moins (les PV et dégâts viennent du niveau des squelettes)
+# sphères 2 et 3 : 1/3 de squelettes en moins (les PV et dégâts viennent du niveau des squelettes),
+# puis encore -20 % (et -35 % sur l'île des nuages), compensés par des dégâts aux constructions ×1,3
 const LATE_COUNT_MULT := 2.0 / 3.0
+const FEWER_MULT := 0.8
+const SKY_COUNT_MULT := 0.65
 ## Les sphères sont au centre d'une case de construction (grille de 4 m) :
 ## un sol posé au pied de la sphère la centre, et 4 murs suffisent à l'entourer.
 const ORB_OFFSET := Vector3(2, 0, 2)
@@ -1223,10 +1226,14 @@ func _start_wave(n: int) -> void:
 	Music.play("battle")
 	var d := difficulty()
 	# zone 1 (au pistolet) : beaucoup moins de squelettes ; sphères 2 et 3 : 1/3 de moins qu'avant
-	to_spawn = (3 + (d - 1) * 2) if zone == 1 else int(round((5 + (d - 1) * 3) * LATE_COUNT_MULT))
+	to_spawn = (3 + (d - 1) * 2) if zone == 1 else int(round((5 + (d - 1) * 3) * LATE_COUNT_MULT * (SKY_COUNT_MULT if zone == 5 else FEWER_MULT)))
 	bosses_left = n / 5   # mini-boss à la vague 5, deux boss à la vague 10
-	archers_left = (1 + n / 3) if zone == 4 else 0   # peu nombreux : 1 à 4
-	angels_left = mini(3, 1 + n / 4) if zone == 5 else 0   # anges : 1 à 3
+	archers_left = 0
+	if zone == 4:
+		archers_left = 2 + (n * 6) / 10      # 2 à 8 archers
+	elif zone == 5:
+		archers_left = 3 + (n * 7) / 10      # île des nuages : 3 à 10 archers
+	angels_left = mini(7, 2 + n / 2) if zone == 5 else 0   # anges : 2 à 7
 	wave_levels = _wave_levels(to_spawn)
 	spawn_interval = maxf(0.3, 1.3 - d * 0.09)
 	spawn_timer = 1.5
@@ -1282,10 +1289,10 @@ func _update_spawning(delta: float) -> void:
 	if spawn_timer > 0.0:
 		return
 	spawn_timer = spawn_interval
-	if angels_left > 0 and (to_spawn <= 0 or rng.randf() < 0.08):
+	if angels_left > 0 and (to_spawn <= 0 or rng.randf() < 0.15):
 		angels_left -= 1
 		_spawn_zombie(false, true, true)
-	elif archers_left > 0 and (to_spawn <= 0 or rng.randf() < 0.2):
+	elif archers_left > 0 and (to_spawn <= 0 or rng.randf() < 0.3):
 		archers_left -= 1
 		_spawn_zombie(false, true)
 	elif to_spawn > 0:
@@ -2151,7 +2158,7 @@ func _update_endless(delta: float) -> void:
 			alive += 1
 			if z.get("angel"):
 				angels += 1
-	var cap := mini(60, 16 + int(endless_t / 30.0))
+	var cap := mini(48, 13 + int(endless_t / 30.0))
 	endless_spawn_t -= delta
 	endless_boss_t -= delta
 	if endless_spawn_t > 0.0 or alive >= cap:
@@ -2162,9 +2169,9 @@ func _update_endless(delta: float) -> void:
 		_spawn_zombie(true)
 		return
 	var r := rng.randf()
-	if r < 0.05 and angels < 3:
+	if r < 0.10 and angels < 6:
 		_spawn_zombie(false, true, true)
-	elif r < 0.15:
+	elif r < 0.30:
 		_spawn_zombie(false, true)
 	else:
 		_spawn_zombie(false)

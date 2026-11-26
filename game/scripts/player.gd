@@ -23,9 +23,9 @@ const GUNS := {
 	W.PISTOL: {"mag": 12, "interval": 0.2, "damage": 34.0, "reload": 1.2, "auto": false, "spread": 0.012, "kick": 0.02},
 	W.RIFLE: {"mag": 30, "interval": 0.1, "damage": 24.0, "reload": 1.6, "auto": true, "spread": 0.022, "kick": 0.011},
 	# rayon de glace continu : très faibles dégâts, ralentit (70 % de vitesse) et rend vulnérable (+10 %) pendant 3 s
-	W.CRYO: {"mag": 0, "interval": 0.1, "damage": 30.0, "reload": 0.0, "auto": true, "spread": 0.0, "kick": 0.0},
+	W.CRYO: {"mag": 0, "interval": 0.1, "damage": 42.0, "reload": 0.0, "auto": true, "spread": 0.0, "kick": 0.0},
 	W.ZEUS: {"mag": 0, "interval": 1.5, "damage": 1000.0, "reload": 0.0, "auto": false, "spread": 0.0, "kick": 0.0},
-	W.SNIPER: {"mag": 0, "interval": 1.6, "damage": 350.0, "reload": 0.0, "auto": false, "spread": 0.03, "kick": 0.09},
+	W.SNIPER: {"mag": 0, "interval": 1.6, "damage": 175.0, "reload": 0.0, "auto": false, "spread": 0.03, "kick": 0.09},
 	W.SHOCK: {"mag": 0, "interval": 4.0, "damage": 100.0, "reload": 0.0, "auto": false, "spread": 0.0, "kick": 0.0},
 }
 const MAG_SIZE := 30
@@ -85,6 +85,8 @@ var cryo_beam_t := 0.0
 ## Deux armes à feu équipées (choisies dans l'inventaire) ; la hache est toujours là.
 var loadout := [W.PISTOL, -1]
 var upgrades := Upg.new_state()
+var god := {}              # variantes de Dieu débloquées : "pistol", "rifle", "cryo", "shock", "sniper" -> true
+const GOD_KEYS := {W.PISTOL: "pistol", W.RIFLE: "rifle", W.CRYO: "cryo", W.SHOCK: "shock", W.SNIPER: "sniper"}
 const GUN_KEYS := {W.PISTOL: "pistol", W.RIFLE: "rifle"}
 ## Mode test : toutes les armes et ressources illimitées
 var test_mode := false
@@ -308,7 +310,7 @@ func _build_rifle() -> void:
 ## Arme à feu en main à partir de son modèle Blender : repères, lueur du viseur, éclair de tir.
 ## k = échelle du modèle, gscale = échelle du nœud en main (les repères sont en coordonnées de g).
 func _gun_from_model(w: int, path: String, hip: Vector3, ads_z: float, gscale: float, sight_col: Color,
-		flash_col: Color, rest_deg: float) -> Node3D:
+		flash_col: Color, rest_deg: float, below := 0.022) -> Node3D:
 	var g := Node3D.new()
 	g.position = hip
 	g.scale = Vector3.ONE * gscale
@@ -333,7 +335,7 @@ func _gun_from_model(w: int, path: String, hip: Vector3, ads_z: float, gscale: f
 	li.light_energy = 0.0
 	m.add_child(li)
 	gun_data[w] = {"node": g, "muzzle": m, "flash": fl, "light": li, "crystal": cmat, "glow": glow,
-		"hip": hip, "ads": _ads_from(mk["sight"], gscale, ads_z), "rest": Vector3(0, deg_to_rad(rest_deg), 0),
+		"hip": hip, "ads": _ads_from(mk["sight"], gscale, ads_z, below), "rest": Vector3(0, deg_to_rad(rest_deg), 0),
 		"hand_r": mk["hand_r"], "hand_l": mk["hand_l"]}
 	return g
 
@@ -653,16 +655,54 @@ func gun_lvl(w: int, branch: String) -> int:
 	return upgrades[GUN_KEYS[w]][branch]
 
 
+## Multiplicateur de la variante de Dieu de l'arme (×2 si débloquée, ×1 sinon).
+func god_mult(w: int) -> float:
+	return Upg.GOD_MULT if god.get(GOD_KEYS.get(w, ""), false) else 1.0
+
+
 func gun_mag(w: int) -> int:
-	return Upg.mag_size(GUNS[w]["mag"], gun_lvl(w, "mag"))
+	return int(Upg.mag_size(GUNS[w]["mag"], gun_lvl(w, "mag")) * god_mult(w))
 
 
 func gun_interval(w: int) -> float:
-	return GUNS[w]["interval"] * Upg.fire_interval_mult(gun_lvl(w, "rate"))
+	return GUNS[w]["interval"] * Upg.fire_interval_mult(gun_lvl(w, "rate")) / god_mult(w)
 
 
 func gun_damage(w: int) -> float:
-	return GUNS[w]["damage"] * Upg.damage_mult(gun_lvl(w, "damage"))
+	return GUNS[w]["damage"] * Upg.damage_mult(gun_lvl(w, "damage")) * god_mult(w)
+
+
+## Débloque la variante de Dieu d'une arme (toutes ses branches au maximum + 5 bois, 5 pierres
+## et 5 nuages magiques). Le cristal de l'arme devient doré.
+func unlock_god(item: String) -> bool:
+	if god.get(item, false) or not Upg.GOD_ITEMS.has(item) or not Upg.all_maxed(upgrades, item):
+		return false
+	if not can_afford(Upg.GOD_COST):
+		return false
+	pay(Upg.GOD_COST)
+	god[item] = true
+	for w in GOD_KEYS:
+		if GOD_KEYS[w] == item:
+			if GUNS[w]["mag"] > 0:
+				mags[w] = gun_mag(w)
+				if weapon == w:
+					ammo = mags[w]
+			_gild(w)
+	Sfx.play("orb_hit", -2.0, 0.8)
+	if hud:
+		hud.show_notice("%s DÉBLOQUÉ !\nDégâts ×2, cadence ×2, chargeur ×2, rechargement 2× plus rapide." % Upg.GOD_NAMES[item], 6.0)
+	return true
+
+
+## Variante de Dieu : le cristal-viseur et sa lueur deviennent dorés.
+func _gild(w: int) -> void:
+	if not gun_data.has(w):
+		return
+	var gold := Color(1.0, 0.78, 0.3)
+	var m: StandardMaterial3D = gun_data[w]["crystal"]
+	m.albedo_color = Color(gold.r, gold.g, gold.b, m.albedo_color.a)
+	m.emission = gold
+	(gun_data[w]["glow"] as OmniLight3D).light_color = gold
 
 
 func can_afford(c: Dictionary) -> bool:
@@ -969,7 +1009,7 @@ func _start_reload() -> void:
 	if not _is_gun(weapon) or weapon == W.CRYO or weapon == W.SHOCK or weapon == W.SNIPER or weapon == W.ZEUS or reloading or ammo >= gun_mag(weapon):
 		return
 	reloading = true
-	reload_t = GUNS[weapon]["reload"] * Upg.reload_mult(gun_lvl(weapon, "reload")) * (0.75 if has_skill("A4") else 1.0)
+	reload_t = GUNS[weapon]["reload"] * Upg.reload_mult(gun_lvl(weapon, "reload")) * (0.75 if has_skill("A4") else 1.0) / god_mult(weapon)
 	Sfx.play("reload", -2.0)
 
 
@@ -1031,8 +1071,9 @@ func _shoot_cryo() -> void:
 		var c = r.collider
 		if c and c.is_in_group("zombie"):
 			var cu: Dictionary = upgrades["cryo"]
-			c.apply_frost(Upg.CRYO_STACKS_PER_TICK, Upg.cryo_max_slow(cu["slow"]), Upg.cryo_max_vuln(cu["vuln"]), Upg.cryo_stack_time(cu["duration"]))
-			deal_damage(c, GUNS[W.CRYO]["damage"] * Upg.cryo_damage_mult(cu["damage"]), false, "gun")
+			var gm := god_mult(W.CRYO)
+			c.apply_frost(Upg.CRYO_STACKS_PER_TICK * gm, Upg.cryo_max_slow(cu["slow"]), Upg.cryo_max_vuln(cu["vuln"]), Upg.cryo_stack_time(cu["duration"]))
+			deal_damage(c, GUNS[W.CRYO]["damage"] * Upg.cryo_damage_mult(cu["damage"]) * gm, false, "gun")
 			if hud and randf() < 0.3:
 				hud.hitmarker(false)
 		if randf() < 0.5:
@@ -1051,11 +1092,11 @@ func _shoot_cryo() -> void:
 # ------------------------------------------------------------------ onde de choc
 
 func shock_damage() -> float:
-	return Upg.shock_damage(upgrades["shock"]["damage"])
+	return Upg.shock_damage(upgrades["shock"]["damage"]) * god_mult(W.SHOCK)
 
 
 func shock_cooldown() -> float:
-	return Upg.shock_cooldown(upgrades["shock"]["cooldown"])
+	return Upg.shock_cooldown(upgrades["shock"]["cooldown"]) / god_mult(W.SHOCK)
 
 
 func shock_range() -> float:
@@ -1235,11 +1276,11 @@ func _build_zeus() -> void:
 # ------------------------------------------------------------------ fusil de précision
 
 func sniper_damage() -> float:
-	return Upg.sniper_damage(upgrades["sniper"]["damage"])
+	return Upg.sniper_damage(upgrades["sniper"]["damage"]) * god_mult(W.SNIPER)
 
 
 func sniper_cooldown() -> float:
-	return Upg.sniper_cooldown(upgrades["sniper"]["cooldown"])
+	return Upg.sniper_cooldown(upgrades["sniper"]["cooldown"]) / god_mult(W.SNIPER)
 
 
 ## Multiplicateur de tir à la tête : ×3 de base (au lieu de ×2), amélioré, +0,5 avec « Tête froide ».
@@ -1295,14 +1336,14 @@ func _build_sniper() -> void:
 ## anneaux de laiton, cœur ambré en cage.
 func _build_shock() -> void:
 	_gun_from_model(W.SHOCK, "res://assets/weapons/shock.glb", HIP_POS, -0.6, 0.82,
-		Color(1.0, 0.6, 0.2), Color(1.0, 0.75, 0.4), 6.0)
+		Color(1.0, 0.6, 0.2), Color(1.0, 0.75, 0.4), 6.0, 0.07)
 
 
 ## Canon cryogénique (modèle Blender, tools/blender/cryo.py) : coque givrée, réservoir de verre
 ## et éclats de glace lumineux, émetteur à ailettes entouré de cristaux.
 func _build_cryo() -> void:
 	_gun_from_model(W.CRYO, "res://assets/weapons/cryo.glb", HIP_POS, -0.62, 0.82,
-		Color(0.4, 0.85, 1.0), Color(0.5, 0.9, 1.0), 6.0)
+		Color(0.4, 0.85, 1.0), Color(0.5, 0.9, 1.0), 6.0, 0.075)
 	# le rayon (dans le monde, pas dans la main) : boîte fine étirée le long de son axe Z
 	var bm := BoxMesh.new()
 	bm.size = Vector3(0.06, 0.06, 1.0)

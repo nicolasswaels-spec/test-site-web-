@@ -487,7 +487,42 @@ func _build_upgrades() -> Control:
 					show_page(1)
 			var buy := _button(line, "AMÉLIORER", 150, 36, 15, buy_cb, ok)
 			buy.set_meta("key", key)
+	if Upg.GOD_ITEMS.has(selected_item):
+		_god_card(right)
 	return first
+
+
+## Carte « variante de Dieu » : disponible quand toutes les branches de l'arme sont au maximum.
+func _god_card(parent: Node) -> void:
+	var item := selected_item
+	var owned: bool = p.god.get(item, false)
+	var maxed: bool = Upg.all_maxed(p.upgrades, item)
+	var card := PanelContainer.new()
+	var gold := Color(1.0, 0.78, 0.3)
+	card.add_theme_stylebox_override("panel", _flat(Color(0.24, 0.18, 0.08, 0.95) if maxed or owned else Color(0.15, 0.15, 0.2, 0.95),
+		gold if maxed or owned else Color(1, 1, 1, 0.12), 2))
+	parent.add_child(card)
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 8)
+	card.add_child(line)
+	var txt := "%s  ·  dégâts ×2 · cadence ×2 · chargeur ×2 · rechargement ×2 (défense inchangée)" % Upg.GOD_NAMES[item]
+	if owned:
+		txt = "%s  ·  DÉBLOQUÉ" % Upg.GOD_NAMES[item]
+	elif not maxed:
+		txt = "%s  ·  toutes les améliorations au maximum pour la débloquer" % Upg.GOD_NAMES[item]
+	var l := _label(line, txt, 15, gold if maxed or owned else Color(0.6, 0.6, 0.7))
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if owned:
+		return
+	_cost_row(line, Upg.GOD_COST)
+	var ok: bool = maxed and p.can_afford(Upg.GOD_COST)
+	var b := _button(line, "DÉBLOQUER", 150, 36, 15, func():
+		if p.unlock_god(item):
+			focus_key = "god"
+			show_page(1), ok)
+	b.set_meta("key", "god")
 
 
 # ------------------------------------------------------------------ page 3 : arbre de compétences

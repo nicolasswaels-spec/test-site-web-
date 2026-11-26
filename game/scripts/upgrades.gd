@@ -65,17 +65,16 @@ const CRAFTS := [
 	{"id": "cryo", "name": "CANON CRYOGÉNIQUE", "icon": "w_cryo", "cost": {"wood": 3300, "stone": 1700, "magic_wood": 8, "magic_stone": 8},
 		"desc": "Rayon de glace continu : ralentit et rend vulnérable."},
 	{"id": "shock", "name": "ONDE DE CHOC", "icon": "w_shock", "cost": {"wood": 2000, "stone": 1000, "bone": 30},
-		"desc": "1 os par tir : cône large devant toi, 225 dégâts à tous les squelettes touchés."},
-	{"id": "zeus", "name": "ÉCLAIR DE ZEUS", "icon": "w_zeus", "cost": {"magic_cloud": 15, "magic_wood": 10, "magic_stone": 10},
-		"desc": "1 nuage magique par tir : la foudre frappe 5 ennemis au hasard sur la carte, 1000 dégâts chacun.", "sky_only": true},
+		"desc": "1 os par tir : cône large devant toi, 250 dégâts à tous les squelettes touchés."},
+	{"id": "zeus", "name": "ÉCLAIR DE ZEUS", "icon": "w_zeus", "cost": {"magic_cloud": 5, "magic_wood": 3, "magic_stone": 3},
+		"desc": "1 nuage magique par tir : la foudre frappe 7 ennemis au hasard sur la carte, 3000 dégâts chacun.", "sky_only": true},
 	{"id": "sniper", "name": "FUSIL DE PRÉCISION", "icon": "w_sniper", "cost": {"wood": 2000, "stone": 1000, "arrow_bone": 20},
-		"desc": "Lunette, coup par coup, 1 os par balle : 350 dégâts, ×3 à la tête."},
+		"desc": "Lunette, coup par coup, 1 os par balle : 175 dégâts, ×3 à la tête."},
 ]
 
 
 # ------------------------------------------------------------------ onde de choc
-## Dégâts 225 -> 440 (10 niveaux : de quoi tuer tout juste un squelette de vague 1 de la 2e sphère,
-## puis, au maximum, un squelette moyen (niveau 22) de la vague 5 de la zone volcanique), rechargement 4 s -> 2 s (4 niveaux), portée 6 -> 12 m (6 niveaux).
+## Dégâts 250 -> 600 (10 niveaux), rechargement 4 s -> 2 s (4 niveaux), portée 6 -> 12 m (6 niveaux).
 ## Coûts en bois, pierre, pièces et os ; le dernier niveau de chaque branche demande aussi 1 os imposant.
 const SHOCK_LEVELS := {"damage": 10, "cooldown": 4, "range": 6}
 const SHOCK_COSTS := {
@@ -88,8 +87,8 @@ const SHOCK_COSTS := {
 	"range": {"wood": [400, 700, 1100, 1600, 2200, 3000], "stone": [200, 350, 550, 800, 1100, 1500],
 		"coins": [2, 5, 8, 12, 16, 22], "bone": [6, 10, 14, 18, 24, 30]},
 }
-const SHOCK_BASE_DAMAGE := 225.0
-const SHOCK_DAMAGE_STEP := 21.5
+const SHOCK_BASE_DAMAGE := 250.0
+const SHOCK_DAMAGE_STEP := 35.0
 const SHOCK_BASE_COOLDOWN := 4.0
 const SHOCK_BASE_RANGE := 6.0
 const SHOCK_HALF_ANGLE := 60.0    # cône de 120°
@@ -117,14 +116,14 @@ static func max_level(item: String, branch: String) -> int:
 
 
 # ------------------------------------------------------------------ fusil de précision
-## Réarmement 1,6 s -> 0,8 s ; dégâts 350 -> 700 ; tir à la tête ×3 -> ×5 ; défense comme les autres armes.
-const SNIPER_BASE_DAMAGE := 350.0
+## Réarmement 1,6 s -> 0,8 s ; dégâts 175 -> 350 ; tir à la tête ×3 -> ×5 ; défense comme les autres armes.
+const SNIPER_BASE_DAMAGE := 175.0
 const SNIPER_BASE_COOLDOWN := 1.6
 const SNIPER_BASE_HEADSHOT := 3.0
 const SNIPER_COSTS := {"wood": [400, 700, 1000, 1400, 1900, 2500, 3200, 4000],
 	"stone": [150, 300, 450, 650, 900, 1200, 1500, 1900],
 	"coins": [0, 2, 4, 6, 9, 12, 16, 22],
-	"arrow_bone": [2, 3, 4, 5, 6, 8, 10, 12]}
+	"arrow_bone": [1, 2, 2, 3, 3, 4, 5, 6]}     # moitié de l'ancien coût (arrondi au-dessus)
 
 
 static func sniper_cooldown(lvl: int) -> float:
@@ -132,7 +131,7 @@ static func sniper_cooldown(lvl: int) -> float:
 
 
 static func sniper_damage(lvl: int) -> float:
-	return SNIPER_BASE_DAMAGE + 43.75 * lvl
+	return SNIPER_BASE_DAMAGE + 21.875 * lvl
 
 
 static func sniper_headshot(lvl: int) -> float:
@@ -140,13 +139,34 @@ static func sniper_headshot(lvl: int) -> float:
 
 
 # ------------------------------------------------------------------ éclair de Zeus (5 niveaux par branche, non linéaires)
-const ZEUS_TARGETS := [5, 6, 7, 8, 9, 10]
-const ZEUS_DAMAGE := [1000.0, 1100.0, 1250.0, 1400.0, 1600.0, 2000.0]
+const ZEUS_TARGETS := [7, 8, 10, 11, 13, 15]
+const ZEUS_DAMAGE := [3000.0, 3500.0, 4200.0, 5200.0, 7000.0, 10000.0]
 const ZEUS_BOOST := [0.0, 0.15, 0.30, 0.50, 0.70, 1.0]       # toucher divin : bonus de dégâts du personnage
 const ZEUS_DURATION := [2.0, 3.0, 4.5, 6.0, 8.0, 10.0]        # durée du toucher divin (s)
 const ZEUS_COOLDOWN := 0.3   # l'arme est limitée par les nuages magiques, pas par la cadence
 const ZEUS_COSTS := [{"magic_wood": 1}, {"magic_stone": 1}, {"magic_wood": 2}, {"magic_stone": 2},
 	{"magic_cloud": 1, "magic_wood": 3, "magic_stone": 3}]
+
+
+# ------------------------------------------------------------------ variantes de Dieu
+## Quand TOUTES les branches d'une arme sont au maximum, on peut débloquer sa variante de Dieu
+## (pas pour l'éclair de Zeus, la hache ni les barbelés) : cadence ×2, dégâts ×2, chargeur ×2,
+## rechargement 2× plus rapide (la défense ne change pas). Cryo : dégâts ×2 et statuts de glace
+## posés 2× plus vite ; onde de choc : dégâts ×2 et rechargement 2× plus court ;
+## précision : dégâts ×2 et réarmement 2× plus court.
+const GOD_ITEMS := ["pistol", "rifle", "cryo", "shock", "sniper"]
+const GOD_COST := {"magic_wood": 5, "magic_stone": 5, "magic_cloud": 5}
+const GOD_NAMES := {"pistol": "PISTOLET DE DIEU", "rifle": "FUSIL DE DIEU", "cryo": "CANON CRYO DE DIEU",
+	"shock": "ONDE DE CHOC DE DIEU", "sniper": "FUSIL DE PRÉCISION DE DIEU"}
+const GOD_MULT := 2.0
+
+
+## Toutes les branches de l'arme sont-elles au maximum ?
+static func all_maxed(state: Dictionary, item: String) -> bool:
+	for b in ITEMS[item]["branches"]:
+		if state[item][b[0]] < max_level(item, b[0]):
+			return false
+	return true
 
 
 static func cost(item: String, branch: String, level: int) -> Dictionary:
@@ -238,7 +258,7 @@ static func wire_dps(lvl: int) -> float:
 ## Canon cryo : statut de glace de 0 à 10, gagné en touchant la cible (0,7 par tic de 0,1 s :
 ## ~1,5 s de rayon continu pour atteindre 10). Les effets ci-dessous sont les valeurs à 10 statuts.
 const CRYO_STACKS_PER_TICK := 1.05   # statuts appliqués encore 1,5× plus vite
-const CRYO_BASE_DPS := 300.0         # 300 dégâts/s de base, 1125 au niveau 8 (hors vulnérabilité)
+const CRYO_BASE_DPS := 420.0         # 420 dégâts/s de base, 1600 au niveau 8 (hors vulnérabilité et variante de Dieu)
 
 
 ## Ralentissement à 10 statuts : 30 % → 40 %
@@ -246,9 +266,9 @@ static func cryo_max_slow(lvl: int) -> float:
 	return 0.30 + 0.0125 * lvl
 
 
-## Dégâts du rayon : 150 / s → 450 / s (avant vulnérabilité)
+## Dégâts du rayon : 420 / s → 1600 / s (avant vulnérabilité)
 static func cryo_damage_mult(lvl: int) -> float:
-	return 1.0 + (1125.0 / 300.0 - 1.0) / 8.0 * lvl
+	return 1.0 + (1600.0 / CRYO_BASE_DPS - 1.0) / 8.0 * lvl
 
 
 ## Vulnérabilité à 10 statuts : +10 % → +40 %

@@ -1,13 +1,13 @@
 extends StaticBody3D
 ## Petit nuage à récolter (zone céleste). On passe au travers (couche 128 : ni le joueur ni les
 ## squelettes ne la heurtent, les balles non plus), mais le coup de hache le touche.
-## Un seul coup le brise : +10 nuages et +10 bois ou +10 pierre (au hasard). Nuage magique (1 chance sur 50 à chaque apparition) :
+## Un seul coup le brise : +10 nuages et +10 bois ou +10 pierre (au hasard). Nuage magique (10 % de chance à chaque apparition) :
 ## +1 nuage magique et, au hasard, +1 bois magique ou +1 pierre magique.
 
 const Mats = preload("res://scripts/mats.gd")
 const LAYER := 128
 const YIELD := 10
-const MAGIC_CHANCE := 1.0 / 50.0
+const MAGIC_CHANCE := 0.10
 
 var main
 var magic := false
