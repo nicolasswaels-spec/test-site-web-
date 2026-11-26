@@ -43,10 +43,10 @@ const MAGIC_BUILD_COST := 1   # 1 bois / pierre magique = 1 pièce
 const MAX_HP := 100.0
 const MASK_SHOOT := 1 | 4 | 8 | 16 | 32
 
-const HIP_POS := Vector3(0.29, -0.29, -0.7)   # armes longues un peu avancées : la crosse sort de l'écran
-const ADS_POS := Vector3(0.0, -0.105, -0.8)
+const HIP_POS := Vector3(0.22, -0.19, -0.5)   # armes longues près de la caméra : la crosse sort de l'écran
+const ADS_POS := Vector3(0.0, -0.105, -0.66)
 const AXE_POS := Vector3(0.34, -0.32, -0.55)
-const PISTOL_HIP := Vector3(0.17, -0.17, -0.4)
+const PISTOL_HIP := Vector3(0.15, -0.12, -0.34)
 const PISTOL_ADS := Vector3(0.0, -0.085, -0.36)
 
 var main
@@ -224,12 +224,13 @@ func _ready() -> void:
 const FP_ARM := preload("res://assets/characters/fp_arm.glb")
 const ARM_SCALE := 0.78
 const PALM_N := Vector3(0, 0, 1)
+const GRIP_HALF := 0.024   # demi-épaisseur d'une poignée (m)
 const PALM_C := Vector3(0.455, 0.0, 0.0)     # centre de la paume (modèle), recalé sur l'os « hand »
 const FINGERS := ["index", "middle", "ring", "pinky"]
 ## Poses de prise : flexion des doigts (0 = ouverte, 1 = poing) et du pouce, opposition du pouce.
 const GRIPS := {
-	"pistol": {"curl": 0.82, "index": 0.22, "thumb": 0.45, "opp": 0.7},   # index tendu sur la gâchette
-	"support": {"curl": 0.5, "thumb": 0.25, "opp": 0.3},
+	"pistol": {"curl": 0.7, "index": 0.22, "thumb": 0.45, "opp": 0.7},   # index tendu sur la gâchette
+	"support": {"curl": 0.42, "thumb": 0.25, "opp": 0.3},
 	"fist": {"curl": 1.0, "thumb": 0.6, "opp": 0.9},
 }
 var arm_rigs: Array = []        # [{skel, side}] : coude orienté vers l'épaule, animations de doigts
@@ -258,7 +259,9 @@ func _add_arm(parent: Node3D, hand: Vector3, elbow: Vector3, side := 0, palm_dir
 		var hi := skel.find_bone("hand")
 		if hi >= 0:
 			palm = skel.get_bone_global_rest(hi).origin + Vector3(0.065, 0, 0)
-	m.transform = Transform3D(b, hand - b * palm)
+	# la paume se pose CONTRE la poignée (pas en son centre) : décalée de l'épaisseur de la poignée,
+	# les doigts fermés s'enroulent autour au lieu de rentrer dedans
+	m.transform = Transform3D(b, hand - z * GRIP_HALF - b * palm)
 	parent.add_child(m)
 	for mi in m.find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

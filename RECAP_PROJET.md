@@ -150,4 +150,4 @@ assets/                modèles 3D CC0 : nature (Quaternius), skeletons, chests,
 
 ### Retours de test (sphère, bras)
 - Sphère : la boule est désormais celle du modèle Meshy (objet « ball » séparé du socle, texturé), qui flotte et tourne ; plus de noyau/coquille/anneaux lumineux, lumière ramenée à ~1,4.
-- Bras FPS : épaules placées très bas (le manchon du bras ne rentre presque plus dans le champ), armes longues abaissées et décalées à droite (crosse hors écran), index tendu sur la gâchette (courbure par doigt dans GRIPS).
+- Bras FPS : épaules placées très bas (manchon hors champ), armes rapprochées de la caméra (fusils z −0,5, pistolet −0,34 ; crosse hors écran), paume posée contre la poignée (GRIP_HALF) et doigts moins serrés pour ne plus traverser la poignée, index tendu sur la gâchette.
