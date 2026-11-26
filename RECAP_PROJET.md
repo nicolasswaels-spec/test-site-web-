@@ -36,7 +36,7 @@ The Pathless).
 - Zone « 4 » : 3e sphère à la place du titan, dans le volcan, défense au bout de 3 min, avec des squelettes archers.
 - Zone 5 (ciel) : escalier de nuages au nord du volcan → île de nuages (SKY_Y 32), COLOSSE DES NUÉES (sky_titan.gd,
   1 min pour le rejoindre), puis 4e sphère à sa place, 10 vagues après 2 min 30,
-  anges squelettes volants, ressource NUAGE (murs ×3 pierre), nuage magique 1/250. Code : main.gd (_build_sky, spawn_cloud), cloud_res.gd.
+  anges squelettes volants, ressource NUAGE (murs ×3 pierre), nuage magique 1/50. Code : main.gd (_build_sky, spawn_cloud), cloud_res.gd.
 - Arbres / rochers magiques (4 par zone) : bois / pierre magique → pièces 5× plus solides.
 - Récolte : bois (arbres) et pierre (rochers, récolte débloquée par la hache « bois » niveau 5 ; coffres) avec 3 cibles bonus qui apparaissent au 1er coup (+100 % sur le coup, +80 % du gain final par cible) ;
   pièces métalliques au sol (barbelés).
