@@ -1229,7 +1229,9 @@ func _start_wave(n: int) -> void:
 	to_spawn = (3 + (d - 1) * 2) if zone == 1 else int(round((5 + (d - 1) * 3) * LATE_COUNT_MULT * (SKY_COUNT_MULT if zone == 5 else FEWER_MULT)))
 	bosses_left = n / 5   # mini-boss à la vague 5, deux boss à la vague 10
 	archers_left = 0
-	if zone == 4:
+	if zone == 2:
+		archers_left = 1 + n / 2             # 2e sphère : 1 à 6 archers
+	elif zone == 4:
 		archers_left = 2 + (n * 6) / 10      # 2 à 8 archers
 	elif zone == 5:
 		archers_left = 3 + (n * 7) / 10      # île des nuages : 3 à 10 archers
