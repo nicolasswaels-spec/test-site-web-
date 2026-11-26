@@ -1,12 +1,13 @@
 extends Control
-## Menu principal : illustration animée — le voyageur encapuchonné avachi dans l'herbe près de la
-## sphère (image OpenArt), avec parallaxe (souris + lent balancement), yeux et sphère qui pulsent,
-## brume et lucioles.
+## Menu principal : vidéo en boucle (OpenArt) du voyageur encapuchonné avachi dans l'herbe près de
+## la sphère, avec une légère parallaxe à la souris. Sans la vidéo : l'image fixe animée par code
+## (yeux et sphère qui pulsent, brume, lucioles).
 ## À gauche le logo et les boutons ; écran « COMMANDES » séparé.
 
 const UI = preload("res://scripts/ui.gd")
 const KEYART := "res://assets/ui/menu_art.jpg"        # illustration OpenArt : le voyageur avachi près de la sphère
 const HERO_EYES := "res://assets/ui/menu_eyes.png"     # lueur des yeux (calque additif, même cadrage)
+const VIDEO := "res://assets/ui/menu_loop.ogv"         # la même scène animée (vidéo OpenArt, 8 s en boucle)
 const ART_SIZE := Vector2(1920, 1080)
 const BG_ZOOM := 1.06                                  # marge pour la parallaxe
 const ORB_PX := Vector2(1332, 636)       # sphère dans l'illustration (pixels de l'image 1920×1080)
@@ -45,6 +46,7 @@ var eyes: TextureRect
 var orb_glow: TextureRect
 var fog_mat: ShaderMaterial
 var flies: CPUParticles2D
+var video: VideoStreamPlayer
 var fade: ColorRect
 var buttons: Array[Button] = []
 var commands_panel: Control
@@ -118,6 +120,22 @@ func _build_art() -> void:
 	clip.add_child(art)
 	# fond un peu plus grand que l'écran : marge pour la parallaxe
 	bg = _layer(KEYART, ART_SIZE * BG_ZOOM, -ART_SIZE * (BG_ZOOM - 1.0) * 0.5)
+	if ResourceLoader.exists(VIDEO):
+		# vidéo en boucle par-dessus l'image fixe (qui reste visible le temps du premier décodage) ;
+		# elle anime déjà tout (capuche, herbe, brume, lucioles, sphère) : pas d'effets ajoutés
+		video = VideoStreamPlayer.new()
+		video.stream = load(VIDEO)
+		video.expand = true
+		video.volume_db = -80.0
+		video.size = bg.size
+		video.position = bg.position
+		video.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		video.finished.connect(video.play)
+		art.add_child(video)
+		video.play()
+		_fit_art()
+		get_viewport().size_changed.connect(_fit_art)
+		return
 	eyes = _layer(HERO_EYES, ART_SIZE * BG_ZOOM, bg.position)
 	var em := CanvasItemMaterial.new()
 	em.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
@@ -184,6 +202,9 @@ func _process(delta: float) -> void:
 	var m := (get_viewport().get_mouse_position() / vs - Vector2(0.5, 0.5)) * 2.0
 	m = m.clamp(Vector2(-1, -1), Vector2(1, 1)) + Vector2(sin(t * 0.11), sin(t * 0.07) * 0.5) * 0.35
 	bg.position = -ART_SIZE * (BG_ZOOM - 1.0) * 0.5 - m * 14.0
+	if video:
+		video.position = bg.position
+		return
 	eyes.position = bg.position
 	orb_glow.position = _orb_pos() - orb_glow.size * 0.5 - m * 14.0
 	orb_glow.modulate.a = 0.75 + 0.25 * sin(t * 1.7)

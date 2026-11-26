@@ -143,8 +143,8 @@ Menu principal : la caméra avance lentement dans la forêt au crépuscule (vrai
 - Personnage des joueurs (le voyageur encapuchonné) : visuel généré avec OpenArt d'après un croquis de l'auteur, mis en 3D,
   squeletté et animé avec Meshy, assemblé dans Blender (`tools/blender/assemble_character.py`, `extract_arms.py`) :
   `assets/characters/traveler.glb` (avatar en coop) et `fp_arm_r/l.glb` (bras à la 1re personne).
-- Menu principal : illustration OpenArt (le voyageur avachi près de la sphère, `assets/ui/menu_art.jpg`) animée dans `menu.gd`
-  (parallaxe, yeux et sphère qui pulsent, brume, lucioles).
+- Menu principal : vidéo en boucle générée avec OpenArt (Wan 2.7) à partir de l'illustration du voyageur avachi près de la sphère
+  (`assets/ui/menu_loop.ogv`, Ogg Theora ; image fixe `menu_art.jpg` en secours).
 - Éclair de Zeus : modèle Meshy (visuel OpenArt, marbre fissuré retexturé), lumière des fissures ajoutée par
   `tools/blender/glow_weapon.py`, mis à l'échelle par `finalize_meshy_weapon.py` ; rayons de lumière animés dans le jeu.
 - Ennemis : squelettes animés du pack **KayKit Character Pack: Skeletons** de [Kay Lousberg](https://www.kaylousberg.com), licence **CC0**. Fichiers dans `assets/skeletons/`.

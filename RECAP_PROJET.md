@@ -67,8 +67,8 @@ The Pathless).
   Running_A / Jump_Idle / Death_A) ; assemblé par tools/blender/assemble_character.py → assets/characters/traveler.glb ;
   bras 1re personne découpés par extract_arms.py (fp_arm_r/l.glb). Clé API Meshy enregistrée dans l'environnement
   (hôte api.meshy.ai), fichiers sur assets.meshy.ai. Préférence : générer UNE seule version à la fois et demander l'avis.
-- Menu principal : illustration OpenArt menu_art.jpg (voyageur avachi près de la sphère) + menu_eyes.png, animée dans menu.gd
-  (parallaxe souris, yeux et sphère qui pulsent, brume, lucioles).
+- Menu principal : vidéo menu_loop.ogv (OpenArt Wan 2.7, 8 s en boucle, convertie en Ogg Theora avec ffmpeg) ;
+  image fixe menu_art.jpg en secours (animée par code : yeux, sphère, brume, lucioles).
 - Armes Meshy (en cours, une par une avec validation) : visuel OpenArt -> image-to-3d Meshy -> glow_weapon.py (émission)
   -> finalize_meshy_weapon.py (orientation, taille, repères). Fait : Éclair de Zeus (rayons de lumière : _add_light_rays).
 - Musique : fichiers à déposer dans `game/assets/music/` (`menu`, `game`, `battle` en mp3/ogg/wav).
