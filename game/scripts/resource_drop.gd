@@ -90,6 +90,7 @@ func _bone_model() -> void:
 
 func _update_label() -> void:
 	label.text = "%s × %d" % [NAMES[kind], amount]
+	label.visible = not kind.ends_with("bone") and kind != "bone_pile"   # os : pas d'étiquette au sol
 
 
 func _process(delta: float) -> void:

@@ -567,7 +567,7 @@ func update_player(p) -> void:
 			var zready: bool = p.zeus_cd <= 0.0
 			ammo_label.add_theme_color_override("font_color", Color(0.75, 0.9, 1.0) if zready else Color(0.7, 0.7, 0.75))
 			ammo_label.text = ("PRÊT" if zready else "%.1f s" % p.zeus_cd) + "  ·  NUAGES MAGIQUES %s" % ("∞" if p.test_mode else str(p.magic_clouds))
-			info_label.text = "Éclair de Zeus : 1 nuage magique · %d cibles devant toi · %d dégâts chacune" % [p.Upg.ZEUS_TARGETS[p.zeus_level("targets")], int(p.Upg.ZEUS_DAMAGE[p.zeus_level("damage")])]
+			info_label.text = "Éclair de Zeus : 1 nuage magique · %d ennemis au hasard sur la carte · %d dégâts chacun" % [p.Upg.ZEUS_TARGETS[p.zeus_level("targets")], int(p.Upg.ZEUS_DAMAGE[p.zeus_level("damage")])]
 			mode = 0
 			crosshair.visible = true
 		6:

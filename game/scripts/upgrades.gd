@@ -67,7 +67,7 @@ const CRAFTS := [
 	{"id": "shock", "name": "ONDE DE CHOC", "icon": "w_shock", "cost": {"wood": 2000, "stone": 1000, "bone": 30},
 		"desc": "1 os par tir : cône large devant toi, 225 dégâts à tous les squelettes touchés."},
 	{"id": "zeus", "name": "ÉCLAIR DE ZEUS", "icon": "w_zeus", "cost": {"magic_cloud": 15, "magic_wood": 10, "magic_stone": 10},
-		"desc": "1 nuage magique par tir : la foudre frappe 5 cibles, 1000 dégâts chacune.", "sky_only": true},
+		"desc": "1 nuage magique par tir : la foudre frappe 5 ennemis au hasard sur la carte, 1000 dégâts chacun.", "sky_only": true},
 	{"id": "sniper", "name": "FUSIL DE PRÉCISION", "icon": "w_sniper", "cost": {"wood": 2000, "stone": 1000, "arrow_bone": 20},
 		"desc": "Lunette, coup par coup, 1 os par balle : 350 dégâts, ×3 à la tête."},
 ]
@@ -144,7 +144,7 @@ const ZEUS_TARGETS := [5, 6, 7, 8, 9, 10]
 const ZEUS_DAMAGE := [1000.0, 1100.0, 1250.0, 1400.0, 1600.0, 2000.0]
 const ZEUS_BOOST := [0.0, 0.15, 0.30, 0.50, 0.70, 1.0]       # toucher divin : bonus de dégâts du personnage
 const ZEUS_DURATION := [2.0, 3.0, 4.5, 6.0, 8.0, 10.0]        # durée du toucher divin (s)
-const ZEUS_COOLDOWN := 1.5
+const ZEUS_COOLDOWN := 0.3   # l'arme est limitée par les nuages magiques, pas par la cadence
 const ZEUS_COSTS := [{"magic_wood": 1}, {"magic_stone": 1}, {"magic_wood": 2}, {"magic_stone": 2},
 	{"magic_cloud": 1, "magic_wood": 3, "magic_stone": 3}]
 

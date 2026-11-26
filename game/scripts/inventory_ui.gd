@@ -325,7 +325,7 @@ func _build_detail() -> Control:
 			if w == 4:
 				desc.text = "Rayon de glace continu : ajoute des statuts de glace (1 à 10) qui ralentissent la cible et la rendent vulnérable."
 			elif w == 7:
-				desc.text = "1 nuage magique par tir · la foudre frappe %d cibles devant toi · %d dégâts chacune · toucher divin : +%d %% de dégâts pendant %.1f s" % [p.Upg.ZEUS_TARGETS[p.zeus_level("targets")], int(p.Upg.ZEUS_DAMAGE[p.zeus_level("damage")]), int(p.Upg.ZEUS_BOOST[p.zeus_level("boost")] * 100), p.Upg.ZEUS_DURATION[p.zeus_level("duration")]]
+				desc.text = "1 nuage magique par tir · la foudre frappe %d ennemis au hasard sur la carte · %d dégâts chacun · toucher divin : +%d %% de dégâts pendant %.1f s" % [p.Upg.ZEUS_TARGETS[p.zeus_level("targets")], int(p.Upg.ZEUS_DAMAGE[p.zeus_level("damage")]), int(p.Upg.ZEUS_BOOST[p.zeus_level("boost")] * 100), p.Upg.ZEUS_DURATION[p.zeus_level("duration")]]
 			elif w == 6:
 				desc.text = "Coup par coup, 1 os par balle · %d dégâts · tête ×%.2f · %.1f s entre deux tirs · lunette (clic droit / LT)" % [int(p.sniper_damage()), p.sniper_headshot(), p.sniper_cooldown()]
 			elif w == 5:

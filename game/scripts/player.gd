@@ -1235,31 +1235,23 @@ func zeus_level(branch: String) -> int:
 	return upgrades["zeus"][branch]
 
 
-## Éclair de Zeus : 1 nuage magique ; la foudre frappe les N ennemis les plus proches du viseur
-## (devant soi, jusqu'à 80 m), puis le « toucher divin » augmente tes dégâts quelques secondes.
+## Éclair de Zeus : 1 nuage magique ; la foudre frappe N ennemis AU HASARD parmi tous ceux présents
+## sur la carte (anges compris). Moins de cibles seulement s'il y a moins de N ennemis.
+## Puis le « toucher divin » augmente tes dégâts quelques secondes (relancé à chaque tir).
 func _shoot_zeus() -> void:
 	var n: int = Upg.ZEUS_TARGETS[zeus_level("targets")]
 	var dmg: float = Upg.ZEUS_DAMAGE[zeus_level("damage")]
-	var fwd := -cam.global_transform.basis.z
 	var cands := []
 	for z in get_tree().get_nodes_in_group("zombie"):
 		if z.dead:
 			continue
-		var c: Vector3 = z.global_position + Vector3.UP * (5.0 if z.is_in_group("titan") else 1.2)
-		var v: Vector3 = c - cam.global_position
-		var dist := v.length()
-		if dist > 80.0 or dist < 0.5:
-			continue
-		var ang := fwd.angle_to(v / dist)
-		if ang > deg_to_rad(40.0):
-			continue
-		cands.append([ang * 30.0 + dist * 0.2, z, c])
+		cands.append([0.0, z, z.global_position + Vector3.UP * (5.0 if z.is_in_group("titan") else 1.2)])
 	if cands.is_empty():
 		if hud:
-			hud.flash_message("Aucune cible devant toi")
+			hud.flash_message("Aucun ennemi sur la carte")
 		zeus_cd = 0.3
 		return
-	cands.sort_custom(func(a, b): return a[0] < b[0])
+	cands.shuffle()
 	zeus_cd = Upg.ZEUS_COOLDOWN
 	if not test_mode:
 		magic_clouds -= 1
