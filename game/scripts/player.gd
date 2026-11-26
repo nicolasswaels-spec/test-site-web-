@@ -219,41 +219,91 @@ func _ready() -> void:
 	_apply_layers(ghost, view_layer())
 
 
-const FP_ARMS := [preload("res://assets/characters/fp_arm_r.glb"), preload("res://assets/characters/fp_arm_l.glb")]
-static var arm_roll := [PI / 2, PI / 2]   # rotation du bras autour de son axe (paume vers l'arme), par côté
-const ARM_SCALE := 0.75
+## Bras du voyageur à la 1re personne (tools/blender/rig_fp_arm.py) : modèle Meshy avec un squelette
+## doigt par doigt. Repère du modèle : +X = vers les doigts, +Z = normale de la paume, pouce vers -Y.
+const FP_ARM := preload("res://assets/characters/fp_arm.glb")
+const ARM_SCALE := 0.78
+const PALM_N := Vector3(0, 0, 1)
+const PALM_C := Vector3(0.455, 0.0, 0.0)     # centre de la paume (modèle), recalé sur l'os « hand »
+const FINGERS := ["index", "middle", "ring", "pinky"]
+## Poses de prise : flexion des doigts (0 = ouverte, 1 = poing) et du pouce, opposition du pouce.
+const GRIPS := {
+	"pistol": {"curl": 0.82, "thumb": 0.45, "opp": 0.7},
+	"support": {"curl": 0.5, "thumb": 0.25, "opp": 0.3},
+	"fist": {"curl": 1.0, "thumb": 0.6, "opp": 0.9},
+}
+var arm_rigs: Array = []        # [{skel, ...}] : pour les animations de doigts (rechargement...)
 
 
-## Bras du voyageur (manche, brassard, gant découpés du modèle 3D) : poignet sur la main,
-## bras tendu vers « elbow » (point hors de l'écran, côté épaule). side : 0 = droit, 1 = gauche.
-func _add_arm(parent: Node3D, hand: Vector3, elbow: Vector3, side := 0) -> void:
-	var m: Node3D = FP_ARMS[side].instantiate()
-	var y := (elbow - hand).normalized()
-	var outward := Vector3.RIGHT if side == 0 else Vector3.LEFT
-	var x := (outward - y * outward.dot(y)).normalized()
-	var z := x.cross(y)
+## Place un bras : centre de la paume sur « hand », avant-bras vers « elbow » (hors de l'écran),
+## paume tournée vers « palm_dir ». side : 0 = droit, 1 = gauche (miroir du droit).
+func _add_arm(parent: Node3D, hand: Vector3, elbow: Vector3, side := 0, palm_dir := Vector3.LEFT, grip := "pistol") -> void:
+	var m: Node3D = FP_ARM.instantiate()
+	var x := (hand - elbow).normalized()
+	var z := (palm_dir - x * palm_dir.dot(x)).normalized()
+	var y := z.cross(x)
 	var b := Basis(x, y, z)
-	b = (Basis(y, arm_roll[side]) * b).scaled(Vector3.ONE * ARM_SCALE)
-	m.transform = Transform3D(b, hand)
+	if side == 1:
+		b = b * Basis.from_scale(Vector3(1, -1, 1))      # bras gauche : miroir (pouce de l'autre côté)
+	b = b.scaled(Vector3.ONE * ARM_SCALE)
+	var skel: Skeleton3D = m.find_child("*", true, false) as Skeleton3D
+	if skel == null:
+		for c in m.find_children("*", "Skeleton3D", true, false):
+			skel = c
+	var palm := PALM_C
+	if skel:
+		var hi := skel.find_bone("hand")
+		if hi >= 0:
+			palm = skel.get_bone_global_rest(hi).origin + Vector3(0.065, 0, 0)
+	m.transform = Transform3D(b, hand - b * palm)
 	parent.add_child(m)
 	for mi in m.find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if skel:
+		set_grip(skel, GRIPS[grip])
+		arm_rigs.append(skel)
+
+
+## Plie les doigts : chaque phalange tourne autour de (direction de l'os × normale de la paume).
+## g : {curl, thumb, opp} ; utilisable aussi pour animer (rechargement, coup de hache...).
+static func set_grip(skel: Skeleton3D, g: Dictionary) -> void:
+	var angles := [70.0, 85.0, 60.0]
+	for f in FINGERS + ["thumb"]:
+		for j in 3:
+			var bi := skel.find_bone("%s_%d" % [f, j + 1])
+			if bi < 0:
+				continue
+			var grest := skel.get_bone_global_rest(bi)
+			var dir: Vector3
+			var ci := skel.find_bone("%s_%d" % [f, j + 2])
+			if ci >= 0:
+				dir = (skel.get_bone_global_rest(ci).origin - grest.origin).normalized()
+			else:
+				var pi := skel.get_bone_parent(bi)
+				dir = (grest.origin - skel.get_bone_global_rest(pi).origin).normalized()
+			var amount: float = g["thumb"] if f == "thumb" else g["curl"]
+			var q := Quaternion(grest.basis.inverse() * dir.cross(PALM_N).normalized(), deg_to_rad(angles[j] * amount))
+			if f == "thumb" and j == 0:
+				# opposition : le pouce passe devant la paume (rotation autour de l'axe de la main)
+				q = Quaternion(grest.basis.inverse() * Vector3(-1, 0, 0), deg_to_rad(45.0 * g["opp"])) * q
+			skel.set_bone_pose_rotation(bi, skel.get_bone_rest(bi).basis.get_rotation_quaternion() * q)
 
 
 func _build_arms() -> void:
-	# mains placées sur les repères des modèles Blender (hand_r = poignée, hand_l = garde-main)
+	# main droite sur la poignée (hand_r), main gauche sous le garde-main ou en soutien (hand_l)
 	for w in gun_data:
 		var d: Dictionary = gun_data[w]
 		var g: Node3D = d["node"]
 		var hr: Vector3 = d["hand_r"]
 		var hl: Vector3 = d["hand_l"]
-		_add_arm(g, hr, hr + Vector3(0.14, -0.32, 0.3))
+		# main droite : poignet derrière la poignée, articulations vers l'avant, paume contre la poignée
+		_add_arm(g, hr, hr + Vector3(0.08, -0.25, 0.35), 0, Vector3.LEFT, "pistol")
 		if hl.z < hr.z - 0.15:
-			_add_arm(g, hl, hl + Vector3(-0.22, -0.34, 0.3), 1)     # arme longue : main sous le garde-main
-		else:
-			_add_arm(g, hl, hl + Vector3(-0.17, -0.3, 0.2), 1)      # pistolet : main en soutien
+			# arme longue : main gauche sous le garde-main, doigts qui passent en travers, paume vers le haut
+			_add_arm(g, hl, hl + Vector3(-0.3, -0.25, 0.12), 1, Vector3.UP, "support")
+		# armes courtes (pistolet...) : tenues d'une main
 	var h: Node3D = axe_pivot.get_child(0)
-	_add_arm(h, Vector3(0, -0.04, 0), Vector3(0.06, -0.42, 0.18))
+	_add_arm(h, Vector3(0, -0.04, 0), Vector3(0.32, -0.2, 0.22), 0, Vector3(-1, 0, -1).normalized(), "fist")
 
 
 func _apply_layers(n: Node, mask: int) -> void:

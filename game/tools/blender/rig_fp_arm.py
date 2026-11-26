@@ -132,6 +132,47 @@ palm_y = np.sign(tips_y) or -1.0      # les doigts au repos s'incurvent légère
 print("pouce côté y %+.0f ; bouts des doigts : dy %.4f" % (palm_y, tips_y))
 PALM_N = np.array([0.0, palm_y, 0.0])
 
+# ------------------------------------------------------------------ prolongement de la manche
+# (le bras doit sortir par le bas de l'écran) : tube de même couleur, collé au bout de la manche
+SLEEVE_EXT = 0.5
+ring = P[P[:, 0] < 0.03]
+sc = ring.mean(0)
+srad = 0.92 * max(np.ptp(ring[:, 1]), np.ptp(ring[:, 2])) / 2
+bm = bmesh.new()
+bm.from_mesh(me)
+uv_layer = bm.loops.layers.uv.active
+# couleur de manche : UV d'un sommet du dessus de la manche
+probe = None
+for f in bm.faces:
+    c = f.calc_center_median()
+    if 0.06 < c.x < 0.14 and c.z > sc[2] + srad * 0.5:
+        probe = f.loops[0][uv_layer].uv.copy()
+        mat_i = f.material_index
+        break
+segs = 20
+rings = []
+for x in (-SLEEVE_EXT, 0.035):
+    rings.append([bm.verts.new((x, sc[1] + srad * math.cos(2 * math.pi * i / segs), sc[2] + srad * math.sin(2 * math.pi * i / segs))) for i in range(segs)])
+for i in range(segs):
+    j = (i + 1) % segs
+    f = bm.faces.new((rings[0][i], rings[0][j], rings[1][j], rings[1][i]))
+    f.material_index = mat_i
+    f.smooth = True
+    for l in f.loops:
+        l[uv_layer].uv = probe
+bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+bm.to_mesh(me)
+bm.free()
+me.update()
+P = np.array([v.co[:] for v in me.vertices])
+N = len(P)
+adj = [[] for _ in range(N)]
+for e in me.edges:
+    a_, b_ = e.vertices
+    adj[a_].append(b_)
+    adj[b_].append(a_)
+owner_fix = N
+
 # ------------------------------------------------------------------ squelette
 axis_pts = lambda x: P[(P[:, 0] > x - 0.01) & (P[:, 0] < x + 0.01)].mean(0)
 arm_data = bpy.data.armatures.new("fp_rig")
@@ -151,7 +192,7 @@ def bone(name, h, t, parent=None):
     return name
 
 
-bone("arm", axis_pts(0.02), axis_pts(0.2))
+bone("arm", axis_pts(0.02) - np.array([SLEEVE_EXT, 0, 0]), axis_pts(0.2))
 bone("forearm", axis_pts(0.2), axis_pts(WRIST_X), "arm")
 bone("hand", axis_pts(WRIST_X), hand_center + np.array([0.05, 0, 0]), "forearm")
 segs = {}
@@ -245,6 +286,9 @@ if test_dir:
     cams = {"face": ((hc.x + 0.05, hc.y - 0.35, hc.z + 0.12), (hc.x + 0.03, hc.y, hc.z)),
             "profil": ((hc.x + 0.06, hc.y - 0.05, hc.z + 0.38), (hc.x + 0.06, hc.y - 0.02, hc.z)),
             "34": ((hc.x + 0.3, hc.y - 0.25, hc.z + 0.2), (hc.x + 0.04, hc.y - 0.02, hc.z))}
+    pose_fist(0.6, FIST_SIGN)
+    camera((0.05, -1.1, 0.25), (0.05, 0, 0.0), 40)
+    render(os.path.join(test_dir, "full_arm.png"))
     for amt in (0.5, 1.0):
         pose_fist(amt, FIST_SIGN)
         for cn, (loc, tgt) in cams.items():

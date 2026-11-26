@@ -142,7 +142,8 @@ Menu principal : la caméra avance lentement dans la forêt au crépuscule (vrai
 - Coffres : pack **KayKit Dungeon Remastered** de Kay Lousberg, licence **CC0** (`assets/chests/`).
 - Personnage des joueurs (le voyageur encapuchonné) : visuel généré avec OpenArt d'après un croquis de l'auteur, mis en 3D,
   squeletté et animé avec Meshy, assemblé dans Blender (`tools/blender/assemble_character.py`, `extract_arms.py`) :
-  `assets/characters/traveler.glb` (avatar en coop) et `fp_arm_r/l.glb` (bras à la 1re personne).
+  `assets/characters/traveler.glb` (avatar en coop). Bras à la 1re personne : modèle Meshy dédié avec squelette doigt par doigt
+  (`tools/blender/rig_fp_arm.py` → `assets/characters/fp_arm.glb`), doigts pliés par `set_grip()` dans player.gd.
 - Menu principal : vidéo en boucle générée avec OpenArt (Wan 2.7) à partir de l'illustration du voyageur avachi près de la sphère
   (`assets/ui/menu_loop.ogv`, Ogg Theora ; image fixe `menu_art.jpg` en secours).
 - Éclair de Zeus : modèle Meshy (visuel OpenArt, marbre fissuré retexturé), lumière des fissures ajoutée par

@@ -65,7 +65,8 @@ The Pathless).
   (repères muzzle / sight / hand_r / hand_l lus dans le modèle ; cristal « sight_crystal » qui s'estompe en visée).
 - Personnage : voyageur encapuchonné (OpenArt → Meshy : image vers 3D, squelette, animations Idle / Walking_A /
   Running_A / Jump_Idle / Death_A) ; assemblé par tools/blender/assemble_character.py → assets/characters/traveler.glb ;
-  bras 1re personne découpés par extract_arms.py (fp_arm_r/l.glb). Clé API Meshy enregistrée dans l'environnement
+  bras 1re personne : modèle Meshy dédié (2 vues) + squelette doigt par doigt par rig_fp_arm.py -> fp_arm.glb ;
+  player.gd : _add_arm (placement paume / coude / normale de paume, bras gauche en miroir), set_grip (poses GRIPS). Clé API Meshy enregistrée dans l'environnement
   (hôte api.meshy.ai), fichiers sur assets.meshy.ai. Préférence : générer UNE seule version à la fois et demander l'avis.
 - Menu principal : vidéo menu_loop.ogv (OpenArt Wan 2.7, 8 s en boucle, convertie en Ogg Theora avec ffmpeg) ;
   image fixe menu_art.jpg en secours (animée par code : yeux, sphère, brume, lucioles).
