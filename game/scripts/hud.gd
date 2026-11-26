@@ -197,7 +197,7 @@ var orb_panel: Control      # menu de la sphère (lancer, création d'arme)
 var orb_launch_btn: Button
 var orb_craft_btn: Button
 var craft_panel: Control    # création d'arme
-var craft_row: HBoxContainer
+var craft_row: GridContainer
 var menu_player
 var end_panel: Control
 var end_title: Label
@@ -542,7 +542,7 @@ func update_player(p) -> void:
 	else:
 		build_prompt.text = ""
 	var si: int = p.slot_index()
-	var short := {0: "PISTOLET", 1: "FUSIL", 4: "CRYO", 5: "CHOC", 6: "SNIPER"}
+	var short := {0: "PISTOLET", 1: "FUSIL", 4: "CRYO", 5: "CHOC", 6: "SNIPER", 7: "ZEUS"}
 	for i in slots.size():
 		slots[i].add_theme_stylebox_override("panel", slot_on if i == si else slot_off)
 		if i < 2:
@@ -562,6 +562,13 @@ func update_player(p) -> void:
 			mode = 0
 			if p.aiming:
 				mode = 3
+			crosshair.visible = true
+		7:
+			var zready: bool = p.zeus_cd <= 0.0
+			ammo_label.add_theme_color_override("font_color", Color(0.75, 0.9, 1.0) if zready else Color(0.7, 0.7, 0.75))
+			ammo_label.text = ("PRÊT" if zready else "%.1f s" % p.zeus_cd) + "  ·  NUAGES MAGIQUES %s" % ("∞" if p.test_mode else str(p.magic_clouds))
+			info_label.text = "Éclair de Zeus : 1 nuage magique · %d cibles devant toi · %d dégâts chacune" % [p.Upg.ZEUS_TARGETS[p.zeus_level("targets")], int(p.Upg.ZEUS_DAMAGE[p.zeus_level("damage")])]
+			mode = 0
 			crosshair.visible = true
 		6:
 			var sready: bool = p.sniper_cd <= 0.0
@@ -979,9 +986,11 @@ func _build_craft_panel() -> void:
 	t.add_theme_constant_override("outline_size", 10)
 	t.add_theme_color_override("font_outline_color", UI.DARK)
 	_label(vb, "L'arme fabriquée est rangée dans l'inventaire (à équiper en emplacement 1 ou 2).", 16, Color(0.75, 0.78, 0.9))
-	craft_row = HBoxContainer.new()
-	craft_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	craft_row.add_theme_constant_override("separation", 18)
+	craft_row = GridContainer.new()
+	craft_row.columns = 2
+	craft_row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	craft_row.add_theme_constant_override("h_separation", 16)
+	craft_row.add_theme_constant_override("v_separation", 12)
 	vb.add_child(craft_row)
 	var back := Button.new()
 	back.text = "RETOUR"
@@ -1016,13 +1025,18 @@ func _refresh_craft(focus_id := "") -> void:
 	var first: Button = null
 	for r in Upg.CRAFTS:
 		var id: String = r["id"]
+		# arme réservée à la sphère des nuages : visible seulement là-bas (ou si déjà possédée)
+		if r.get("sky_only", false) and not (main.zone == 5 and main.orb4 != null) and not p.owns_craft(id):
+			continue
 		var owned: bool = p.owns_craft(id)
 		var card := PanelContainer.new()
-		var cs := UI.box(Color(0.85, 0.55, 0.12, 0.95) if id == "cryo" else Color(0.70, 0.36, 0.20, 0.95), 6, 16.0, 12.0)
+		var ccol: Color = {"cryo": Color(0.85, 0.55, 0.12, 0.95), "shock": Color(0.70, 0.36, 0.20, 0.95),
+			"sniper": Color(0.2, 0.45, 0.5, 0.95), "zeus": Color(0.35, 0.5, 0.85, 0.95)}.get(id, Color(0.4, 0.4, 0.5, 0.95))
+		var cs := UI.box(ccol, 6, 16.0, 12.0)
 		cs.border_color = Color(1, 1, 1, 0.25)
 		cs.set_border_width_all(2)
 		card.add_theme_stylebox_override("panel", cs)
-		card.custom_minimum_size = Vector2(380, 0)
+		card.custom_minimum_size = Vector2(420, 0)
 		craft_row.add_child(card)
 		var cv := VBoxContainer.new()
 		cv.add_theme_constant_override("separation", 8)
@@ -1031,7 +1045,7 @@ func _refresh_craft(focus_id := "") -> void:
 		ic.texture = UI.icon(r["icon"])
 		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		ic.custom_minimum_size = Vector2(0, 120)
+		ic.custom_minimum_size = Vector2(0, 80)
 		cv.add_child(ic)
 		_label(cv, r["name"], 24)
 		var d := _label(cv, r["desc"], 15, Color(1, 1, 1, 0.9))
@@ -1041,7 +1055,7 @@ func _refresh_craft(focus_id := "") -> void:
 		cost_row.alignment = BoxContainer.ALIGNMENT_CENTER
 		cost_row.add_theme_constant_override("separation", 6)
 		cv.add_child(cost_row)
-		for k in ["wood", "stone", "magic_wood", "magic_stone", "coins", "bone", "arrow_bone", "big_bone"]:
+		for k in ["wood", "stone", "magic_wood", "magic_stone", "magic_cloud", "coins", "bone", "arrow_bone", "big_bone"]:
 			if not r["cost"].has(k):
 				continue
 			var t := TextureRect.new()

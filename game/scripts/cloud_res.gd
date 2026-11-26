@@ -91,9 +91,15 @@ func harvest(p) -> void:
 	if magic:
 		p.add_resource("magic_cloud", 1)
 		var extra := "magic_wood" if randf() < 0.5 else "magic_stone"
-		p.add_resource(extra, 1)
+		var n_extra := 1
+		# compétence « Sève magique » : 50 % de chance d'un bois / d'une pierre magique en plus
+		# (le nuage magique, lui, reste toujours à 1)
+		if p.has_skill("F7") and randf() < 0.5:
+			n_extra += 1
+		p.add_resource(extra, n_extra)
+		p.add_stat("magic")
 		if p.hud:
-			p.hud.show_notice("NUAGE MAGIQUE !\n+1 nuage magique  ·  +1 %s" % ("bois magique" if extra == "magic_wood" else "pierre magique"), 5.0)
+			p.hud.show_notice("NUAGE MAGIQUE !\n+1 nuage magique  ·  +%d %s" % [n_extra, ("bois magique" if extra == "magic_wood" else "pierre magique")], 5.0)
 	p.add_stat("harvested", gained)
 	if main:
 		main.spawn_impact(global_position + Vector3.UP * 0.6, Vector3.UP, Color(1, 1, 1) if not magic else Color(1.0, 0.85, 0.4), 18, 1.6)

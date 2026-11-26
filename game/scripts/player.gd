@@ -8,8 +8,8 @@ const Skills = preload("res://scripts/skills.gd")
 
 signal died
 
-enum W { PISTOL, RIFLE, AXE, BUILD, CRYO, SHOCK, SNIPER }
-const WEAPON_NAMES := ["PISTOLET", "FUSIL D'ASSAUT", "HACHE", "CONSTRUCTION", "CANON CRYOGÉNIQUE", "ONDE DE CHOC", "FUSIL DE PRÉCISION"]
+enum W { PISTOL, RIFLE, AXE, BUILD, CRYO, SHOCK, SNIPER, ZEUS }
+const WEAPON_NAMES := ["PISTOLET", "FUSIL D'ASSAUT", "HACHE", "CONSTRUCTION", "CANON CRYOGÉNIQUE", "ONDE DE CHOC", "FUSIL DE PRÉCISION", "ÉCLAIR DE ZEUS"]
 const RES_MAX := 9999
 const PIECE_NAMES := ["MUR", "SOL", "RAMPE"]
 
@@ -24,6 +24,7 @@ const GUNS := {
 	W.RIFLE: {"mag": 30, "interval": 0.1, "damage": 24.0, "reload": 1.6, "auto": true, "spread": 0.022, "kick": 0.011},
 	# rayon de glace continu : très faibles dégâts, ralentit (70 % de vitesse) et rend vulnérable (+10 %) pendant 3 s
 	W.CRYO: {"mag": 0, "interval": 0.1, "damage": 30.0, "reload": 0.0, "auto": true, "spread": 0.0, "kick": 0.0},
+	W.ZEUS: {"mag": 0, "interval": 1.5, "damage": 1000.0, "reload": 0.0, "auto": false, "spread": 0.0, "kick": 0.0},
 	W.SNIPER: {"mag": 0, "interval": 1.6, "damage": 350.0, "reload": 0.0, "auto": false, "spread": 0.03, "kick": 0.09},
 	W.SHOCK: {"mag": 0, "interval": 4.0, "damage": 100.0, "reload": 0.0, "auto": false, "spread": 0.0, "kick": 0.0},
 }
@@ -72,9 +73,13 @@ var has_rifle := false
 var has_cryo := false
 var has_shock := false
 var has_sniper := false
+var has_zeus := false
+var zeus_cd := 0.0
+var divine_t := 0.0      # toucher divin : bonus de dégâts temporaire après un éclair
+var divine_boost := 0.0
 var sniper_cd := 0.0
 var shock_cd := 0.0   # rechargement de l'onde de choc (indépendant des autres armes)
-var mags := {W.PISTOL: 12, W.RIFLE: 30, W.CRYO: 0, W.SHOCK: 0, W.SNIPER: 0}
+var mags := {W.PISTOL: 12, W.RIFLE: 30, W.CRYO: 0, W.SHOCK: 0, W.SNIPER: 0, W.ZEUS: 0}
 var cryo_beam: MeshInstance3D
 var cryo_beam_t := 0.0
 ## Deux armes à feu équipées (choisies dans l'inventaire) ; la hache est toujours là.
@@ -202,6 +207,7 @@ func _ready() -> void:
 	_build_cryo()
 	_build_shock()
 	_build_sniper()
+	_build_zeus()
 	_build_axe()
 	_build_ghost()
 	_build_avatar()
@@ -233,6 +239,8 @@ func _build_arms() -> void:
 	var pg: Node3D = gun_data[W.PISTOL]["node"]
 	_add_arm(pg, Vector3(0, -0.1, 0.07), Vector3(0.1, -0.42, 0.35))
 	_add_arm(pg, Vector3(-0.035, -0.12, 0.05), Vector3(-0.2, -0.42, 0.25))
+	var zg: Node3D = gun_data[W.ZEUS]["node"]
+	_add_arm(zg, Vector3(0, -0.08, 0.1), Vector3(0.15, -0.42, 0.42))
 	var spg: Node3D = gun_data[W.SNIPER]["node"]
 	_add_arm(spg, Vector3(0, -0.1, 0.12), Vector3(0.15, -0.42, 0.45))
 	_add_arm(spg, Vector3(0, -0.05, -0.32), Vector3(-0.22, -0.4, 0.0))
@@ -603,7 +611,7 @@ func _pick_piece(p: int) -> void:
 
 
 func _is_gun(w: int) -> bool:
-	return w == W.PISTOL or w == W.RIFLE or w == W.CRYO or w == W.SHOCK or w == W.SNIPER
+	return w == W.PISTOL or w == W.RIFLE or w == W.CRYO or w == W.SHOCK or w == W.SNIPER or w == W.ZEUS
 
 
 func _cycle_weapon(dir: int) -> void:
@@ -639,6 +647,8 @@ func owned_guns() -> Array:
 		arr.append(W.SHOCK)
 	if has_sniper:
 		arr.append(W.SNIPER)
+	if has_zeus:
+		arr.append(W.ZEUS)
 	return arr
 
 
@@ -677,6 +687,7 @@ func owns_craft(id: String) -> bool:
 		"cryo": return has_cryo
 		"shock": return has_shock
 		"sniper": return has_sniper
+		"zeus": return has_zeus
 	return false
 
 
@@ -689,9 +700,18 @@ func craft_weapon(id: String) -> bool:
 				"cryo": unlock_cryo()
 				"shock": unlock_shock()
 				"sniper": unlock_sniper()
+				"zeus": unlock_zeus()
 			Sfx.play("build", 0.0, 0.8)
 			return true
 	return false
+
+
+func unlock_zeus() -> void:
+	has_zeus = true
+	if loadout[1] < 0:
+		loadout[1] = W.ZEUS
+	if hud:
+		hud.flash_message("ÉCLAIR DE ZEUS ajouté à l'inventaire")
 
 
 func unlock_sniper() -> void:
@@ -874,6 +894,7 @@ func _update_weapons(delta: float) -> void:
 	fire_cd -= delta
 	shock_cd -= delta
 	sniper_cd -= delta
+	zeus_cd -= delta
 	swing_cd -= delta
 	build_cd -= delta
 	# Souris : on n'agit que si elle est capturée (le clic qui la capture ne doit pas tirer).
@@ -899,6 +920,14 @@ func _update_weapons(delta: float) -> void:
 			if firing and fire_cd <= 0.0:
 				_shoot_cryo()
 			cryo_beam.visible = cryo_beam_t > 0.0
+			trigger_held = firing
+		W.ZEUS:
+			if firing and not trigger_held and zeus_cd <= 0.0:
+				if magic_clouds < 1 and not test_mode:
+					if hud:
+						hud.flash_message("Il faut 1 NUAGE MAGIQUE par éclair")
+				else:
+					_shoot_zeus()
 			trigger_held = firing
 		W.SNIPER:
 			if firing and not trigger_held and sniper_cd <= 0.0:
@@ -1033,7 +1062,7 @@ func _process(delta: float) -> void:
 # ------------------------------------------------------------------ fusil
 
 func _start_reload() -> void:
-	if not _is_gun(weapon) or weapon == W.CRYO or weapon == W.SHOCK or weapon == W.SNIPER or reloading or ammo >= gun_mag(weapon):
+	if not _is_gun(weapon) or weapon == W.CRYO or weapon == W.SHOCK or weapon == W.SNIPER or weapon == W.ZEUS or reloading or ammo >= gun_mag(weapon):
 		return
 	reloading = true
 	reload_t = GUNS[weapon]["reload"] * Upg.reload_mult(gun_lvl(weapon, "reload")) * (0.75 if has_skill("A4") else 1.0)
@@ -1198,6 +1227,150 @@ func _spawn_shock_fx(pos: Vector3, fwd: Vector3, rng: float) -> void:
 	tw.tween_property(m, "albedo_color:a", 0.0, 0.4)
 	tw.chain().tween_callback(mi.queue_free)
 	main.spawn_impact(pos + fwd * rng * 0.6 - Vector3.UP * 0.8, Vector3.UP, Color(0.9, 0.85, 0.7), 16, 1.4)
+
+
+# ------------------------------------------------------------------ éclair de Zeus
+
+func zeus_level(branch: String) -> int:
+	return upgrades["zeus"][branch]
+
+
+## Éclair de Zeus : 1 nuage magique ; la foudre frappe les N ennemis les plus proches du viseur
+## (devant soi, jusqu'à 80 m), puis le « toucher divin » augmente tes dégâts quelques secondes.
+func _shoot_zeus() -> void:
+	var n: int = Upg.ZEUS_TARGETS[zeus_level("targets")]
+	var dmg: float = Upg.ZEUS_DAMAGE[zeus_level("damage")]
+	var fwd := -cam.global_transform.basis.z
+	var cands := []
+	for z in get_tree().get_nodes_in_group("zombie"):
+		if z.dead:
+			continue
+		var c: Vector3 = z.global_position + Vector3.UP * (5.0 if z.is_in_group("titan") else 1.2)
+		var v: Vector3 = c - cam.global_position
+		var dist := v.length()
+		if dist > 80.0 or dist < 0.5:
+			continue
+		var ang := fwd.angle_to(v / dist)
+		if ang > deg_to_rad(40.0):
+			continue
+		cands.append([ang * 30.0 + dist * 0.2, z, c])
+	if cands.is_empty():
+		if hud:
+			hud.flash_message("Aucune cible devant toi")
+		zeus_cd = 0.3
+		return
+	cands.sort_custom(func(a, b): return a[0] < b[0])
+	zeus_cd = Upg.ZEUS_COOLDOWN
+	if not test_mode:
+		magic_clouds -= 1
+	recoil = 1.2
+	_shake(0.03)
+	Sfx.play("break", 0.0, 1.8)
+	Sfx.play("horn", -10.0, 2.2)
+	var from: Vector3 = muzzle.global_position
+	var hits := 0
+	for i in mini(n, cands.size()):
+		var z = cands[i][1]
+		var c: Vector3 = cands[i][2]
+		_spawn_bolt(from, c)
+		_spawn_bolt(c + Vector3(randf_range(-2, 2), 30.0, randf_range(-2, 2)), c)
+		deal_damage(z, dmg, false, "zeus")
+		main.spawn_impact(c, Vector3.UP, Color(0.8, 0.9, 1.0), 14, 1.4)
+		hits += 1
+	if hud:
+		hud.hitmarker(false)
+	# toucher divin (s'il est amélioré)
+	var boost: float = Upg.ZEUS_BOOST[zeus_level("boost")]
+	if boost > 0.0:
+		divine_boost = boost
+		divine_t = Upg.ZEUS_DURATION[zeus_level("duration")]
+
+
+## Éclair visible : ligne brisée lumineuse entre deux points, qui s'efface vite.
+func _spawn_bolt(a: Vector3, b: Vector3) -> void:
+	var root := Node3D.new()
+	main.add_child(root)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(0.75, 0.88, 1.0, 1.0)
+	var segs := 8
+	var prev := a
+	var dir := b - a
+	var side := dir.cross(Vector3.UP).normalized()
+	if side.length() < 0.1:
+		side = Vector3.RIGHT
+	for i in range(1, segs + 1):
+		var t := float(i) / segs
+		var pt := a + dir * t
+		if i < segs:
+			pt += side * randf_range(-0.6, 0.6) + Vector3.UP * randf_range(-0.4, 0.4)
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.07, 0.07, prev.distance_to(pt))
+		mi.mesh = bm
+		mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(mi)
+		mi.global_position = (prev + pt) * 0.5
+		var up := Vector3.UP if absf((pt - prev).normalized().y) < 0.98 else Vector3.RIGHT
+		mi.look_at(pt, up)
+		prev = pt
+	var l := OmniLight3D.new()
+	l.light_color = Color(0.7, 0.85, 1.0)
+	l.light_energy = 5.0
+	l.omni_range = 10.0
+	root.add_child(l)
+	l.global_position = b
+	var tw := root.create_tween()
+	tw.tween_property(mat, "albedo_color:a", 0.0, 0.3)
+	tw.tween_callback(root.queue_free)
+
+
+## Éclair de Zeus en main : bâton doré terminé par un éclair lumineux.
+func _build_zeus() -> void:
+	var g := Node3D.new()
+	g.position = HIP_POS
+	g.scale = Vector3.ONE * 0.82
+	g.visible = false
+	viewmodel.add_child(g)
+	var gold := Mats.col(Color(1.0, 0.8, 0.3), 0.3)
+	var white := Mats.col(Color(0.95, 0.96, 1.0), 0.6)
+	var bolt := StandardMaterial3D.new()
+	bolt.albedo_color = Color(0.75, 0.9, 1.0, 0.9)
+	bolt.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bolt.emission_enabled = true
+	bolt.emission = Color(0.6, 0.85, 1.0)
+	bolt.emission_energy_multiplier = 4.0
+	Mats.cylinder(g, 0.025, 0.03, 0.55, gold, Vector3(0, 0, 0.05), Vector3(90, 0, 0), 10)
+	Mats.cylinder(g, 0.045, 0.045, 0.05, white, Vector3(0, 0, 0.25), Vector3(90, 0, 0), 10)
+	# éclair en zigzag à l'avant
+	var pts := [Vector3(0, 0, -0.22), Vector3(0.05, 0.04, -0.32), Vector3(-0.04, 0.0, -0.42), Vector3(0.04, 0.05, -0.54), Vector3(0, 0.02, -0.64)]
+	for i in pts.size() - 1:
+		var a: Vector3 = pts[i]
+		var b: Vector3 = pts[i + 1]
+		var mi := Mats.box(g, Vector3(0.03, 0.03, a.distance_to(b)), bolt, (a + b) * 0.5)
+		mi.look_at_from_position((a + b) * 0.5, b, Vector3.UP)
+	Mats.box(g, Vector3(0.05, 0.13, 0.06), Mats.col(Color(0.2, 0.18, 0.25)), Vector3(0, -0.1, 0.12), Vector3(-15, 0, 0))
+	var glow := OmniLight3D.new()
+	glow.light_color = Color(0.6, 0.85, 1.0)
+	glow.light_energy = 0.6
+	glow.omni_range = 0.8
+	glow.position = Vector3(0, 0.02, -0.4)
+	g.add_child(glow)
+	var m := Marker3D.new()
+	m.position = Vector3(0, 0.02, -0.66)
+	g.add_child(m)
+	var fl := Mats.sphere(m, 0.06, bolt, Vector3.ZERO, 6)
+	fl.visible = false
+	var li := OmniLight3D.new()
+	li.light_color = Color(0.7, 0.85, 1.0)
+	li.omni_range = 5.0
+	li.light_energy = 0.0
+	m.add_child(li)
+	gun_data[W.ZEUS] = {"node": g, "muzzle": m, "flash": fl, "light": li, "crystal": bolt, "glow": glow,
+		"hip": HIP_POS, "ads": Vector3(0.0, -0.2, -0.5), "rest": Vector3(0, deg_to_rad(6.0), 0)}
 
 
 # ------------------------------------------------------------------ fusil de précision
@@ -1516,6 +1689,8 @@ func harvest_bonus(kind: String) -> float:
 ## Multiplicateur de dégâts selon la source (« gun », « axe », « shock », « fire »).
 func dmg_mult(src: String) -> float:
 	var m := 1.05 if has_skill("A1") else 1.0
+	if divine_t > 0.0:
+		m *= 1.0 + divine_boost   # toucher divin (éclair de Zeus)
 	if src == "gun" and has_skill("A2"):
 		m *= 1.10
 	if src == "axe" and has_skill("A3"):
@@ -1634,6 +1809,7 @@ class Fireball extends Node3D:
 
 func _update_skills(delta: float) -> void:
 	fireball_cd = maxf(fireball_cd - delta, 0.0)
+	divine_t = maxf(divine_t - delta, 0.0)
 	if dead:
 		_last_pos = Vector3.INF
 		return
@@ -2068,7 +2244,7 @@ func respawn(pos: Vector3, invuln := 3.0) -> void:
 	invuln_t = invuln
 	hp = max_hp()
 	shield = shield_max()
-	mags = {W.PISTOL: gun_mag(W.PISTOL), W.RIFLE: gun_mag(W.RIFLE), W.CRYO: 0, W.SHOCK: 0, W.SNIPER: 0}
+	mags = {W.PISTOL: gun_mag(W.PISTOL), W.RIFLE: gun_mag(W.RIFLE), W.CRYO: 0, W.SHOCK: 0, W.SNIPER: 0, W.ZEUS: 0}
 	ammo = gun_mag(weapon) if _is_gun(weapon) else ammo
 	reloading = false
 	position = pos

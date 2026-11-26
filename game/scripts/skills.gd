@@ -28,7 +28,7 @@ const SKILLS := {
 	"F5": {"branch": "farm", "pos": Vector2(2, 2), "parent": "F3", "name": "ŒIL DU FORESTIER",
 		"desc": "Toucher une cible de récolte rapporte +50 % de plus sur ce coup.", "stat": "targets", "need": 75},
 	"F7": {"branch": "farm", "pos": Vector2(0, 4), "parent": "F9", "name": "SÈVE MAGIQUE",
-		"desc": "Arbre / rocher magique terminé : 50 % de chance d'un bois / d'une pierre magique en plus.", "stat": "magic", "need": 4},
+		"desc": "Arbre / rocher / nuage magique : 50 % de chance d'un bois / d'une pierre magique en plus (le nuage magique reste à 1).", "stat": "magic", "need": 4},
 	"F8": {"branch": "farm", "pos": Vector2(2, 3), "parent": "F5", "name": "ARCHITECTE",
 		"desc": "Constructions et réparations 20 % moins chères (bois / pierre).", "stat": "built", "need": 150},
 	"F9": {"branch": "farm", "pos": Vector2(0, 3), "parent": "F4", "name": "CHAROGNARD",

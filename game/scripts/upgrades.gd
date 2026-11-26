@@ -44,6 +44,8 @@ const ITEMS := {
 		["damage", "Dégâts"], ["cooldown", "Rechargement"], ["range", "Portée"]]},
 	"sniper": {"name": "FUSIL DE PRÉCISION", "branches": [
 		["cooldown", "Réarmement"], ["damage", "Dégâts de base"], ["headshot", "Multiplicateur tir à la tête"], ["defense", "Défense (arme en main)"]]},
+	"zeus": {"name": "ÉCLAIR DE ZEUS", "branches": [
+		["targets", "Nombre de cibles"], ["damage", "Dégâts par cible"], ["boost", "Toucher divin (bonus de dégâts)"], ["duration", "Durée du toucher divin"]]},
 	"wire": {"name": "BARBELÉS", "branches": [
 		["slow", "Ralentissement"], ["damage", "Dégâts"]]},
 }
@@ -64,6 +66,8 @@ const CRAFTS := [
 		"desc": "Rayon de glace continu : ralentit et rend vulnérable."},
 	{"id": "shock", "name": "ONDE DE CHOC", "icon": "w_shock", "cost": {"wood": 2000, "stone": 1000, "bone": 30},
 		"desc": "1 os par tir : cône large devant toi, 225 dégâts à tous les squelettes touchés."},
+	{"id": "zeus", "name": "ÉCLAIR DE ZEUS", "icon": "w_zeus", "cost": {"magic_cloud": 15, "magic_wood": 10, "magic_stone": 10},
+		"desc": "1 nuage magique par tir : la foudre frappe 5 cibles, 1000 dégâts chacune.", "sky_only": true},
 	{"id": "sniper", "name": "FUSIL DE PRÉCISION", "icon": "w_sniper", "cost": {"wood": 2000, "stone": 1000, "arrow_bone": 20},
 		"desc": "Lunette, coup par coup, 1 os par balle : 350 dégâts, ×3 à la tête."},
 ]
@@ -107,6 +111,8 @@ static func shock_range(lvl: int) -> float:
 static func max_level(item: String, branch: String) -> int:
 	if item == "shock":
 		return SHOCK_LEVELS[branch]
+	if item == "zeus":
+		return 5
 	return MAX_LEVEL
 
 
@@ -133,8 +139,20 @@ static func sniper_headshot(lvl: int) -> float:
 	return SNIPER_BASE_HEADSHOT + 0.25 * lvl
 
 
+# ------------------------------------------------------------------ éclair de Zeus (5 niveaux par branche, non linéaires)
+const ZEUS_TARGETS := [5, 6, 7, 8, 9, 10]
+const ZEUS_DAMAGE := [1000.0, 1100.0, 1250.0, 1400.0, 1600.0, 2000.0]
+const ZEUS_BOOST := [0.0, 0.15, 0.30, 0.50, 0.70, 1.0]       # toucher divin : bonus de dégâts du personnage
+const ZEUS_DURATION := [2.0, 3.0, 4.5, 6.0, 8.0, 10.0]        # durée du toucher divin (s)
+const ZEUS_COOLDOWN := 1.5
+const ZEUS_COSTS := [{"magic_wood": 1}, {"magic_stone": 1}, {"magic_wood": 2}, {"magic_stone": 2},
+	{"magic_cloud": 1, "magic_wood": 3, "magic_stone": 3}]
+
+
 static func cost(item: String, branch: String, level: int) -> Dictionary:
 	# level = niveau visé (1..max)
+	if item == "zeus":
+		return ZEUS_COSTS[level - 1].duplicate()
 	if item == "sniper":
 		var sc := {}
 		for k in SNIPER_COSTS:
@@ -170,6 +188,12 @@ static func cost_text(c: Dictionary) -> String:
 		parts.append("%d pièces" % c["coins"])
 	if c.has("bone"):
 		parts.append("%d os" % c["bone"])
+	if c.has("magic_wood"):
+		parts.append("%d bois magique" % c["magic_wood"])
+	if c.has("magic_stone"):
+		parts.append("%d pierre magique" % c["magic_stone"])
+	if c.has("magic_cloud"):
+		parts.append("%d nuage magique" % c["magic_cloud"])
 	if c.has("arrow_bone"):
 		parts.append("%d os en flèche" % c["arrow_bone"])
 	if c.has("big_bone"):
@@ -239,6 +263,12 @@ static func cryo_stack_time(lvl: int) -> float:
 
 ## Texte de l'effet d'une branche à un niveau donné (pour l'interface).
 static func effect_text(item: String, branch: String, lvl: int, base_mag := 12) -> String:
+	if item == "zeus":
+		match branch:
+			"targets": return "%d cibles" % ZEUS_TARGETS[lvl]
+			"damage": return "%d dégâts" % int(ZEUS_DAMAGE[lvl])
+			"boost": return "+%d %% de dégâts" % int(round(ZEUS_BOOST[lvl] * 100.0))
+			"duration": return "%.1f s" % ZEUS_DURATION[lvl]
 	if item == "sniper":
 		match branch:
 			"cooldown":

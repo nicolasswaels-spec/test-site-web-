@@ -57,6 +57,7 @@ The Pathless).
 - Arbre de compétences (page PERSONNAGE de l'inventaire) : 27 compétences, prérequis + jetons (1 / vague, 3 après le titan).
 - Fusil de précision (création d'arme) ; défense sans fin après la 4e sphère (flux continu, niveaux croissants,
   chronomètre et record dans user://records.cfg).
+- Éclair de Zeus (création d'arme à la sphère des nuages seulement ; ZEUS_* dans upgrades.gd).
 - Musique : fichiers à déposer dans `game/assets/music/` (`menu`, `game`, `battle` en mp3/ogg/wav).
 
 ## Organisation du code (`game/`)

@@ -2450,6 +2450,7 @@ func _apply_test_mode(p) -> void:
 	p.unlock_cryo()
 	p.unlock_shock()
 	p.unlock_sniper()
+	p.unlock_zeus()
 	p.set_loadout(0, p.W.PISTOL)
 	p.set_loadout(1, p.W.RIFLE)
 	p._select_weapon(p.W.PISTOL)

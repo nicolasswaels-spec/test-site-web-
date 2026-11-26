@@ -247,3 +247,13 @@ def sniper_icon():
     return im
 
 save(sniper_icon(), "w_sniper")
+
+
+def zeus_icon():
+    im = Image.new("RGBA", (S, S), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
+    bolt = [(300, 40), (180, 250), (260, 250), (190, 470), (360, 210), (280, 210), (350, 40)]
+    d.polygon(bolt, fill=(255, 225, 110))
+    d.line(bolt + [bolt[0]], fill=(255, 250, 220), width=8)
+    return glow(im, (140, 190, 255), 26, 2.0)
+
+save(zeus_icon(), "w_zeus")
