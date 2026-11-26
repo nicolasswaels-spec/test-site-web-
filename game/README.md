@@ -137,8 +137,9 @@ Menu principal : la caméra avance lentement dans la forêt au crépuscule (vrai
 - Modèles 3D de nature (sapins, herbe, plantes, buissons, rochers, arbres morts) et leurs textures :
   pack **Ultimate Stylized Nature** de [Quaternius](https://quaternius.com), licence **CC0** (domaine public).
   Fichiers dans `assets/nature/`, textures réduites à 1024 px, recolorées en code (`scripts/nature.gd`).
-- Armes en main (pistolet, fusil, cryo, onde de choc, précision, Zeus, hache) : modélisées pour le jeu dans
-  Blender par script (`tools/blender/*.py`, voir `tools/blender/README.md`), exportées dans `assets/weapons/*.glb`.
+- Armes en main (pistolet, fusil, cryo, onde de choc, précision, Zeus, hache) : visuels générés avec OpenArt, modèles 3D Meshy,
+  préparés dans Blender (`tools/blender/glow_weapon.py` : cristaux et fissures lumineux ; `finalize_meshy_weapon.py` :
+  orientation, taille, repères) → `assets/weapons/<arme>.glb` ; variantes de Dieu fissurées (retexture Meshy) → `<arme>_god.glb`.
 - Coffres : pack **KayKit Dungeon Remastered** de Kay Lousberg, licence **CC0** (`assets/chests/`).
 - Personnage des joueurs (le voyageur encapuchonné) : visuel généré avec OpenArt d'après un croquis de l'auteur, mis en 3D,
   squeletté et animé avec Meshy, assemblé dans Blender (`tools/blender/assemble_character.py`, `extract_arms.py`) :

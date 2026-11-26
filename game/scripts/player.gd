@@ -455,7 +455,7 @@ func _ads_from(sight: Vector3, k: float, z: float, below := 0.022) -> Vector3:
 ## Pistolet de garde forestier (modèle Blender, tools/blender/pistol.py) : culasse bleu-nuit,
 ## crosse en bois, laiton, cœur de cristal turquoise visible par la fenêtre, cristal-viseur.
 func _build_pistol() -> void:
-	_gun_from_model(W.PISTOL, "res://assets/weapons/pistol.glb", PISTOL_HIP, PISTOL_ADS.z, 0.9,
+	_gun_from_model(W.PISTOL, "res://assets/weapons/pistol.glb", PISTOL_HIP, PISTOL_ADS.z - 0.06, 1.25,
 		Color(0.2, 0.9, 0.8), Color(1.0, 0.75, 0.35), 12.0)
 
 
