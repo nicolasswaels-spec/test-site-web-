@@ -147,3 +147,7 @@ assets/                modèles 3D CC0 : nature (Quaternius), skeletons, chests,
   donner le lien de téléchargement.
 - Préférence de l'utilisateur : réponses franches et objectives, corriger les erreurs
   sans complaisance.
+
+### Retours de test (sphère, bras)
+- Sphère : la boule est désormais celle du modèle Meshy (objet « ball » séparé du socle, texturé), qui flotte et tourne ; plus de noyau/coquille/anneaux lumineux, lumière ramenée à ~1,4.
+- Bras FPS : épaules placées très bas (le manchon du bras ne rentre presque plus dans le champ), armes longues abaissées et décalées à droite (crosse hors écran), index tendu sur la gâchette (courbure par doigt dans GRIPS).

@@ -1,52 +1,23 @@
 extends StaticBody3D
-## La sphère lumineuse à défendre. Sa couleur change en continu.
+## La sphère à défendre : socle sculpté et boule turquoise (modèle Meshy d'après l'illustration du menu).
 
 const Mats = preload("res://scripts/mats.gd")
 
 signal damaged(amount: float)
 signal destroyed
 
-const CORE_SHADER := """
-shader_type spatial;
-render_mode unshaded;
-uniform vec4 base_color : source_color = vec4(0.3, 0.8, 1.0, 1.0);
-uniform float flash = 0.0;
-void fragment() {
-	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.0);
-	float swirl = 0.5 + 0.5 * sin(UV.x * 30.0 + UV.y * 14.0 + TIME * 3.0);
-	float swirl2 = 0.5 + 0.5 * sin(UV.x * -18.0 + UV.y * 22.0 - TIME * 2.0);
-	vec3 col = base_color.rgb * (1.1 + swirl * 0.5 + swirl2 * 0.4) + vec3(1.0) * fres * 1.6;
-	col = mix(col, vec3(3.0, 0.3, 0.2), flash);
-	ALBEDO = col;
-}
-"""
-
-const SHELL_SHADER := """
-shader_type spatial;
-render_mode unshaded, blend_add, depth_draw_never, cull_back;
-uniform vec4 base_color : source_color = vec4(0.3, 0.8, 1.0, 1.0);
-void fragment() {
-	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
-	ALBEDO = base_color.rgb * fres * 2.5;
-	ALPHA = fres;
-}
-"""
-
 var max_hp := 2500.0
 var hp := 2500.0
 var dead := false
-var core: MeshInstance3D
-var core_mat: ShaderMaterial
-var shell_mat: ShaderMaterial
+var core: Node3D
+var ball_mat: StandardMaterial3D
 var light: OmniLight3D
-var rings: Array[MeshInstance3D] = []
 var particles: CPUParticles3D
 var particle_mat: StandardMaterial3D
 var t := 0.0
 var flash := 0.0
 const CORE_Y := 1.78   # au-dessus du socle sculpté (modèle Meshy d'après l'image du menu)
 const ALTAR := "res://assets/orb/orb_altar.glb"
-const SIZE := 1.15      # sphère un peu plus grosse pour aller avec le socle
 
 
 func _ready() -> void:
@@ -84,45 +55,33 @@ func _ready() -> void:
 	add_child(s3)
 	add_child(s2)
 
-	core = MeshInstance3D.new()
-	var sm := SphereMesh.new()
-	sm.radius = 0.38
-	sm.height = 0.76
-	sm.radial_segments = 48
-	sm.rings = 24
-	core.mesh = sm
-	core_mat = ShaderMaterial.new()
-	var sh := Shader.new()
-	sh.code = CORE_SHADER
-	core_mat.shader = sh
-	core.material_override = core_mat
+	# la boule du modèle (texture turquoise striée) : animée ici (flotte, tourne) ; repli : sphère simple
+	core = Node3D.new()
 	core.position.y = CORE_Y
-	core.scale = Vector3.ONE * SIZE
 	add_child(core)
-
-	var shell := MeshInstance3D.new()
-	var sm2 := SphereMesh.new()
-	sm2.radius = 0.52
-	sm2.height = 1.04
-	shell.mesh = sm2
-	shell_mat = ShaderMaterial.new()
-	var sh2 := Shader.new()
-	sh2.code = SHELL_SHADER
-	shell_mat.shader = sh2
-	shell.material_override = shell_mat
-	core.add_child(shell)
-
-	for i in 2:
-		var r := MeshInstance3D.new()
-		var tm := TorusMesh.new()
-		tm.inner_radius = 0.6 + i * 0.11
-		tm.outer_radius = 0.635 + i * 0.11
-		r.mesh = tm
-		r.material_override = Mats.col(Color(1, 1, 1), 0.3, 1.5)
-		r.position.y = CORE_Y
-		r.scale = Vector3.ONE * SIZE
-		add_child(r)
-		rings.append(r)
+	var ball: MeshInstance3D = null
+	for c in get_children():
+		if c is Node3D and c != core:
+			ball = c.find_child("ball", true, false) as MeshInstance3D
+			if ball:
+				break
+	if ball:
+		ball.get_parent().remove_child(ball)
+		ball.transform = Transform3D(Basis(Vector3.UP, PI * 0.5), Vector3.ZERO)
+		core.add_child(ball)
+		var src := ball.mesh.surface_get_material(0) as StandardMaterial3D
+		ball_mat = (src.duplicate() if src else StandardMaterial3D.new()) as StandardMaterial3D
+		ball_mat.roughness_texture = null
+		ball_mat.roughness = 0.45
+		ball_mat.metallic = 0.0
+		ball_mat.emission_enabled = true
+		ball_mat.emission_texture = null
+		ball_mat.emission = Color(0.1, 0.6, 0.55)
+		ball_mat.emission_energy_multiplier = 0.35
+		ball.material_override = ball_mat
+	else:
+		ball_mat = Mats.col(Color(0.2, 0.8, 0.75), 0.4, 0.6)
+		Mats.sphere(core, 0.44, ball_mat, Vector3.ZERO, 24)
 
 	light = OmniLight3D.new()
 	light.position.y = CORE_Y
@@ -154,19 +113,17 @@ func _process(delta: float) -> void:
 	t += delta
 	# turquoise comme sur l'illustration du menu, qui ondule légèrement
 	var c := Color.from_hsv(0.47 + 0.035 * sin(t * 0.6), 0.72, 1.0)
-	core_mat.set_shader_parameter("base_color", c)
-	shell_mat.set_shader_parameter("base_color", c)
 	light.light_color = c
 	particle_mat.albedo_color = c.lightened(0.3)
 	flash = maxf(flash - delta * 4.0, 0.0)
-	core_mat.set_shader_parameter("flash", flash)
+	# coup reçu : la boule rougeoie un instant
+	ball_mat.emission = Color(0.1, 0.6, 0.55).lerp(Color(1.0, 0.15, 0.1), flash)
+	ball_mat.emission_energy_multiplier = 0.35 + flash * 2.0
 	if dead:
 		return
 	core.position.y = CORE_Y + sin(t * 1.4) * 0.06
 	core.rotation.y += delta * 0.4
-	rings[0].rotation = Vector3(t * 0.7, t * 0.3, 0.4)
-	rings[1].rotation = Vector3(-t * 0.4, 0.0, t * 0.6)
-	light.light_energy = 2.5 + sin(t * 3.0) * 0.4
+	light.light_energy = 1.4 + sin(t * 3.0) * 0.25
 
 
 func take_damage(amount: float) -> void:

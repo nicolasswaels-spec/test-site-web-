@@ -43,8 +43,8 @@ const MAGIC_BUILD_COST := 1   # 1 bois / pierre magique = 1 pièce
 const MAX_HP := 100.0
 const MASK_SHOOT := 1 | 4 | 8 | 16 | 32
 
-const HIP_POS := Vector3(0.25, -0.22, -0.64)
-const ADS_POS := Vector3(0.0, -0.105, -0.72)
+const HIP_POS := Vector3(0.29, -0.29, -0.7)   # armes longues un peu avancées : la crosse sort de l'écran
+const ADS_POS := Vector3(0.0, -0.105, -0.8)
 const AXE_POS := Vector3(0.34, -0.32, -0.55)
 const PISTOL_HIP := Vector3(0.17, -0.17, -0.4)
 const PISTOL_ADS := Vector3(0.0, -0.085, -0.36)
@@ -228,13 +228,14 @@ const PALM_C := Vector3(0.455, 0.0, 0.0)     # centre de la paume (modèle), rec
 const FINGERS := ["index", "middle", "ring", "pinky"]
 ## Poses de prise : flexion des doigts (0 = ouverte, 1 = poing) et du pouce, opposition du pouce.
 const GRIPS := {
-	"pistol": {"curl": 0.82, "thumb": 0.45, "opp": 0.7},
+	"pistol": {"curl": 0.82, "index": 0.22, "thumb": 0.45, "opp": 0.7},   # index tendu sur la gâchette
 	"support": {"curl": 0.5, "thumb": 0.25, "opp": 0.3},
 	"fist": {"curl": 1.0, "thumb": 0.6, "opp": 0.9},
 }
 var arm_rigs: Array = []        # [{skel, side}] : coude orienté vers l'épaule, animations de doigts
 ## Épaules (repère de la caméra) : le haut du bras part du coude vers ce point, hors de l'écran.
-const SHOULDERS := [Vector3(0.24, -0.34, 0.18), Vector3(-0.24, -0.34, 0.18)]
+# épaules très basses et en retrait : le haut du bras (manchon) file hors champ, on ne voit que l'avant-bras
+const SHOULDERS := [Vector3(0.34, -0.9, 0.05), Vector3(-0.32, -0.9, -0.05)]
 
 
 ## Place un bras : centre de la paume sur « hand », avant-bras vers « elbow » (hors de l'écran),
@@ -313,7 +314,7 @@ static func set_grip(skel: Skeleton3D, g: Dictionary) -> void:
 			else:
 				var pi := skel.get_bone_parent(bi)
 				dir = (grest.origin - skel.get_bone_global_rest(pi).origin).normalized()
-			var amount: float = g["thumb"] if f == "thumb" else g["curl"]
+			var amount: float = g.get(f, g["curl"])
 			var q := Quaternion(grest.basis.inverse() * dir.cross(PALM_N).normalized(), deg_to_rad(angles[j] * amount))
 			if f == "thumb" and j == 0:
 				# opposition : le pouce passe devant la paume (rotation autour de l'axe de la main)
@@ -332,7 +333,7 @@ func _build_arms() -> void:
 		_add_arm(g, hr, hr + Vector3(0.08, -0.25, 0.35), 0, Vector3.LEFT, "pistol")
 		if hl.z < hr.z - 0.15:
 			# arme longue : main gauche sous le garde-main, doigts qui passent en travers, paume vers le haut
-			_add_arm(g, hl, hl + Vector3(-0.3, -0.25, 0.12), 1, Vector3.UP, "support")
+			_add_arm(g, hl, hl + Vector3(-0.24, -0.3, 0.22), 1, Vector3.UP, "support")   # coude bas et proche : avant-bras qui file hors champ
 		# armes courtes (pistolet...) : tenues d'une main
 	var h: Node3D = axe_pivot.get_child(0)
 	_add_arm(h, Vector3(0, -0.04, 0), Vector3(0.32, -0.2, 0.22), 0, Vector3(-1, 0, -1).normalized(), "fist")
