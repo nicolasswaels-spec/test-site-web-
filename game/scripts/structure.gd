@@ -61,6 +61,9 @@ uniform int axis = 0;
 uniform int stone = 0;
 uniform int magic = 0;
 uniform int cloud = 0;
+uniform int use_tex = 0;
+uniform sampler2D tex : source_color, filter_linear_mipmap, repeat_disable;
+uniform vec2 extent = vec2(4.0, 4.0);     // taille de la face (largeur, hauteur) pour placer la texture
 uniform mat4 to_local = mat4(1.0);
 varying vec3 lp;
 void vertex() { lp = (to_local * MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
@@ -96,7 +99,16 @@ void fragment() {
 		vec3 rock = mix(vec3(0.36, 0.36, 0.44), vec3(0.50, 0.49, 0.58), hash2(cell));
 		c = mix(vec3(0.14, 0.14, 0.18), rock, mortar);
 	}
-	if (magic == 1) {
+	if (use_tex == 1) {
+		// texture peinte (visuels OpenArt) : une image par matériau et par niveau, posée sur toute la face
+		vec2 uv = vec2(along / extent.x + 0.5, 0.5 - coord / extent.y);
+		vec3 t = texture(tex, clamp(uv, vec2(0.002), vec2(0.998))).rgb;
+		c = t;
+		// parties lumineuses (veines dorées des pièces magiques, cristaux) : elles brillent un peu
+		float lum = dot(t, vec3(0.333));
+		float sat = max(t.r, max(t.g, t.b)) - min(t.r, min(t.g, t.b));
+		EMISSION = t * smoothstep(0.62, 0.9, lum) * smoothstep(0.25, 0.5, sat) * (magic == 1 ? 1.6 : 0.6);
+	} else if (magic == 1) {
 		// mousse lumineuse : plaques vertes, plus denses en haut et sur les joints
 		float n = hash2(floor(vec2(along, coord) * 3.0)) * 0.6 + hash2(floor(vec2(along, coord) * 7.0)) * 0.4;
 		float moss = smoothstep(0.45, 0.7, n + coord * 0.12);
@@ -104,7 +116,7 @@ void fragment() {
 		c = mix(c, moss_col, moss * 0.85);
 		EMISSION = vec3(0.10, 0.85, 0.45) * moss * 0.25 * (0.7 + 0.3 * sin(TIME * 1.5 + along));
 	}
-	if (cloud == 1) {
+	if (cloud == 1 && use_tex == 0) {
 		// nuage : boules cotonneuses en relief (ombres bleutées dans les creux), qui dérivent doucement
 		vec2 q = vec2(along, coord) * 1.0 + vec2(TIME * 0.05, TIME * 0.02);
 		float h = cloud_h(q);
@@ -127,6 +139,23 @@ void fragment() {
 """
 
 static var _shader: Shader
+static var _tex_cache := {}
+const TEX_DIR := "res://assets/structures/"
+
+
+## Texture peinte de la pièce : bois / pierre / nuage par niveau (0 à 3), magique sans niveau.
+func _texture() -> Texture2D:
+	var key: String
+	match material_type:
+		MAGIC_WOOD: key = "magic_wood"
+		MAGIC_STONE: key = "magic_stone"
+		STONE: key = "stone_%d" % level
+		CLOUD: key = "cloud_%d" % level
+		_: key = "wood_%d" % level
+	if not _tex_cache.has(key):
+		var path := TEX_DIR + key + ".jpg"
+		_tex_cache[key] = load(path) if ResourceLoader.exists(path) else null
+	return _tex_cache[key]
 
 var piece := WALL
 var material_type := WOOD
@@ -312,11 +341,21 @@ func _rebuild_visual() -> void:
 	mat.set_shader_parameter("stone", 1 if family() == 1 else 0)
 	mat.set_shader_parameter("cloud", 1 if family() == 2 else 0)
 	mat.set_shader_parameter("magic", 1 if is_magic() else 0)
+	var tx := _texture()
+	mat.set_shader_parameter("use_tex", 1 if tx else 0)
+	mat.set_shader_parameter("tex", tx)
+	var sz: Vector3 = SIZES[piece]
+	mat.set_shader_parameter("extent", Vector2(sz.x, sz.y) if piece == WALL else Vector2(sz.z, sz.x))
 	if is_inside_tree():
 		mat.set_shader_parameter("to_local", Projection(global_transform.affine_inverse()))
 	var size: Vector3 = SIZES[piece]
 	for b in _blocks():
 		Mats.box(visual, b[1], mat, b[0])
+	if tx:
+		# la texture peinte montre déjà le cadre et les renforts du niveau
+		if family() == 2:
+			_cloud_trim(size)
+		return
 	var frame: StandardMaterial3D = [Mats.col(Color(0.30, 0.18, 0.10)), Mats.col(Color(0.22, 0.22, 0.28)), Mats.col(Color(0.85, 0.9, 1.0), 0.9, 0.2)][family()]
 	if is_magic():
 		frame = Mats.col(Color(0.16, 0.42, 0.20), 0.9, 0.25)
