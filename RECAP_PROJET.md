@@ -72,7 +72,8 @@ The Pathless).
   image fixe menu_art.jpg en secours (animée par code : yeux, sphère, brume, lucioles).
 - Armes Meshy (en cours, une par une avec validation) : visuel OpenArt -> image-to-3d Meshy -> glow_weapon.py (émission)
   -> finalize_meshy_weapon.py (orientation, taille, repères). Fait : Éclair de Zeus (rayons de lumière : _add_light_rays).
-- Musique : fichiers à déposer dans `game/assets/music/` (`menu`, `game`, `battle` en mp3/ogg/wav).
+- Musique : fichiers à déposer dans `game/assets/music/` (mp3/ogg/wav) : menu, game, battle, volcano, volcano_battle,
+  volcano_boss, sky, sky_battle, sky_boss, endless (+ boss en secours) ; main.gd : music_region(), music.gd : play_region / play_any.
 
 ## Organisation du code (`game/`)
 

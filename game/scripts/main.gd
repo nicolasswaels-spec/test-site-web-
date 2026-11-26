@@ -343,7 +343,7 @@ func _ready() -> void:
 
 	refresh_mouse()
 	countdown = START_TIME
-	Music.play("game")
+	Music.play_region("game", music_region())
 	if Settings.test_mode:
 		hud.show_notice("MODE TEST : toutes les armes (inventaire pour choisir les 2 équipées)\net ressources illimitées.", 6.0)
 	hud.show_center("ZONE ZÉRO", "Coupe du bois (2), construis (3), puis active la sphère (E)", 4.0)
@@ -1220,10 +1220,19 @@ func _spawn_radius() -> float:
 	return SPAWN_RADIUS if zone == 1 else zone_radius(zone) - 5.0
 
 
+## Région musicale de la zone en cours : forêt (« »), volcan (titan + 3e sphère), ciel (colosse + 4e sphère).
+func music_region() -> String:
+	if zone == 3 or zone == 4:
+		return "volcano"
+	if zone >= 5:
+		return "sky"
+	return ""
+
+
 func _start_wave(n: int) -> void:
 	wave = n
 	state = "wave"
-	Music.play("battle")
+	Music.play_region("battle", music_region())
 	var d := difficulty()
 	# zone 1 (au pistolet) : beaucoup moins de squelettes ; sphères 2 et 3 : 1/3 de moins qu'avant
 	to_spawn = (3 + (d - 1) * 2) if zone == 1 else int(round((5 + (d - 1) * 3) * LATE_COUNT_MULT * (SKY_COUNT_MULT if zone == 5 else FEWER_MULT)))
@@ -1405,7 +1414,7 @@ func _end_wave() -> void:
 			state = "pre_endless"
 			countdown = ENDLESS_PREP + carry_time
 			carry_time = 0.0
-			Music.play("game")
+			Music.play_region("game", music_region())
 			Sfx.play("win")
 			for p in players:
 				p.gain_tokens(1)
@@ -1415,7 +1424,7 @@ func _end_wave() -> void:
 			hud.show_notice("DÉFENSE SANS FIN dans 1 min : les squelettes arrivent en continu, de plus en plus forts\n(boss, archers, anges...). Tiens le plus longtemps possible : un chronomètre mesure ton record.", 9.0)
 		return
 	state = "break"
-	Music.play("game")
+	Music.play_region("game", music_region())
 	countdown = BREAK_TIME + carry_time
 	carry_time = 0.0
 	for p in players:
@@ -1432,7 +1441,7 @@ func _complete_zone1() -> void:
 	state = "explore"
 	countdown = ZONE2_TIME + carry_time
 	carry_time = 0.0
-	Music.play("game")
+	Music.play_region("game", music_region())
 	Sfx.play("win")
 	for p in players:
 		p.wood = mini(p.wood + 100, p.RES_MAX)
@@ -1619,7 +1628,7 @@ func _build_zone2() -> void:
 func _complete_zone2() -> void:
 	state = "to_boss"
 	countdown = BOSS_TRAVEL_TIME   # le report éventuel (carry_time) est gardé pour la 3e sphère
-	Music.play("game")
+	Music.play_region("game", "volcano")   # en route vers le volcan
 	Sfx.play("win")
 	for p in players:
 		p.wood = mini(p.wood + 100, p.RES_MAX)
@@ -1806,7 +1815,7 @@ func _start_boss() -> void:
 	state = "boss"
 	if titan and is_instance_valid(titan):
 		titan.wake()
-	Music.play("boss", "battle")
+	Music.play_region("boss", music_region())
 	if zone == 5:
 		hud.show_center("COLOSSE DES NUÉES", "Il ne bouge pas, mais la foudre et le vent lui obéissent.", 3.5)
 	else:
@@ -1821,7 +1830,7 @@ func _on_titan_defeated() -> void:
 	hud.show_center(title, "+300 bois · +150 pierre · +3 jetons de compétence" + (" · 3 tas d'os" if sky_boss else ""), 4.0)
 	for p in players:
 		p.gain_tokens(3)
-	Music.play("game")
+	Music.play_region("game", music_region())
 	for p in players:
 		p.wood = mini(p.wood + 300, p.RES_MAX)
 		p.stone = mini(p.stone + 150, p.RES_MAX)
@@ -1864,7 +1873,7 @@ func _start_zone4() -> void:
 func _complete_zone4() -> void:
 	state = "to_boss"
 	countdown = BOSS_TRAVEL_TIME   # le report éventuel est gardé pour la 4e sphère
-	Music.play("game")
+	Music.play_region("game", "sky")   # l'escalier de nuages apparaît
 	Sfx.play("win")
 	for p in players:
 		p.wood = mini(p.wood + 200, p.RES_MAX)
@@ -2126,7 +2135,7 @@ func _start_endless() -> void:
 	endless_spawn_t = 2.0
 	endless_boss_t = 50.0
 	endless_dir_t = 0.0
-	Music.play("battle")
+	Music.play_any(["endless", "sky_battle", "battle"])
 	Sfx.play("horn", -2.0)
 	hud.show_center("DÉFENSE SANS FIN", "Tiens le plus longtemps possible !", 3.0)
 

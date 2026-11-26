@@ -1,11 +1,17 @@
 extends Node
 ## Musique de fond (autoload « Music »).
 ## Dépose tes fichiers dans game/assets/music/ avec ces noms (mp3, ogg ou wav) :
-##   menu.mp3    → menu principal
-##   game.mp3    → exploration / préparation / pauses entre vagues
-##   battle.mp3  → pendant les vagues
-##   boss.mp3    → combat contre le titan (sinon battle.mp3)
-## Un fichier absent = silence pour ce moment-là (aucune erreur).
+##   menu          → menu principal
+##   game          → forêt : exploration / préparation / pauses entre vagues
+##   battle        → forêt : pendant les vagues
+##   volcano       → zone volcanique : exploration / préparation / pauses   (sinon game)
+##   volcano_battle→ zone volcanique : vagues                               (sinon battle)
+##   volcano_boss  → combat contre le titan de lave                          (sinon boss, puis battle)
+##   sky           → île des nuages : exploration / préparation / pauses    (sinon game)
+##   sky_battle    → île des nuages : vagues                                (sinon battle)
+##   sky_boss      → combat contre le colosse des nuées                      (sinon boss, puis battle)
+##   endless       → défense sans fin                                        (sinon sky_battle, puis battle)
+## Un fichier absent = on prend le suivant de la liste ; s'il n'y en a aucun : silence (aucune erreur).
 ## Les morceaux bouclent et s'enchaînent en fondu.
 
 const DIR := "res://assets/music/"
@@ -48,6 +54,26 @@ func play(track: String, fallback := "") -> void:
 		nxt.volume_db = -40.0
 		nxt.play()
 		create_tween().tween_property(nxt, "volume_db", VOLUME_DB, FADE)
+
+
+## Joue le premier morceau de la liste dont le fichier existe (ex. ["volcano_battle", "battle"]).
+func play_any(tracks: Array) -> void:
+	for t in tracks:
+		if _load(t) != null:
+			play(t)
+			return
+	play(tracks[0] if tracks.size() > 0 else "")
+
+
+## Morceau d'un moment de jeu (« game », « battle », « boss ») pour une région (« », « volcano », « sky »).
+func play_region(kind: String, region: String) -> void:
+	var list := []
+	if region != "":
+		list.append(region if kind == "game" else region + "_" + kind)
+	list.append(kind)
+	if kind == "boss":
+		list.append("battle")
+	play_any(list)
 
 
 func stop() -> void:
