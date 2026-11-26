@@ -60,6 +60,9 @@ The Pathless).
 - Éclair de Zeus (création d'arme à la sphère des nuages seulement ; ZEUS_* dans upgrades.gd).
 - Interface : thème dans ui.gd (polices Lilita One / Nunito, boutons principal / « SecondaryButton », fonds flous),
   menu principal 3D dans menu.gd, images OpenArt dans assets/ui/ (logo.png, keyart.jpg, icônes).
+- Armes en main : modèles Blender faits par script (`tools/blender/<arme>.py`, outils communs dans `common.py`),
+  exportés en `assets/weapons/<arme>.glb` ; chargés par `_gun_from_model()` / `_attach_model()` dans player.gd
+  (repères muzzle / sight / hand_r / hand_l lus dans le modèle ; cristal « sight_crystal » qui s'estompe en visée).
 - Musique : fichiers à déposer dans `game/assets/music/` (`menu`, `game`, `battle` en mp3/ogg/wav).
 
 ## Organisation du code (`game/`)

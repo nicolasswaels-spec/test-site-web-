@@ -44,9 +44,9 @@ const MAX_HP := 100.0
 const MASK_SHOOT := 1 | 4 | 8 | 16 | 32
 
 const HIP_POS := Vector3(0.25, -0.22, -0.64)
-const ADS_POS := Vector3(0.0, -0.105, -0.55)
+const ADS_POS := Vector3(0.0, -0.105, -0.72)
 const AXE_POS := Vector3(0.34, -0.32, -0.55)
-const PISTOL_HIP := Vector3(0.2, -0.2, -0.42)
+const PISTOL_HIP := Vector3(0.17, -0.17, -0.4)
 const PISTOL_ADS := Vector3(0.0, -0.085, -0.36)
 
 var main
@@ -234,22 +234,17 @@ func _add_arm(parent: Node3D, hand: Vector3, elbow: Vector3) -> void:
 
 
 func _build_arms() -> void:
-	_add_arm(rifle, Vector3(0, -0.12, 0.13), Vector3(0.15, -0.42, 0.45))
-	_add_arm(rifle, Vector3(0, -0.06, -0.3), Vector3(-0.22, -0.4, 0.0))
-	var pg: Node3D = gun_data[W.PISTOL]["node"]
-	_add_arm(pg, Vector3(0, -0.1, 0.07), Vector3(0.1, -0.42, 0.35))
-	_add_arm(pg, Vector3(-0.035, -0.12, 0.05), Vector3(-0.2, -0.42, 0.25))
-	var zg: Node3D = gun_data[W.ZEUS]["node"]
-	_add_arm(zg, Vector3(0, -0.08, 0.1), Vector3(0.15, -0.42, 0.42))
-	var spg: Node3D = gun_data[W.SNIPER]["node"]
-	_add_arm(spg, Vector3(0, -0.1, 0.12), Vector3(0.15, -0.42, 0.45))
-	_add_arm(spg, Vector3(0, -0.05, -0.32), Vector3(-0.22, -0.4, 0.0))
-	var sg: Node3D = gun_data[W.SHOCK]["node"]
-	_add_arm(sg, Vector3(0, -0.1, 0.1), Vector3(0.15, -0.42, 0.42))
-	_add_arm(sg, Vector3(0, -0.04, -0.22), Vector3(-0.22, -0.4, 0.0))
-	var cg: Node3D = gun_data[W.CRYO]["node"]
-	_add_arm(cg, Vector3(0, -0.13, 0.1), Vector3(0.15, -0.42, 0.42))
-	_add_arm(cg, Vector3(0, -0.06, -0.3), Vector3(-0.22, -0.4, 0.0))
+	# mains placées sur les repères des modèles Blender (hand_r = poignée, hand_l = garde-main)
+	for w in gun_data:
+		var d: Dictionary = gun_data[w]
+		var g: Node3D = d["node"]
+		var hr: Vector3 = d["hand_r"]
+		var hl: Vector3 = d["hand_l"]
+		_add_arm(g, hr, hr + Vector3(0.14, -0.32, 0.3))
+		if hl.z < hr.z - 0.15:
+			_add_arm(g, hl, hl + Vector3(-0.22, -0.34, 0.3))     # arme longue : main sous le garde-main
+		else:
+			_add_arm(g, hl, hl + Vector3(-0.17, -0.3, 0.2))      # pistolet : main en soutien
 	var h: Node3D = axe_pivot.get_child(0)
 	_add_arm(h, Vector3(0, -0.04, 0), Vector3(0.06, -0.42, 0.18))
 
@@ -300,167 +295,104 @@ func _build_avatar() -> void:
 
 # ------------------------------------------------------------------ modèles
 
-const WOOD_SHADER := """
-shader_type spatial;
-uniform vec3 light_wood : source_color = vec3(0.55, 0.30, 0.16);
-uniform vec3 dark_wood : source_color = vec3(0.26, 0.12, 0.07);
-varying vec3 lp;
-void vertex() { lp = VERTEX; }
-void fragment() {
-	float grain = sin(lp.z * 9.0 + sin(lp.y * 60.0 + lp.x * 40.0) * 1.6) * 0.5 + 0.5;
-	float rings = smoothstep(0.55, 1.0, sin((lp.y * 80.0 + lp.x * 50.0) + lp.z * 6.0) * 0.5 + 0.5);
-	ALBEDO = mix(dark_wood, light_wood, grain * 0.7 + 0.15) * (1.0 - rings * 0.25);
-	ROUGHNESS = 0.55;
-	SPECULAR = 0.4;
-}
-"""
 
 
-## Fusil d'assaut dans l'esprit « forêt au crépuscule » : bois sculpté, acier bleui,
-## laiton, cuir, et un cristal turquoise lumineux qui rappelle la sphère.
+## Fusil d'assaut (modèle Blender, tools/blender/rifle.py) : boîtier bleu-nuit à fenêtre sur le
+## cœur de cristal, bois et cuir, chargeur incurvé, cristal-viseur turquoise.
 func _build_rifle() -> void:
-	rifle = Node3D.new()
-	rifle.position = HIP_POS
-	rifle.visible = false
-	rifle.scale = Vector3.ONE * 0.82
-	viewmodel.add_child(rifle)
-	rifle_rest_rot = Vector3(0.0, deg_to_rad(6.0), 0.0)
-
-	var wood := ShaderMaterial.new()
-	var wsh := Shader.new()
-	wsh.code = WOOD_SHADER
-	wood.shader = wsh
-	var steel := StandardMaterial3D.new()
-	steel.albedo_color = Color(0.10, 0.11, 0.15)
-	steel.metallic = 0.35
-	steel.roughness = 0.55
-	var steel_dark := steel.duplicate() as StandardMaterial3D
-	steel_dark.albedo_color = Color(0.05, 0.05, 0.07)
-	var brass := StandardMaterial3D.new()
-	brass.albedo_color = Color(0.80, 0.56, 0.26)
-	brass.metallic = 0.6
-	brass.roughness = 0.4
-	var leather := Mats.col(Color(0.20, 0.10, 0.07), 0.9)
-	var crystal := Mats.col(Color(0.30, 0.95, 0.90), 0.1, 4.0)
-	# matériau propre au cristal-viseur : il s'estompe quand on vise
-	crystal_mat = StandardMaterial3D.new()
-	crystal_mat.albedo_color = Color(0.30, 0.95, 0.90, 1.0)
-	crystal_mat.roughness = 0.1
-	crystal_mat.emission_enabled = true
-	crystal_mat.emission = Color(0.30, 0.95, 0.90)
-	crystal_mat.emission_energy_multiplier = 4.0
-	crystal_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-
-	# boîtier et capot
-	Mats.box(rifle, Vector3(0.08, 0.10, 0.34), steel, Vector3(0, 0, 0))
-	Mats.cylinder(rifle, 0.041, 0.041, 0.30, steel, Vector3(0, 0.045, 0.0), Vector3(90, 0, 0), 10)
-	Mats.box(rifle, Vector3(0.084, 0.02, 0.34), brass, Vector3(0, -0.04, 0))
-	# runes lumineuses sur les flancs
-	Mats.box(rifle, Vector3(0.004, 0.012, 0.18), crystal, Vector3(0.041, 0.005, 0.02))
-	Mats.box(rifle, Vector3(0.004, 0.012, 0.18), crystal, Vector3(-0.041, 0.005, 0.02))
-	# cristal-viseur en losange sur le dessus
-	var holder := Mats.box(rifle, Vector3(0.05, 0.03, 0.07), steel_dark, Vector3(0, 0.09, 0.03))
-	holder.name = "SightHolder"
-	Mats.box(rifle, Vector3(0.032, 0.032, 0.032), crystal_mat, Vector3(0, 0.122, 0.03), Vector3(45, 45, 0))
-	var glow := OmniLight3D.new()
-	sight_glow = glow
-	glow.light_color = Color(0.3, 0.95, 0.9)
-	glow.light_energy = 0.2
-	glow.omni_range = 0.45
-	glow.position = Vector3(0, 0.12, 0.03)
-	rifle.add_child(glow)
-
-	# garde-main en bois avec bandes de cuir
-	Mats.box(rifle, Vector3(0.092, 0.082, 0.27), wood, Vector3(0, -0.005, -0.31))
-	for z in [-0.22, -0.40]:
-		Mats.box(rifle, Vector3(0.098, 0.088, 0.025), leather, Vector3(0, -0.005, z))
-	# canon, tube de gaz, bagues en laiton, frein de bouche
-	Mats.cylinder(rifle, 0.017, 0.017, 0.36, steel, Vector3(0, 0.0, -0.56), Vector3(90, 0, 0), 10)
-	Mats.cylinder(rifle, 0.011, 0.011, 0.22, steel_dark, Vector3(0, 0.038, -0.48), Vector3(90, 0, 0), 8)
-	Mats.cylinder(rifle, 0.026, 0.026, 0.022, brass, Vector3(0, 0.012, -0.47), Vector3(90, 0, 0), 10)
-	Mats.cylinder(rifle, 0.027, 0.024, 0.08, steel_dark, Vector3(0, 0.0, -0.76), Vector3(90, 0, 0), 8)
-	Mats.cylinder(rifle, 0.029, 0.029, 0.014, brass, Vector3(0, 0.0, -0.725), Vector3(90, 0, 0), 10)
-	Mats.box(rifle, Vector3(0.008, 0.035, 0.012), steel_dark, Vector3(0, 0.045, -0.66))
-	# chargeur incurvé (deux segments) avec semelle en laiton
-	Mats.box(rifle, Vector3(0.05, 0.12, 0.08), steel_dark, Vector3(0, -0.105, -0.08), Vector3(10, 0, 0))
-	Mats.box(rifle, Vector3(0.05, 0.10, 0.075), steel_dark, Vector3(0, -0.205, -0.055), Vector3(24, 0, 0))
-	Mats.box(rifle, Vector3(0.056, 0.014, 0.082), brass, Vector3(0, -0.255, -0.035), Vector3(24, 0, 0))
-	# poignée-pistolet en bois, pontet
-	Mats.box(rifle, Vector3(0.048, 0.14, 0.062), wood, Vector3(0, -0.11, 0.13), Vector3(-18, 0, 0))
-	Mats.box(rifle, Vector3(0.012, 0.012, 0.09), steel_dark, Vector3(0, -0.085, 0.06))
-	# crosse en bois : corps, busc, plaque de couche
-	Mats.box(rifle, Vector3(0.062, 0.10, 0.26), wood, Vector3(0, -0.03, 0.31), Vector3(6, 0, 0))
-	Mats.box(rifle, Vector3(0.058, 0.03, 0.16), wood, Vector3(0, 0.03, 0.30))
-	Mats.box(rifle, Vector3(0.068, 0.125, 0.022), leather, Vector3(0, -0.045, 0.445), Vector3(6, 0, 0))
-	Mats.box(rifle, Vector3(0.066, 0.016, 0.03), brass, Vector3(0, -0.01, 0.2))
-
-	muzzle = Marker3D.new()
-	muzzle.position = Vector3(0, 0.0, -0.82)
-	rifle.add_child(muzzle)
-	muzzle_flash = Mats.sphere(muzzle, 0.07, Mats.col(Color(1.0, 0.75, 0.35), 0.2, 8.0), Vector3.ZERO, 6)
-	muzzle_flash.visible = false
-	muzzle_light = OmniLight3D.new()
-	muzzle_light.light_color = Color(1.0, 0.7, 0.4)
-	muzzle_light.omni_range = 7.0
-	muzzle_light.light_energy = 0.0
-	muzzle.add_child(muzzle_light)
-	gun_data[W.RIFLE] = {"node": rifle, "muzzle": muzzle, "flash": muzzle_flash, "light": muzzle_light,
-		"crystal": crystal_mat, "glow": sight_glow, "hip": HIP_POS, "ads": ADS_POS, "rest": Vector3(0, deg_to_rad(6.0), 0)}
+	rifle = _gun_from_model(W.RIFLE, "res://assets/weapons/rifle.glb", HIP_POS, ADS_POS.z, 0.82,
+		Color(0.2, 0.9, 0.8), Color(1.0, 0.75, 0.35), 6.0)
+	rifle_rest_rot = gun_data[W.RIFLE]["rest"]
 
 
-## Pistolet : même esprit que le fusil (acier bleui, crosse en bois, cristal turquoise).
-func _build_pistol() -> void:
+## Arme à feu en main à partir de son modèle Blender : repères, lueur du viseur, éclair de tir.
+## k = échelle du modèle, gscale = échelle du nœud en main (les repères sont en coordonnées de g).
+func _gun_from_model(w: int, path: String, hip: Vector3, ads_z: float, gscale: float, sight_col: Color,
+		flash_col: Color, rest_deg: float) -> Node3D:
 	var g := Node3D.new()
-	g.position = PISTOL_HIP
-	g.scale = Vector3.ONE * 0.9
+	g.position = hip
+	g.scale = Vector3.ONE * gscale
+	g.visible = false
 	viewmodel.add_child(g)
-	var wood := ShaderMaterial.new()
-	var wsh := Shader.new()
-	wsh.code = WOOD_SHADER
-	wood.shader = wsh
-	var steel := StandardMaterial3D.new()
-	steel.albedo_color = Color(0.10, 0.11, 0.15)
-	steel.metallic = 0.35
-	steel.roughness = 0.55
-	var brass := StandardMaterial3D.new()
-	brass.albedo_color = Color(0.80, 0.56, 0.26)
-	brass.metallic = 0.6
-	brass.roughness = 0.4
-	var cmat := StandardMaterial3D.new()
-	cmat.albedo_color = Color(0.30, 0.95, 0.90, 1.0)
-	cmat.emission_enabled = true
-	cmat.emission = Color(0.30, 0.95, 0.90)
-	cmat.emission_energy_multiplier = 4.0
-	cmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	# culasse, canon, crosse en bois, pontet, chien
-	Mats.box(g, Vector3(0.05, 0.06, 0.24), steel, Vector3(0, 0.0, -0.04))
-	Mats.cylinder(g, 0.014, 0.014, 0.08, steel, Vector3(0, -0.005, -0.19), Vector3(90, 0, 0), 8)
-	Mats.cylinder(g, 0.018, 0.018, 0.012, brass, Vector3(0, -0.005, -0.155), Vector3(90, 0, 0), 8)
-	Mats.box(g, Vector3(0.052, 0.008, 0.2), brass, Vector3(0, -0.032, -0.04))
-	Mats.box(g, Vector3(0.042, 0.13, 0.06), wood, Vector3(0, -0.09, 0.07), Vector3(-16, 0, 0))
-	Mats.box(g, Vector3(0.01, 0.01, 0.06), steel, Vector3(0, -0.05, 0.0))
-	Mats.box(g, Vector3(0.012, 0.025, 0.02), steel, Vector3(0, 0.035, 0.085), Vector3(-30, 0, 0))
-	Mats.box(g, Vector3(0.003, 0.01, 0.12), Mats.col(Color(0.30, 0.95, 0.90), 0.1, 4.0), Vector3(0.026, 0.0, -0.04))
-	Mats.box(g, Vector3(0.016, 0.016, 0.016), cmat, Vector3(0, 0.042, 0.06), Vector3(45, 45, 0))
-	Mats.box(g, Vector3(0.006, 0.014, 0.008), steel, Vector3(0, 0.036, -0.15))
+	var cmat := _sight_mat(sight_col)
+	var mk := _attach_model(g, path, 1.0, cmat)
 	var glow := OmniLight3D.new()
-	glow.light_color = Color(0.3, 0.95, 0.9)
-	glow.light_energy = 0.15
-	glow.omni_range = 0.3
-	glow.position = Vector3(0, 0.05, 0.06)
+	glow.light_color = sight_col
+	glow.light_energy = 0.2
+	glow.omni_range = 0.4
+	glow.position = mk["sight"]
 	g.add_child(glow)
 	var m := Marker3D.new()
-	m.position = Vector3(0, -0.005, -0.24)
+	m.position = mk["muzzle"]
 	g.add_child(m)
-	var fl := Mats.sphere(m, 0.05, Mats.col(Color(1.0, 0.75, 0.35), 0.2, 8.0), Vector3.ZERO, 6)
+	var fl := Mats.sphere(m, 0.06, Mats.col(flash_col, 0.2, 8.0), Vector3.ZERO, 6)
 	fl.visible = false
 	var li := OmniLight3D.new()
-	li.light_color = Color(1.0, 0.7, 0.4)
+	li.light_color = flash_col
 	li.omni_range = 6.0
 	li.light_energy = 0.0
 	m.add_child(li)
-	gun_data[W.PISTOL] = {"node": g, "muzzle": m, "flash": fl, "light": li, "crystal": cmat, "glow": glow,
-		"hip": PISTOL_HIP, "ads": PISTOL_ADS, "rest": Vector3(0, deg_to_rad(4.0), 0)}
+	gun_data[w] = {"node": g, "muzzle": m, "flash": fl, "light": li, "crystal": cmat, "glow": glow,
+		"hip": hip, "ads": _ads_from(mk["sight"], gscale, ads_z), "rest": Vector3(0, deg_to_rad(rest_deg), 0),
+		"hand_r": mk["hand_r"], "hand_l": mk["hand_l"]}
+	return g
+
+
+## Modèle d'arme fait dans Blender (tools/blender/*.py → assets/weapons/*.glb).
+## Blender : X = avant, Z = haut → on tourne de 90° pour que l'avant soit -Z.
+## Renvoie les repères du modèle (muzzle, sight, hand_r, hand_l) en coordonnées de `g`.
+func _attach_model(g: Node3D, path: String, k: float, crystal: StandardMaterial3D = null) -> Dictionary:
+	var inst := (load(path) as PackedScene).instantiate() as Node3D
+	inst.rotation_degrees.y = 90.0
+	inst.scale = Vector3.ONE * k
+	g.add_child(inst)
+	var out := {}
+	for n in ["muzzle", "sight", "hand_r", "hand_l"]:
+		var mk := inst.find_child(n, true, false) as Node3D
+		if mk:
+			out[n] = inst.transform * mk.position
+	_tune_model(inst, crystal)
+	return out
+
+
+## Ajuste les matériaux importés : parties lumineuses plus vives, cristal-viseur qui s'estompe en visée.
+func _tune_model(n: Node, crystal: StandardMaterial3D) -> void:
+	if n is MeshInstance3D:
+		var mi := n as MeshInstance3D
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if crystal and mi.name.begins_with("sight_crystal"):
+			mi.material_override = crystal
+		else:
+			for i in mi.mesh.get_surface_count():
+				var m := mi.mesh.surface_get_material(i) as StandardMaterial3D
+				if m and m.emission_enabled:
+					m.emission_energy_multiplier = maxf(m.emission_energy_multiplier, 2.5)
+	for c in n.get_children():
+		_tune_model(c, crystal)
+
+
+## Cristal du viseur (s'estompe quand on vise, voir _physics_process).
+func _sight_mat(c: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = c
+	m.roughness = 0.1
+	m.emission_enabled = true
+	m.emission = c
+	m.emission_energy_multiplier = 4.0
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	return m
+
+
+## Position de visée : le cristal-viseur juste sous le centre de l'écran.
+func _ads_from(sight: Vector3, k: float, z: float, below := 0.022) -> Vector3:
+	return Vector3(-sight.x * k, -below - sight.y * k, z)
+
+
+## Pistolet de garde forestier (modèle Blender, tools/blender/pistol.py) : culasse bleu-nuit,
+## crosse en bois, laiton, cœur de cristal turquoise visible par la fenêtre, cristal-viseur.
+func _build_pistol() -> void:
+	_gun_from_model(W.PISTOL, "res://assets/weapons/pistol.glb", PISTOL_HIP, PISTOL_ADS.z, 0.9,
+		Color(0.2, 0.9, 0.8), Color(1.0, 0.75, 0.35), 12.0)
 
 
 func _build_axe() -> void:
@@ -469,39 +401,11 @@ func _build_axe() -> void:
 	viewmodel.add_child(axe)
 	axe_pivot = Node3D.new()
 	axe.add_child(axe_pivot)
-	var wood := ShaderMaterial.new()
-	var wsh := Shader.new()
-	wsh.code = WOOD_SHADER
-	wood.shader = wsh
-	var steel := StandardMaterial3D.new()
-	steel.albedo_color = Color(0.20, 0.21, 0.26)
-	steel.metallic = 0.5
-	steel.roughness = 0.45
-	var edge := StandardMaterial3D.new()
-	edge.albedo_color = Color(0.75, 0.78, 0.85)
-	edge.metallic = 0.6
-	edge.roughness = 0.25
-	var brass := StandardMaterial3D.new()
-	brass.albedo_color = Color(0.80, 0.56, 0.26)
-	brass.metallic = 0.6
-	brass.roughness = 0.4
-	var leather := Mats.col(Color(0.20, 0.10, 0.07), 0.9)
-	var rune := Mats.col(Color(0.30, 0.95, 0.90), 0.1, 3.0)
+	# modèle Blender (tools/blender/axe.py) : manche vertical, tranchant vers l'avant
 	var h := Node3D.new()
 	h.rotation_degrees = Vector3(-25, 0, 18)
 	axe_pivot.add_child(h)
-	# manche en bois, poignée en cuir, pommeau et virole en laiton
-	Mats.cylinder(h, 0.022, 0.028, 0.66, wood, Vector3(0, 0.2, 0), Vector3.ZERO, 8)
-	Mats.cylinder(h, 0.032, 0.032, 0.17, leather, Vector3(0, -0.04, 0), Vector3.ZERO, 8)
-	Mats.cylinder(h, 0.036, 0.03, 0.03, brass, Vector3(0, -0.14, 0), Vector3.ZERO, 8)
-	Mats.cylinder(h, 0.03, 0.03, 0.03, brass, Vector3(0, 0.36, 0), Vector3.ZERO, 8)
-	# tête : douille, joue, tranchant clair et bec arrière
-	Mats.box(h, Vector3(0.05, 0.09, 0.07), steel, Vector3(0, 0.46, 0.0))
-	Mats.box(h, Vector3(0.035, 0.12, 0.12), steel, Vector3(0, 0.46, -0.09))
-	Mats.box(h, Vector3(0.03, 0.2, 0.06), steel, Vector3(0, 0.46, -0.17))
-	Mats.box(h, Vector3(0.022, 0.24, 0.025), edge, Vector3(0, 0.46, -0.21))
-	Mats.box(h, Vector3(0.03, 0.04, 0.07), steel, Vector3(0, 0.46, 0.06), Vector3(-20, 0, 0))
-	Mats.box(h, Vector3(0.038, 0.012, 0.07), rune, Vector3(0, 0.46, -0.1))
+	_attach_model(h, "res://assets/weapons/axe.glb", 1.0)
 
 
 func _build_ghost() -> void:
@@ -1320,49 +1224,12 @@ func _spawn_bolt(a: Vector3, b: Vector3) -> void:
 	tw.tween_callback(root.queue_free)
 
 
-## Éclair de Zeus en main : bâton doré terminé par un éclair lumineux.
+## Éclair de Zeus en main (modèle Blender, tools/blender/zeus.py) : marbre et or, éclair de cristal
+## tenu par trois griffes, volutes de nuage.
 func _build_zeus() -> void:
-	var g := Node3D.new()
-	g.position = HIP_POS
-	g.scale = Vector3.ONE * 0.82
-	g.visible = false
-	viewmodel.add_child(g)
-	var gold := Mats.col(Color(1.0, 0.8, 0.3), 0.3)
-	var white := Mats.col(Color(0.95, 0.96, 1.0), 0.6)
-	var bolt := StandardMaterial3D.new()
-	bolt.albedo_color = Color(0.75, 0.9, 1.0, 0.9)
-	bolt.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	bolt.emission_enabled = true
-	bolt.emission = Color(0.6, 0.85, 1.0)
-	bolt.emission_energy_multiplier = 4.0
-	Mats.cylinder(g, 0.025, 0.03, 0.55, gold, Vector3(0, 0, 0.05), Vector3(90, 0, 0), 10)
-	Mats.cylinder(g, 0.045, 0.045, 0.05, white, Vector3(0, 0, 0.25), Vector3(90, 0, 0), 10)
-	# éclair en zigzag à l'avant
-	var pts := [Vector3(0, 0, -0.22), Vector3(0.05, 0.04, -0.32), Vector3(-0.04, 0.0, -0.42), Vector3(0.04, 0.05, -0.54), Vector3(0, 0.02, -0.64)]
-	for i in pts.size() - 1:
-		var a: Vector3 = pts[i]
-		var b: Vector3 = pts[i + 1]
-		var mi := Mats.box(g, Vector3(0.03, 0.03, a.distance_to(b)), bolt, (a + b) * 0.5)
-		mi.look_at_from_position((a + b) * 0.5, b, Vector3.UP)
-	Mats.box(g, Vector3(0.05, 0.13, 0.06), Mats.col(Color(0.2, 0.18, 0.25)), Vector3(0, -0.1, 0.12), Vector3(-15, 0, 0))
-	var glow := OmniLight3D.new()
-	glow.light_color = Color(0.6, 0.85, 1.0)
-	glow.light_energy = 0.6
-	glow.omni_range = 0.8
-	glow.position = Vector3(0, 0.02, -0.4)
-	g.add_child(glow)
-	var m := Marker3D.new()
-	m.position = Vector3(0, 0.02, -0.66)
-	g.add_child(m)
-	var fl := Mats.sphere(m, 0.06, bolt, Vector3.ZERO, 6)
-	fl.visible = false
-	var li := OmniLight3D.new()
-	li.light_color = Color(0.7, 0.85, 1.0)
-	li.omni_range = 5.0
-	li.light_energy = 0.0
-	m.add_child(li)
-	gun_data[W.ZEUS] = {"node": g, "muzzle": m, "flash": fl, "light": li, "crystal": bolt, "glow": glow,
-		"hip": HIP_POS, "ads": Vector3(0.0, -0.2, -0.5), "rest": Vector3(0, deg_to_rad(6.0), 0)}
+	_gun_from_model(W.ZEUS, "res://assets/weapons/zeus.glb", HIP_POS, -0.6, 0.82,
+		Color(0.6, 0.85, 1.0), Color(0.7, 0.85, 1.0), 6.0)
+	gun_data[W.ZEUS]["glow"].light_energy = 0.6
 
 
 # ------------------------------------------------------------------ fusil de précision
@@ -1417,146 +1284,25 @@ func _shoot_sniper() -> void:
 	head.rotation.x = clampf(head.rotation.x + (0.02 if aiming else 0.09), -1.5, 1.5)
 
 
-## Fusil de précision en main : long canon, lunette, crosse en bois, bande d'os.
+## Fusil de précision en main (modèle Blender, tools/blender/sniper.py) : crosse pleine en bois
+## avec incrustation d'os en flèche, lunette à bagues de laiton.
 func _build_sniper() -> void:
-	var g := Node3D.new()
-	g.position = HIP_POS
-	g.scale = Vector3.ONE * 0.82
-	g.visible = false
-	viewmodel.add_child(g)
-	var metal := Mats.col(Color(0.16, 0.17, 0.21), 0.35)
-	var wood := Mats.col(Color(0.42, 0.26, 0.14), 0.8)
-	var bone := Mats.col(Color(0.9, 0.86, 0.74), 0.7)
-	var lens := StandardMaterial3D.new()
-	lens.albedo_color = Color(0.4, 0.8, 1.0, 0.85)
-	lens.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	lens.emission_enabled = true
-	lens.emission = Color(0.3, 0.7, 1.0)
-	lens.emission_energy_multiplier = 2.0
-	Mats.box(g, Vector3(0.07, 0.09, 0.5), metal, Vector3(0, 0, 0))
-	Mats.cylinder(g, 0.018, 0.022, 0.62, metal, Vector3(0, 0.02, -0.55), Vector3(90, 0, 0), 10)
-	Mats.cylinder(g, 0.03, 0.03, 0.06, metal, Vector3(0, 0.02, -0.86), Vector3(90, 0, 0), 10)
-	Mats.box(g, Vector3(0.06, 0.12, 0.3), wood, Vector3(0, -0.04, 0.36))
-	Mats.box(g, Vector3(0.065, 0.03, 0.18), bone, Vector3(0, 0.035, 0.12))
-	# lunette
-	Mats.cylinder(g, 0.032, 0.032, 0.3, metal, Vector3(0, 0.1, -0.05), Vector3(90, 0, 0), 12)
-	Mats.cylinder(g, 0.042, 0.032, 0.06, metal, Vector3(0, 0.1, -0.22), Vector3(90, 0, 0), 12)
-	Mats.cylinder(g, 0.036, 0.036, 0.01, lens, Vector3(0, 0.1, -0.255), Vector3(90, 0, 0), 12)
-	Mats.box(g, Vector3(0.02, 0.05, 0.02), metal, Vector3(0, 0.065, 0.05))
-	Mats.box(g, Vector3(0.02, 0.05, 0.02), metal, Vector3(0, 0.065, -0.12))
-	Mats.box(g, Vector3(0.05, 0.13, 0.06), metal, Vector3(0, -0.11, 0.06), Vector3(-15, 0, 0))
-	var glow := OmniLight3D.new()
-	glow.light_color = Color(0.4, 0.8, 1.0)
-	glow.light_energy = 0.2
-	glow.omni_range = 0.4
-	glow.position = Vector3(0, 0.1, -0.25)
-	g.add_child(glow)
-	var m := Marker3D.new()
-	m.position = Vector3(0, 0.02, -0.9)
-	g.add_child(m)
-	var fl := Mats.sphere(m, 0.07, Mats.col(Color(1.0, 0.85, 0.5), 0.5, 6.0), Vector3.ZERO, 6)
-	fl.visible = false
-	var li := OmniLight3D.new()
-	li.light_color = Color(1.0, 0.85, 0.5)
-	li.omni_range = 5.0
-	li.light_energy = 0.0
-	m.add_child(li)
-	gun_data[W.SNIPER] = {"node": g, "muzzle": m, "flash": fl, "light": li, "crystal": lens, "glow": glow,
-		"hip": HIP_POS, "ads": Vector3(0.0, -0.18, -0.45), "rest": Vector3(0, deg_to_rad(5.0), 0)}
+	_gun_from_model(W.SNIPER, "res://assets/weapons/sniper.glb", HIP_POS, -0.45, 0.82,
+		Color(0.3, 0.65, 1.0), Color(1.0, 0.85, 0.5), 5.0)
 
 
-## Onde de choc en main : corne d'os sculptée, anneaux de bronze et cœur lumineux.
+## Onde de choc en main (modèle Blender, tools/blender/shock.py) : corne d'os en pavillon,
+## anneaux de laiton, cœur ambré en cage.
 func _build_shock() -> void:
-	var g := Node3D.new()
-	g.position = HIP_POS
-	g.scale = Vector3.ONE * 0.82
-	g.visible = false
-	viewmodel.add_child(g)
-	var bone := Mats.col(Color(0.9, 0.86, 0.74), 0.7)
-	var bronze := Mats.col(Color(0.55, 0.38, 0.18), 0.35)
-	var dark := Mats.col(Color(0.12, 0.1, 0.12), 0.6)
-	var core := StandardMaterial3D.new()
-	core.albedo_color = Color(1.0, 0.85, 0.55, 0.9)
-	core.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	core.emission_enabled = true
-	core.emission = Color(1.0, 0.7, 0.35)
-	core.emission_energy_multiplier = 3.0
-	# corne qui s'évase vers l'avant
-	Mats.cylinder(g, 0.05, 0.065, 0.2, bone, Vector3(0, 0, 0.12), Vector3(90, 0, 0), 10)
-	Mats.cylinder(g, 0.065, 0.1, 0.2, bone, Vector3(0, 0.01, -0.08), Vector3(90, 0, 0), 12)
-	Mats.cylinder(g, 0.1, 0.16, 0.16, bone, Vector3(0, 0.02, -0.26), Vector3(90, 0, 0), 14)
-	for z in [0.03, -0.17, -0.33]:
-		Mats.cylinder(g, 0.085 + absf(z) * 0.2, 0.085 + absf(z) * 0.2, 0.025, bronze, Vector3(0, 0.01, z), Vector3(90, 0, 0), 14)
-	Mats.cylinder(g, 0.13, 0.13, 0.01, core, Vector3(0, 0.02, -0.345), Vector3(90, 0, 0), 16)
-	Mats.sphere(g, 0.045, core, Vector3(0, 0.09, 0.0), 10)
-	Mats.box(g, Vector3(0.05, 0.14, 0.06), dark, Vector3(0, -0.11, 0.12), Vector3(-15, 0, 0))
-	var glow := OmniLight3D.new()
-	glow.light_color = Color(1.0, 0.75, 0.4)
-	glow.light_energy = 0.35
-	glow.omni_range = 0.6
-	glow.position = Vector3(0, 0.05, -0.2)
-	g.add_child(glow)
-	var m := Marker3D.new()
-	m.position = Vector3(0, 0.02, -0.36)
-	g.add_child(m)
-	var fl := Mats.sphere(m, 0.08, core, Vector3.ZERO, 6)
-	fl.visible = false
-	var li := OmniLight3D.new()
-	li.light_color = Color(1.0, 0.8, 0.5)
-	li.omni_range = 5.0
-	li.light_energy = 0.0
-	m.add_child(li)
-	gun_data[W.SHOCK] = {"node": g, "muzzle": m, "flash": fl, "light": li, "crystal": core, "glow": glow,
-		"hip": HIP_POS, "ads": Vector3(0.0, -0.2, -0.5), "rest": Vector3(0, deg_to_rad(6.0), 0)}
+	_gun_from_model(W.SHOCK, "res://assets/weapons/shock.glb", HIP_POS, -0.6, 0.82,
+		Color(1.0, 0.6, 0.2), Color(1.0, 0.75, 0.4), 6.0)
 
 
-## Canon cryogénique : corps blanc, réservoir de glace lumineux, ailettes émettrices.
+## Canon cryogénique (modèle Blender, tools/blender/cryo.py) : coque givrée, réservoir de verre
+## et éclats de glace lumineux, émetteur à ailettes entouré de cristaux.
 func _build_cryo() -> void:
-	var g := Node3D.new()
-	g.position = HIP_POS
-	g.scale = Vector3.ONE * 0.82
-	g.visible = false
-	viewmodel.add_child(g)
-	var shell := StandardMaterial3D.new()
-	shell.albedo_color = Color(0.86, 0.9, 0.96)
-	shell.metallic = 0.3
-	shell.roughness = 0.35
-	var dark := Mats.col(Color(0.12, 0.14, 0.2), 0.5)
-	var ice := StandardMaterial3D.new()
-	ice.albedo_color = Color(0.55, 0.92, 1.0, 0.85)
-	ice.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	ice.emission_enabled = true
-	ice.emission = Color(0.4, 0.85, 1.0)
-	ice.emission_energy_multiplier = 3.0
-	Mats.box(g, Vector3(0.1, 0.12, 0.42), shell, Vector3(0, 0, 0))
-	Mats.cylinder(g, 0.055, 0.055, 0.22, ice, Vector3(0, 0.1, -0.02), Vector3(90, 0, 0), 12)
-	Mats.cylinder(g, 0.062, 0.062, 0.02, dark, Vector3(0, 0.1, 0.1), Vector3(90, 0, 0), 12)
-	Mats.cylinder(g, 0.062, 0.062, 0.02, dark, Vector3(0, 0.1, -0.14), Vector3(90, 0, 0), 12)
-	Mats.cylinder(g, 0.03, 0.05, 0.3, shell, Vector3(0, 0, -0.36), Vector3(90, 0, 0), 10)
-	for i in 3:
-		var a := TAU * i / 3.0
-		Mats.box(g, Vector3(0.015, 0.07, 0.12), dark, Vector3(cos(a) * 0.055, sin(a) * 0.055, -0.5), Vector3(0, 0, rad_to_deg(a)))
-	Mats.sphere(g, 0.035, ice, Vector3(0, 0, -0.53), 10)
-	Mats.box(g, Vector3(0.05, 0.14, 0.06), dark, Vector3(0, -0.11, 0.1), Vector3(-15, 0, 0))
-	Mats.box(g, Vector3(0.07, 0.1, 0.2), shell, Vector3(0, -0.02, 0.28))
-	var glow := OmniLight3D.new()
-	glow.light_color = Color(0.4, 0.85, 1.0)
-	glow.light_energy = 0.4
-	glow.omni_range = 0.6
-	glow.position = Vector3(0, 0.1, 0)
-	g.add_child(glow)
-	var m := Marker3D.new()
-	m.position = Vector3(0, 0, -0.56)
-	g.add_child(m)
-	var fl := Mats.sphere(m, 0.06, ice, Vector3.ZERO, 6)
-	fl.visible = false
-	var li := OmniLight3D.new()
-	li.light_color = Color(0.5, 0.9, 1.0)
-	li.omni_range = 5.0
-	li.light_energy = 0.0
-	m.add_child(li)
-	gun_data[W.CRYO] = {"node": g, "muzzle": m, "flash": fl, "light": li, "crystal": ice, "glow": glow,
-		"hip": HIP_POS, "ads": Vector3(0.0, -0.21, -0.5), "rest": Vector3(0, deg_to_rad(6.0), 0)}
+	_gun_from_model(W.CRYO, "res://assets/weapons/cryo.glb", HIP_POS, -0.62, 0.82,
+		Color(0.4, 0.85, 1.0), Color(0.5, 0.9, 1.0), 6.0)
 	# le rayon (dans le monde, pas dans la main) : boîte fine étirée le long de son axe Z
 	var bm := BoxMesh.new()
 	bm.size = Vector3(0.06, 0.06, 1.0)

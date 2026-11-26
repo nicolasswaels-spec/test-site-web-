@@ -134,6 +134,8 @@ Menu principal : la caméra avance lentement dans la forêt au crépuscule (vrai
 - Modèles 3D de nature (sapins, herbe, plantes, buissons, rochers, arbres morts) et leurs textures :
   pack **Ultimate Stylized Nature** de [Quaternius](https://quaternius.com), licence **CC0** (domaine public).
   Fichiers dans `assets/nature/`, textures réduites à 1024 px, recolorées en code (`scripts/nature.gd`).
+- Armes en main (pistolet, fusil, cryo, onde de choc, précision, Zeus, hache) : modélisées pour le jeu dans
+  Blender par script (`tools/blender/*.py`, voir `tools/blender/README.md`), exportées dans `assets/weapons/*.glb`.
 - Coffres : pack **KayKit Dungeon Remastered** de Kay Lousberg, licence **CC0** (`assets/chests/`).
 - Personnages des joueurs : pack **KayKit Character Pack: Adventurers** de Kay Lousberg, licence **CC0** (`assets/characters/`).
 - Ennemis : squelettes animés du pack **KayKit Character Pack: Skeletons** de [Kay Lousberg](https://www.kaylousberg.com), licence **CC0**. Fichiers dans `assets/skeletons/`.

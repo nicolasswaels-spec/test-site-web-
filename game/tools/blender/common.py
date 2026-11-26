@@ -212,3 +212,141 @@ def smooth_pts(pts, n=6):
             out.append((0.25 * a[0] + 0.75 * b[0], 0.25 * a[1] + 0.75 * b[1]))
         pts = out
     return pts
+
+
+def marker(name, loc):
+    """Repère vide exporté dans le GLB (bouche du canon, viseur, mains) : lu par le jeu."""
+    o = bpy.data.objects.new(name, None)
+    bpy.context.collection.objects.link(o)
+    o.location = loc
+    return o
+
+
+def _select_only(objs):
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in objs:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = objs[0]
+
+
+def _bake_procedural(mat, objs, size=512):
+    """Réunit les pièces d'un matériau procédural (bois…), les déplie (UV) et cuit la couleur
+    dans une image : Godot ne lit pas les nœuds procéduraux de Blender."""
+    _select_only(objs)
+    if len(objs) > 1:
+        bpy.ops.object.join()
+    o = bpy.context.view_layer.objects.active
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=0.02)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    img = bpy.data.images.new(mat.name + "_tex", size, size)
+    nt = mat.node_tree
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = img
+    nt.nodes.active = tex
+    sc = bpy.context.scene
+    sc.render.engine = "CYCLES"
+    sc.cycles.samples = 4
+    sc.render.bake.use_pass_direct = False
+    sc.render.bake.use_pass_indirect = False
+    sc.render.bake.margin = 8
+    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"})
+    img.pack()
+    b = nt.nodes["Principled BSDF"]
+    for l in list(b.inputs["Base Color"].links):
+        nt.links.remove(l)
+    nt.links.new(tex.outputs["Color"], b.inputs["Base Color"])
+    return o
+
+
+def export_glb(path, procedural=("wood",)):
+    """Applique les modificateurs, supprime les outils de découpe, cuit le bois, exporte en GLB."""
+    for o in list(bpy.data.objects):
+        if o.type == "MESH" and o.hide_render:
+            continue
+        if o.type == "MESH" and o.modifiers:
+            _select_only([o])
+            for md in list(o.modifiers):
+                bpy.ops.object.modifier_apply(modifier=md.name)
+    for o in list(bpy.data.objects):
+        if o.type == "MESH" and o.hide_render:
+            bpy.data.objects.remove(o)
+        elif o.type in ("CAMERA", "LIGHT"):
+            bpy.data.objects.remove(o)
+    for mat in bpy.data.materials:
+        if mat.name.split(".")[0] in procedural:
+            objs = [o for o in bpy.data.objects if o.type == "MESH" and mat.name in [m.name for m in o.data.materials if m]]
+            if objs:
+                _bake_procedural(mat, objs)
+    bpy.ops.object.select_all(action="SELECT")
+    bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", export_apply=True, export_yup=True)
+
+
+def standard_views(out, prefix, length, center=(0, 0, 0)):
+    """Trois aperçus (profil, 3/4, arrière) à une distance proportionnelle à la longueur de l'arme."""
+    import os
+    preview_setup()
+    k = max(1.0, length / 0.24 * 0.6)
+    dusk_lights(k)
+    cx, cy, cz = center
+    views = {
+        "_side": ((cx, -0.62 * k, cz + 0.03 * k), (cx, 0, cz), 55),
+        "_34": ((cx + 0.4 * k, -0.44 * k, cz + 0.18 * k), (cx, 0, cz), 55),
+        "_back": ((cx - 0.42 * k, -0.36 * k, cz + 0.24 * k), (cx, 0, cz), 55),
+    }
+    for n, (loc, tgt, lens) in views.items():
+        camera(loc, tgt, lens)
+        render(os.path.join(out, prefix + n + ".png"))
+
+
+def lathe(name, prof, mat=None, segs=32, bevel=0.0, axis="X", y=0.0, z=0.0, x=0.0):
+    """Pièce de révolution : prof = [(position le long de l'axe, rayon)], tournée autour de X (ou Z)."""
+    bm = bmesh.new()
+    rings = []
+    for (a, r) in prof:
+        ring = []
+        for i in range(segs):
+            t = 2 * math.pi * i / segs
+            if axis == "X":
+                ring.append(bm.verts.new((x + a, y + r * math.cos(t), z + r * math.sin(t))))
+            else:
+                ring.append(bm.verts.new((x + r * math.cos(t), y + r * math.sin(t), z + a)))
+        rings.append(ring)
+    for k in range(len(rings) - 1):
+        for i in range(segs):
+            j = (i + 1) % segs
+            bm.faces.new((rings[k][i], rings[k][j], rings[k + 1][j], rings[k + 1][i]))
+    if prof[0][1] > 0:
+        bm.faces.new(list(reversed(rings[0])))
+    if prof[-1][1] > 0:
+        bm.faces.new(rings[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    o = bpy.data.objects.new(name, me)
+    bpy.context.collection.objects.link(o)
+    return _finish(o, mat, bevel, 2)
+
+
+def palette():
+    """Matériaux partagés par toutes les armes (même famille que le pistolet)."""
+    return {
+        "gun": mat_metal("gunmetal", (0.05, 0.055, 0.09), 0.9, 0.3),
+        "dark": mat_metal("dark", (0.025, 0.025, 0.035), 0.7, 0.45),
+        "brass": mat_metal("brass", (0.8, 0.52, 0.24), 1.0, 0.3),
+        "wood": mat_wood("wood", light=(0.24, 0.1, 0.035), dark=(0.075, 0.028, 0.01)),
+        "leather": mat_metal("leather", (0.06, 0.025, 0.012), 0.0, 0.75),
+        "crystal": mat_glow("crystal", (0.1, 0.85, 0.75), 1.4),
+        "core": mat_glow("core", (0.08, 0.8, 0.7), 2.2),
+    }
+
+
+def run(prefix, length, center):
+    """Fin de script commune : aperçus (argv[1], « - » pour aucun) et export GLB (argv[2])."""
+    import sys
+    out = sys.argv[1] if len(sys.argv) > 1 else "/tmp"
+    if out != "-":
+        standard_views(out, prefix, length, center)
+    if len(sys.argv) > 2:
+        export_glb(sys.argv[2])

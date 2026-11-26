@@ -69,16 +69,14 @@ box("front_sight", (0.007, 0.006, 0.009), (0.082, 0, 0.106), brass, 0.002, 2)
 cyl("sight_mount", 0.0085, 0.008, (-0.07, 0, 0.102), brass, rot=(0, 0, 0), verts=6, bevel=0.0015)
 crystal("sight_crystal", 0.0075, 0.026, (-0.07, 0, 0.113), glow)
 
+# repères pour le jeu : bouche du canon, cristal-viseur, mains
+marker("muzzle", (0.146, 0, 0.074))
+marker("sight", (-0.07, 0, 0.113))
+marker("hand_r", (-0.055, 0, -0.02))
+marker("hand_l", (-0.06, 0.03, -0.035))
+
 out = sys.argv[1] if len(sys.argv) > 1 else "/tmp"
-preview_setup()
-dusk_lights(1.0)
-views = {
-    "pistol_side": ((0.02, -0.62, 0.03), (0.02, 0, 0.005), 55),
-    "pistol_34": ((0.4, -0.44, 0.18), (0.015, 0, 0.005), 55),
-    "pistol_back": ((-0.42, -0.36, 0.24), (0.02, 0, 0.01), 55),
-}
-for n, (loc, tgt, lens) in views.items():
-    camera(loc, tgt, lens)
-    render(os.path.join(out, n + ".png"))
+if out != "-":
+    standard_views(out, "pistol", 0.24, (0.02, 0, 0.005))
 if len(sys.argv) > 2:
-    bpy.ops.export_scene.gltf(filepath=sys.argv[2], export_format="GLB", export_apply=True)
+    export_glb(sys.argv[2])
