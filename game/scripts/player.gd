@@ -8,8 +8,8 @@ const Skills = preload("res://scripts/skills.gd")
 
 signal died
 
-enum W { PISTOL, RIFLE, AXE, BUILD, CRYO, SHOCK }
-const WEAPON_NAMES := ["PISTOLET", "FUSIL D'ASSAUT", "HACHE", "CONSTRUCTION", "CANON CRYOGÉNIQUE", "ONDE DE CHOC"]
+enum W { PISTOL, RIFLE, AXE, BUILD, CRYO, SHOCK, SNIPER }
+const WEAPON_NAMES := ["PISTOLET", "FUSIL D'ASSAUT", "HACHE", "CONSTRUCTION", "CANON CRYOGÉNIQUE", "ONDE DE CHOC", "FUSIL DE PRÉCISION"]
 const RES_MAX := 9999
 const PIECE_NAMES := ["MUR", "SOL", "RAMPE"]
 
@@ -23,7 +23,8 @@ const GUNS := {
 	W.PISTOL: {"mag": 12, "interval": 0.2, "damage": 34.0, "reload": 1.2, "auto": false, "spread": 0.012, "kick": 0.02},
 	W.RIFLE: {"mag": 30, "interval": 0.1, "damage": 24.0, "reload": 1.6, "auto": true, "spread": 0.022, "kick": 0.011},
 	# rayon de glace continu : très faibles dégâts, ralentit (70 % de vitesse) et rend vulnérable (+10 %) pendant 3 s
-	W.CRYO: {"mag": 0, "interval": 0.1, "damage": 15.0, "reload": 0.0, "auto": true, "spread": 0.0, "kick": 0.0},
+	W.CRYO: {"mag": 0, "interval": 0.1, "damage": 30.0, "reload": 0.0, "auto": true, "spread": 0.0, "kick": 0.0},
+	W.SNIPER: {"mag": 0, "interval": 1.6, "damage": 350.0, "reload": 0.0, "auto": false, "spread": 0.03, "kick": 0.09},
 	W.SHOCK: {"mag": 0, "interval": 4.0, "damage": 100.0, "reload": 0.0, "auto": false, "spread": 0.0, "kick": 0.0},
 }
 const MAG_SIZE := 30
@@ -70,8 +71,10 @@ var gun_data := {}         # W -> {node, muzzle, flash, light, crystal, glow, hi
 var has_rifle := false
 var has_cryo := false
 var has_shock := false
+var has_sniper := false
+var sniper_cd := 0.0
 var shock_cd := 0.0   # rechargement de l'onde de choc (indépendant des autres armes)
-var mags := {W.PISTOL: 12, W.RIFLE: 30, W.CRYO: 0, W.SHOCK: 0}
+var mags := {W.PISTOL: 12, W.RIFLE: 30, W.CRYO: 0, W.SHOCK: 0, W.SNIPER: 0}
 var cryo_beam: MeshInstance3D
 var cryo_beam_t := 0.0
 ## Deux armes à feu équipées (choisies dans l'inventaire) ; la hache est toujours là.
@@ -198,6 +201,7 @@ func _ready() -> void:
 	_build_pistol()
 	_build_cryo()
 	_build_shock()
+	_build_sniper()
 	_build_axe()
 	_build_ghost()
 	_build_avatar()
@@ -229,6 +233,9 @@ func _build_arms() -> void:
 	var pg: Node3D = gun_data[W.PISTOL]["node"]
 	_add_arm(pg, Vector3(0, -0.1, 0.07), Vector3(0.1, -0.42, 0.35))
 	_add_arm(pg, Vector3(-0.035, -0.12, 0.05), Vector3(-0.2, -0.42, 0.25))
+	var spg: Node3D = gun_data[W.SNIPER]["node"]
+	_add_arm(spg, Vector3(0, -0.1, 0.12), Vector3(0.15, -0.42, 0.45))
+	_add_arm(spg, Vector3(0, -0.05, -0.32), Vector3(-0.22, -0.4, 0.0))
 	var sg: Node3D = gun_data[W.SHOCK]["node"]
 	_add_arm(sg, Vector3(0, -0.1, 0.1), Vector3(0.15, -0.42, 0.42))
 	_add_arm(sg, Vector3(0, -0.04, -0.22), Vector3(-0.22, -0.4, 0.0))
@@ -523,7 +530,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if dead:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		var sens := MOUSE_SENS * (0.55 if aiming else 1.0)
+		var sens := MOUSE_SENS * ((0.22 if weapon == W.SNIPER else 0.55) if aiming else 1.0)
 		rotate_y(-event.relative.x * sens)
 		head.rotation.x = clampf(head.rotation.x - event.relative.y * sens, -1.5, 1.5)
 	elif event is InputEventMouseButton and event.pressed:
@@ -596,7 +603,7 @@ func _pick_piece(p: int) -> void:
 
 
 func _is_gun(w: int) -> bool:
-	return w == W.PISTOL or w == W.RIFLE or w == W.CRYO or w == W.SHOCK
+	return w == W.PISTOL or w == W.RIFLE or w == W.CRYO or w == W.SHOCK or w == W.SNIPER
 
 
 func _cycle_weapon(dir: int) -> void:
@@ -630,6 +637,8 @@ func owned_guns() -> Array:
 		arr.append(W.CRYO)
 	if has_shock:
 		arr.append(W.SHOCK)
+	if has_sniper:
+		arr.append(W.SNIPER)
 	return arr
 
 
@@ -664,7 +673,11 @@ func unlock_cryo() -> void:
 
 
 func owns_craft(id: String) -> bool:
-	return has_cryo if id == "cryo" else (has_shock if id == "shock" else false)
+	match id:
+		"cryo": return has_cryo
+		"shock": return has_shock
+		"sniper": return has_sniper
+	return false
 
 
 ## Fabrique une arme (menu de la sphère) : paie le coût et la range dans l'inventaire.
@@ -672,13 +685,21 @@ func craft_weapon(id: String) -> bool:
 	for r in Upg.CRAFTS:
 		if r["id"] == id and not owns_craft(id) and can_afford(r["cost"]):
 			pay(r["cost"])
-			if id == "cryo":
-				unlock_cryo()
-			else:
-				unlock_shock()
+			match id:
+				"cryo": unlock_cryo()
+				"shock": unlock_shock()
+				"sniper": unlock_sniper()
 			Sfx.play("build", 0.0, 0.8)
 			return true
 	return false
+
+
+func unlock_sniper() -> void:
+	has_sniper = true
+	if loadout[1] < 0:
+		loadout[1] = W.SNIPER
+	if hud:
+		hud.flash_message("FUSIL DE PRÉCISION ajouté à l'inventaire")
 
 
 ## Arme fabriquée / obtenue : rangée dans l'inventaire (et dans l'emplacement 2 s'il est vide).
@@ -701,6 +722,8 @@ func unlock_rifle() -> void:
 # ------------------------------------------------------------------ caractéristiques améliorées
 
 func gun_lvl(w: int, branch: String) -> int:
+	if w == W.SNIPER:
+		return upgrades["sniper"].get(branch, 0)
 	if not GUN_KEYS.has(w):
 		return 0   # le canon cryogénique n'a pas (encore) d'arbre d'amélioration
 	return upgrades[GUN_KEYS[w]][branch]
@@ -850,6 +873,7 @@ func _physics_process(delta: float) -> void:
 func _update_weapons(delta: float) -> void:
 	fire_cd -= delta
 	shock_cd -= delta
+	sniper_cd -= delta
 	swing_cd -= delta
 	build_cd -= delta
 	# Souris : on n'agit que si elle est capturée (le clic qui la capture ne doit pas tirer).
@@ -875,6 +899,14 @@ func _update_weapons(delta: float) -> void:
 			if firing and fire_cd <= 0.0:
 				_shoot_cryo()
 			cryo_beam.visible = cryo_beam_t > 0.0
+			trigger_held = firing
+		W.SNIPER:
+			if firing and not trigger_held and sniper_cd <= 0.0:
+				if bones < 1 and not test_mode:
+					if hud:
+						hud.flash_message("Il faut 1 OS par balle (les squelettes en laissent tomber)")
+				else:
+					_shoot_sniper()
 			trigger_held = firing
 		W.SHOCK:
 			if firing and not trigger_held and shock_cd <= 0.0:
@@ -946,11 +978,13 @@ func _process(delta: float) -> void:
 		var look := Input.get_vector(a("look_left"), a("look_right"), a("look_up"), a("look_down"))
 		if look.length() > 0.0:
 			look = look * look.length()
-			var spd := STICK_LOOK_SPEED * (0.45 if aiming else 1.0)
+			var spd := STICK_LOOK_SPEED * ((0.2 if weapon == W.SNIPER else 0.45) if aiming else 1.0)
 			rotate_y(-look.x * spd * delta)
 			head.rotation.x = clampf(head.rotation.x - look.y * spd * 0.75 * delta, -1.5, 1.5)
 	# Animations de l'arme en main (balancement, recul, visée)
-	cam.fov = lerpf(cam.fov, 55.0 if aiming else 80.0, minf(14.0 * delta, 1.0))
+	cam.fov = lerpf(cam.fov, (18.0 if weapon == W.SNIPER else 55.0) if aiming else 80.0, minf(14.0 * delta, 1.0))
+	# lunette : l'arme disparaît quand on vise (vue à travers la lunette, voir l'interface)
+	viewmodel.visible = not dead and not (weapon == W.SNIPER and ads_t > 0.7)
 	var speed2 := Vector2(velocity.x, velocity.z).length()
 	if is_on_floor() and speed2 > 0.5:
 		bob_t += delta * speed2 * 1.6
@@ -999,7 +1033,7 @@ func _process(delta: float) -> void:
 # ------------------------------------------------------------------ fusil
 
 func _start_reload() -> void:
-	if not _is_gun(weapon) or weapon == W.CRYO or weapon == W.SHOCK or reloading or ammo >= gun_mag(weapon):
+	if not _is_gun(weapon) or weapon == W.CRYO or weapon == W.SHOCK or weapon == W.SNIPER or reloading or ammo >= gun_mag(weapon):
 		return
 	reloading = true
 	reload_t = GUNS[weapon]["reload"] * Upg.reload_mult(gun_lvl(weapon, "reload")) * (0.75 if has_skill("A4") else 1.0)
@@ -1164,6 +1198,106 @@ func _spawn_shock_fx(pos: Vector3, fwd: Vector3, rng: float) -> void:
 	tw.tween_property(m, "albedo_color:a", 0.0, 0.4)
 	tw.chain().tween_callback(mi.queue_free)
 	main.spawn_impact(pos + fwd * rng * 0.6 - Vector3.UP * 0.8, Vector3.UP, Color(0.9, 0.85, 0.7), 16, 1.4)
+
+
+# ------------------------------------------------------------------ fusil de précision
+
+func sniper_damage() -> float:
+	return Upg.sniper_damage(upgrades["sniper"]["damage"])
+
+
+func sniper_cooldown() -> float:
+	return Upg.sniper_cooldown(upgrades["sniper"]["cooldown"])
+
+
+## Multiplicateur de tir à la tête : ×3 de base (au lieu de ×2), amélioré, +0,5 avec « Tête froide ».
+func sniper_headshot() -> float:
+	return Upg.sniper_headshot(upgrades["sniper"]["headshot"]) + (0.5 if has_skill("A5") else 0.0)
+
+
+## Tir au fusil de précision : 1 os par balle, très précis en visant, gros dégâts.
+func _shoot_sniper() -> void:
+	sniper_cd = sniper_cooldown()
+	if not test_mode:
+		bones -= 1
+	recoil = 1.6
+	flash_t = 0.06
+	Sfx.play("shot", 0.0, 0.62)
+	var spread: float = 0.0005 if aiming else GUNS[W.SNIPER]["spread"]
+	if Vector2(velocity.x, velocity.z).length() > 1.0:
+		spread += 0.01
+	var b := cam.global_transform.basis
+	var dir := (-b.z + b.x * randf_range(-spread, spread) + b.y * randf_range(-spread, spread)).normalized()
+	var from := cam.global_position
+	var to := from + dir * 400.0
+	var q := PhysicsRayQueryParameters3D.create(from, to, MASK_SHOOT)
+	q.exclude = [get_rid()]
+	var r := get_world_3d().direct_space_state.intersect_ray(q)
+	var end := to
+	if not r.is_empty():
+		end = r.position
+		var c = r.collider
+		if c and c.is_in_group("zombie"):
+			var is_head: bool = r.position.y > c.global_position.y + c.head_height
+			if is_head:
+				add_stat("headshots")
+			deal_damage(c, sniper_damage() * (sniper_headshot() if is_head else 1.0), is_head, "gun")
+			if hud:
+				hud.hitmarker(is_head)
+			Sfx.play("headshot" if is_head else "hit", -2.0)
+			main.spawn_impact(end, r.normal, Color(0.35, 0.85, 0.2), 16, 1.4)
+		else:
+			main.spawn_impact(end, r.normal, Color(1.0, 0.85, 0.55), 10, 0.9)
+	main.spawn_tracer(muzzle.global_position, end)
+	head.rotation.x = clampf(head.rotation.x + (0.02 if aiming else 0.09), -1.5, 1.5)
+
+
+## Fusil de précision en main : long canon, lunette, crosse en bois, bande d'os.
+func _build_sniper() -> void:
+	var g := Node3D.new()
+	g.position = HIP_POS
+	g.scale = Vector3.ONE * 0.82
+	g.visible = false
+	viewmodel.add_child(g)
+	var metal := Mats.col(Color(0.16, 0.17, 0.21), 0.35)
+	var wood := Mats.col(Color(0.42, 0.26, 0.14), 0.8)
+	var bone := Mats.col(Color(0.9, 0.86, 0.74), 0.7)
+	var lens := StandardMaterial3D.new()
+	lens.albedo_color = Color(0.4, 0.8, 1.0, 0.85)
+	lens.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	lens.emission_enabled = true
+	lens.emission = Color(0.3, 0.7, 1.0)
+	lens.emission_energy_multiplier = 2.0
+	Mats.box(g, Vector3(0.07, 0.09, 0.5), metal, Vector3(0, 0, 0))
+	Mats.cylinder(g, 0.018, 0.022, 0.62, metal, Vector3(0, 0.02, -0.55), Vector3(90, 0, 0), 10)
+	Mats.cylinder(g, 0.03, 0.03, 0.06, metal, Vector3(0, 0.02, -0.86), Vector3(90, 0, 0), 10)
+	Mats.box(g, Vector3(0.06, 0.12, 0.3), wood, Vector3(0, -0.04, 0.36))
+	Mats.box(g, Vector3(0.065, 0.03, 0.18), bone, Vector3(0, 0.035, 0.12))
+	# lunette
+	Mats.cylinder(g, 0.032, 0.032, 0.3, metal, Vector3(0, 0.1, -0.05), Vector3(90, 0, 0), 12)
+	Mats.cylinder(g, 0.042, 0.032, 0.06, metal, Vector3(0, 0.1, -0.22), Vector3(90, 0, 0), 12)
+	Mats.cylinder(g, 0.036, 0.036, 0.01, lens, Vector3(0, 0.1, -0.255), Vector3(90, 0, 0), 12)
+	Mats.box(g, Vector3(0.02, 0.05, 0.02), metal, Vector3(0, 0.065, 0.05))
+	Mats.box(g, Vector3(0.02, 0.05, 0.02), metal, Vector3(0, 0.065, -0.12))
+	Mats.box(g, Vector3(0.05, 0.13, 0.06), metal, Vector3(0, -0.11, 0.06), Vector3(-15, 0, 0))
+	var glow := OmniLight3D.new()
+	glow.light_color = Color(0.4, 0.8, 1.0)
+	glow.light_energy = 0.2
+	glow.omni_range = 0.4
+	glow.position = Vector3(0, 0.1, -0.25)
+	g.add_child(glow)
+	var m := Marker3D.new()
+	m.position = Vector3(0, 0.02, -0.9)
+	g.add_child(m)
+	var fl := Mats.sphere(m, 0.07, Mats.col(Color(1.0, 0.85, 0.5), 0.5, 6.0), Vector3.ZERO, 6)
+	fl.visible = false
+	var li := OmniLight3D.new()
+	li.light_color = Color(1.0, 0.85, 0.5)
+	li.omni_range = 5.0
+	li.light_energy = 0.0
+	m.add_child(li)
+	gun_data[W.SNIPER] = {"node": g, "muzzle": m, "flash": fl, "light": li, "crystal": lens, "glow": glow,
+		"hip": HIP_POS, "ads": Vector3(0.0, -0.18, -0.45), "rest": Vector3(0, deg_to_rad(5.0), 0)}
 
 
 ## Onde de choc en main : corne d'os sculptée, anneaux de bronze et cœur lumineux.
@@ -1489,9 +1623,9 @@ class Fireball extends Node3D:
 					targets.append(z)
 		for z in targets:
 			if is_instance_valid(p):
-				p.deal_damage(z, 60.0, false, "fire")
+				p.deal_damage(z, 180.0, false, "fire")
 			if is_instance_valid(z) and not z.dead and z.has_method("ignite"):
-				z.ignite(5.0, 12.0 * (p.dmg_mult("fire") if is_instance_valid(p) else 1.0), p)
+				z.ignite(5.0, 36.0 * (p.dmg_mult("fire") if is_instance_valid(p) else 1.0), p)
 		if is_instance_valid(p) and p.main:
 			p.main.spawn_impact(pos, Vector3.UP, Color(1.0, 0.5, 0.1), 24 if explode else 12, 2.0 if explode else 1.2)
 		Sfx.play_3d("break", pos, 0.0, 1.3)
@@ -1934,7 +2068,7 @@ func respawn(pos: Vector3, invuln := 3.0) -> void:
 	invuln_t = invuln
 	hp = max_hp()
 	shield = shield_max()
-	mags = {W.PISTOL: gun_mag(W.PISTOL), W.RIFLE: gun_mag(W.RIFLE), W.CRYO: 0, W.SHOCK: 0}
+	mags = {W.PISTOL: gun_mag(W.PISTOL), W.RIFLE: gun_mag(W.RIFLE), W.CRYO: 0, W.SHOCK: 0, W.SNIPER: 0}
 	ammo = gun_mag(weapon) if _is_gun(weapon) else ammo
 	reloading = false
 	position = pos

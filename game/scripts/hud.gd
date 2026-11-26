@@ -156,6 +156,25 @@ var alert_label: Label
 var hp_bar: ProgressBar
 var hp_label: Label
 var skill_label: Label   # bouclier / boule de feu (au-dessus de la vie)
+var scope: ColorRect     # vue à travers la lunette du fusil de précision
+const SCOPE_SHADER := """
+shader_type canvas_item;
+void fragment() {
+	vec2 px = SCREEN_UV * (1.0 / SCREEN_PIXEL_SIZE);
+	vec2 c = (1.0 / SCREEN_PIXEL_SIZE) * 0.5;
+	float r = min(c.x, c.y) * 0.86;
+	float d = distance(px, c);
+	float lens = smoothstep(r, r - 3.0, d);
+	vec2 o = abs(px - c);
+	float cross = (step(o.x, 1.2) + step(o.y, 1.2)) * step(26.0, max(o.x, o.y)) * step(max(o.x, o.y), r * 0.9);
+	float dot = step(d, 2.5);
+	float rim = smoothstep(r - 10.0, r, d) * lens;
+	vec4 col = vec4(0.0, 0.0, 0.0, 1.0 - lens);
+	col = mix(col, vec4(0.0, 0.0, 0.0, 0.85), clamp(cross + dot, 0.0, 1.0) * lens);
+	col = mix(col, vec4(0.0, 0.0, 0.0, 0.6), rim);
+	COLOR = col;
+}
+"""
 var ammo_label: Label
 var info_label: Label
 const RES_KINDS := ["wood", "magic_wood", "stone", "magic_stone", "cloud", "magic_cloud", "coins"]
@@ -204,6 +223,15 @@ func _ready() -> void:
 	vig.material = vignette_mat
 	root.add_child(vig)
 
+	scope = ColorRect.new()
+	_full(scope)
+	var smat := ShaderMaterial.new()
+	var ssh := Shader.new()
+	ssh.code = SCOPE_SHADER
+	smat.shader = ssh
+	scope.material = smat
+	scope.visible = false
+	root.add_child(scope)
 	crosshair = Crosshair.new()
 	_full(crosshair)
 	root.add_child(crosshair)
@@ -514,7 +542,7 @@ func update_player(p) -> void:
 	else:
 		build_prompt.text = ""
 	var si: int = p.slot_index()
-	var short := {0: "PISTOLET", 1: "FUSIL", 4: "CRYO", 5: "CHOC"}
+	var short := {0: "PISTOLET", 1: "FUSIL", 4: "CRYO", 5: "CHOC", 6: "SNIPER"}
 	for i in slots.size():
 		slots[i].add_theme_stylebox_override("panel", slot_on if i == si else slot_off)
 		if i < 2:
@@ -534,6 +562,13 @@ func update_player(p) -> void:
 			mode = 0
 			if p.aiming:
 				mode = 3
+			crosshair.visible = true
+		6:
+			var sready: bool = p.sniper_cd <= 0.0
+			ammo_label.add_theme_color_override("font_color", Color.WHITE if sready else Color(0.7, 0.7, 0.75))
+			ammo_label.text = ("PRÊT" if sready else "%.1f s" % p.sniper_cd) + "  ·  OS %s" % ("∞" if p.test_mode else str(p.bones))
+			info_label.text = "Fusil de précision : 1 os par balle · %d dégâts · tête ×%.2f · Clic D / LT : lunette" % [int(p.sniper_damage()), p.sniper_headshot()]
+			mode = 3 if p.aiming else 0
 			crosshair.visible = true
 		5:
 			var ready: bool = p.shock_cd <= 0.0
@@ -556,6 +591,11 @@ func update_player(p) -> void:
 			info_label.text = "Clic G construire · F pièce · V matériau · X modifier\nManette : RT mur · LT sol · RB rampe · Y matériau · → modifier"
 			mode = 2
 			crosshair.visible = true
+	# lunette du fusil de précision
+	var scoped: bool = p.weapon == 6 and p.aiming and p.ads_t > 0.7 and not p.dead
+	scope.visible = scoped
+	if scoped:
+		crosshair.visible = false
 	if p.dead:
 		crosshair.visible = false
 	if crosshair.mode != mode:
@@ -1001,7 +1041,7 @@ func _refresh_craft(focus_id := "") -> void:
 		cost_row.alignment = BoxContainer.ALIGNMENT_CENTER
 		cost_row.add_theme_constant_override("separation", 6)
 		cv.add_child(cost_row)
-		for k in ["wood", "stone", "coins", "bone", "big_bone"]:
+		for k in ["wood", "stone", "magic_wood", "magic_stone", "coins", "bone", "arrow_bone", "big_bone"]:
 			if not r["cost"].has(k):
 				continue
 			var t := TextureRect.new()

@@ -234,3 +234,16 @@ def cloud_icon(magic):
 
 save(cloud_icon(False), "cloud")
 save(cloud_icon(True), "magic_cloud")
+
+
+def sniper_icon():
+    im = Image.new("RGBA", (S, S), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
+    _poly(d, [(20, 250), (300, 238), (480, 238), (480, 256), (300, 262), (250, 270), (240, 330), (205, 330), (200, 275), (130, 278), (110, 320), (30, 300)], (60, 64, 78))
+    d.rectangle([60, 262, 140, 296], fill=(140, 92, 52))
+    _poly(d, [(170, 190), (330, 190), (330, 222), (170, 222)], (40, 44, 56))
+    d.ellipse([318, 186, 346, 226], fill=(110, 200, 255))
+    d.rectangle([200, 222, 212, 238], fill=(40, 44, 56)); d.rectangle([290, 222, 302, 238], fill=(40, 44, 56))
+    d.rectangle([150, 240, 230, 250], fill=(230, 220, 190))
+    return im
+
+save(sniper_icon(), "w_sniper")

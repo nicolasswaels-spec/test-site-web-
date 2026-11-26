@@ -42,6 +42,8 @@ const ITEMS := {
 		["slow", "Ralentissement (à 10 statuts)"], ["damage", "Dégâts"], ["vuln", "Vulnérabilité (à 10 statuts)"], ["duration", "Durée d'un statut de glace"]]},
 	"shock": {"name": "ONDE DE CHOC", "branches": [
 		["damage", "Dégâts"], ["cooldown", "Rechargement"], ["range", "Portée"]]},
+	"sniper": {"name": "FUSIL DE PRÉCISION", "branches": [
+		["cooldown", "Réarmement"], ["damage", "Dégâts de base"], ["headshot", "Multiplicateur tir à la tête"], ["defense", "Défense (arme en main)"]]},
 	"wire": {"name": "BARBELÉS", "branches": [
 		["slow", "Ralentissement"], ["damage", "Dégâts"]]},
 }
@@ -58,10 +60,12 @@ static func new_state() -> Dictionary:
 
 # ------------------------------------------------------------------ création d'arme (menu de la sphère, dès la 2e sphère)
 const CRAFTS := [
-	{"id": "cryo", "name": "CANON CRYOGÉNIQUE", "icon": "w_cryo", "cost": {"wood": 5000, "stone": 2500},
+	{"id": "cryo", "name": "CANON CRYOGÉNIQUE", "icon": "w_cryo", "cost": {"wood": 3300, "stone": 1700, "magic_wood": 8, "magic_stone": 8},
 		"desc": "Rayon de glace continu : ralentit et rend vulnérable."},
 	{"id": "shock", "name": "ONDE DE CHOC", "icon": "w_shock", "cost": {"wood": 2000, "stone": 1000, "bone": 30},
 		"desc": "1 os par tir : cône large devant toi, 225 dégâts à tous les squelettes touchés."},
+	{"id": "sniper", "name": "FUSIL DE PRÉCISION", "icon": "w_sniper", "cost": {"wood": 2000, "stone": 1000, "arrow_bone": 20},
+		"desc": "Lunette, coup par coup, 1 os par balle : 350 dégâts, ×3 à la tête."},
 ]
 
 
@@ -106,8 +110,40 @@ static func max_level(item: String, branch: String) -> int:
 	return MAX_LEVEL
 
 
+# ------------------------------------------------------------------ fusil de précision
+## Réarmement 1,6 s -> 0,8 s ; dégâts 350 -> 700 ; tir à la tête ×3 -> ×5 ; défense comme les autres armes.
+const SNIPER_BASE_DAMAGE := 350.0
+const SNIPER_BASE_COOLDOWN := 1.6
+const SNIPER_BASE_HEADSHOT := 3.0
+const SNIPER_COSTS := {"wood": [400, 700, 1000, 1400, 1900, 2500, 3200, 4000],
+	"stone": [150, 300, 450, 650, 900, 1200, 1500, 1900],
+	"coins": [0, 2, 4, 6, 9, 12, 16, 22],
+	"arrow_bone": [2, 3, 4, 5, 6, 8, 10, 12]}
+
+
+static func sniper_cooldown(lvl: int) -> float:
+	return SNIPER_BASE_COOLDOWN - 0.1 * lvl
+
+
+static func sniper_damage(lvl: int) -> float:
+	return SNIPER_BASE_DAMAGE + 43.75 * lvl
+
+
+static func sniper_headshot(lvl: int) -> float:
+	return SNIPER_BASE_HEADSHOT + 0.25 * lvl
+
+
 static func cost(item: String, branch: String, level: int) -> Dictionary:
 	# level = niveau visé (1..max)
+	if item == "sniper":
+		var sc := {}
+		for k in SNIPER_COSTS:
+			var v: int = SNIPER_COSTS[k][level - 1]
+			if v > 0:
+				sc[k] = v
+		if level == MAX_LEVEL:
+			sc["big_bone"] = 1
+		return sc
 	if item == "shock":
 		var c := {}
 		for k in SHOCK_COSTS[branch]:
@@ -134,6 +170,8 @@ static func cost_text(c: Dictionary) -> String:
 		parts.append("%d pièces" % c["coins"])
 	if c.has("bone"):
 		parts.append("%d os" % c["bone"])
+	if c.has("arrow_bone"):
+		parts.append("%d os en flèche" % c["arrow_bone"])
 	if c.has("big_bone"):
 		parts.append("%d os imposant" % c["big_bone"])
 	return " + ".join(parts)
@@ -176,7 +214,7 @@ static func wire_dps(lvl: int) -> float:
 ## Canon cryo : statut de glace de 0 à 10, gagné en touchant la cible (0,7 par tic de 0,1 s :
 ## ~1,5 s de rayon continu pour atteindre 10). Les effets ci-dessous sont les valeurs à 10 statuts.
 const CRYO_STACKS_PER_TICK := 1.05   # statuts appliqués encore 1,5× plus vite
-const CRYO_BASE_DPS := 150.0         # 150 dégâts/s de base, 450 au niveau 8
+const CRYO_BASE_DPS := 300.0         # 300 dégâts/s de base, 1125 au niveau 8 (hors vulnérabilité)
 
 
 ## Ralentissement à 10 statuts : 30 % → 40 %
@@ -186,12 +224,12 @@ static func cryo_max_slow(lvl: int) -> float:
 
 ## Dégâts du rayon : 150 / s → 450 / s (avant vulnérabilité)
 static func cryo_damage_mult(lvl: int) -> float:
-	return 1.0 + (450.0 / 150.0 - 1.0) / 8.0 * lvl
+	return 1.0 + (1125.0 / 300.0 - 1.0) / 8.0 * lvl
 
 
 ## Vulnérabilité à 10 statuts : +10 % → +40 %
 static func cryo_max_vuln(lvl: int) -> float:
-	return 0.10 + 0.0375 * lvl
+	return 0.30 + (0.70 / 8.0) * lvl     # à 10 statuts : +30 % de dégâts subis, +100 % au niveau 8
 
 
 ## Durée d'un statut (on en perd un à chaque fois) : 1 s → 3 s
@@ -201,6 +239,14 @@ static func cryo_stack_time(lvl: int) -> float:
 
 ## Texte de l'effet d'une branche à un niveau donné (pour l'interface).
 static func effect_text(item: String, branch: String, lvl: int, base_mag := 12) -> String:
+	if item == "sniper":
+		match branch:
+			"cooldown":
+				return "%.1f s entre deux tirs" % sniper_cooldown(lvl)
+			"damage":
+				return "%d dégâts" % int(sniper_damage(lvl))
+			"headshot":
+				return "tête ×%.2f" % sniper_headshot(lvl)
 	if item == "shock":
 		match branch:
 			"damage":

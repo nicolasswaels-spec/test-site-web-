@@ -47,7 +47,7 @@ const SKILLS := {
 	"A6": {"branch": "attack", "pos": Vector2(2, 2), "parent": "A3", "name": "CHOC AMPLIFIÉ",
 		"desc": "Onde de choc : +2 m de portée et +15 % de dégâts.", "stat": "kills_shock", "need": 30},
 	"A7": {"branch": "attack", "pos": Vector2(0, 3), "parent": "A4", "name": "BOULE DE FEU",
-		"desc": "Compétence (C / croix gauche hors construction) : boule de feu, 60 dégâts puis brûlure 5 s (12 dégâts/s). Recharge 12 s.", "stat": "boss_kills", "need": 3},
+		"desc": "Compétence (C / croix gauche hors construction) : boule de feu, 180 dégâts puis brûlure 5 s (36 dégâts/s). Recharge 12 s.", "stat": "boss_kills", "need": 3},
 	"A8": {"branch": "attack", "pos": Vector2(2, 3), "parent": "A5", "name": "EXÉCUTION",
 		"desc": "+30 % de dégâts contre les ennemis sous 30 % de PV.", "stat": "kills", "need": 300},
 	"A9": {"branch": "attack", "pos": Vector2(0, 4), "parent": "A7", "name": "FOURNAISE",

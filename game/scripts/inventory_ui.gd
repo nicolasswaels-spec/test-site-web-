@@ -39,11 +39,11 @@ const RES_DESC := {
 	"arrow_bone": "Laissé par les squelettes archers. Son usage arrive bientôt.",
 	"bone_pile": "Laissé par le titan de lave. À utiliser : donne 6 os imposants et 10 os."}
 # armes : index du joueur (W), rareté et couleur de carte
-const WEAPON_ICONS := {0: "w_pistol", 1: "w_rifle", 4: "w_cryo", 5: "w_shock", 2: "w_axe"}
+const WEAPON_ICONS := {0: "w_pistol", 1: "w_rifle", 4: "w_cryo", 5: "w_shock", 6: "w_sniper", 2: "w_axe"}
 const RARITY := {0: ["RARE", Color(0.18, 0.42, 0.85)], 1: ["ÉPIQUE", Color(0.52, 0.22, 0.78)],
-	4: ["LÉGENDAIRE", Color(0.85, 0.55, 0.12)], 5: ["MYTHIQUE", Color(0.72, 0.36, 0.2)], 2: ["OUTIL", Color(0.28, 0.45, 0.32)]}
-const ITEM_ICONS := {"pistol": "w_pistol", "rifle": "w_rifle", "cryo": "w_cryo", "shock": "w_shock", "axe": "w_axe", "wire": "coins"}
-const ITEM_W := {"pistol": 0, "rifle": 1, "cryo": 4, "shock": 5, "axe": 2, "wire": -1}
+	4: ["LÉGENDAIRE", Color(0.85, 0.55, 0.12)], 5: ["MYTHIQUE", Color(0.72, 0.36, 0.2)], 6: ["MYTHIQUE", Color(0.2, 0.45, 0.5)], 2: ["OUTIL", Color(0.28, 0.45, 0.32)]}
+const ITEM_ICONS := {"pistol": "w_pistol", "rifle": "w_rifle", "cryo": "w_cryo", "shock": "w_shock", "sniper": "w_sniper", "axe": "w_axe", "wire": "coins"}
+const ITEM_W := {"pistol": 0, "rifle": 1, "cryo": 4, "shock": 5, "sniper": 6, "axe": 2, "wire": -1}
 
 
 func _ready() -> void:
@@ -229,6 +229,8 @@ func _build_inventory() -> Control:
 		weapons.append(4)
 	if p.has_shock:
 		weapons.append(5)
+	if p.has_sniper:
+		weapons.append(6)
 	weapons.append(2)
 	for w in weapons:
 		var wi: int = w
@@ -320,6 +322,8 @@ func _build_detail() -> Control:
 		else:
 			if w == 4:
 				desc.text = "Rayon de glace continu : ajoute des statuts de glace (1 à 10) qui ralentissent la cible et la rendent vulnérable."
+			elif w == 6:
+				desc.text = "Coup par coup, 1 os par balle · %d dégâts · tête ×%.2f · %.1f s entre deux tirs · lunette (clic droit / LT)" % [int(p.sniper_damage()), p.sniper_headshot(), p.sniper_cooldown()]
 			elif w == 5:
 				desc.text = "1 os par tir · cône de 120° devant toi · %d m · %d dégâts à chaque squelette touché · %.1f s entre deux tirs" % [int(p.shock_range()), int(p.shock_damage()), p.shock_cooldown()]
 			else:
@@ -376,13 +380,15 @@ func _items() -> Array:
 		arr.append("cryo")
 	if p.has_shock:
 		arr.append("shock")
+	if p.has_sniper:
+		arr.append("sniper")
 	arr.append_array(["axe", "wire"])
 	return arr
 
 
 ## Coût affiché en icônes : [icône] 300  [icône] 100 ...
 func _cost_row(parent: Node, c: Dictionary) -> void:
-	for k in ["wood", "stone", "coins", "bone", "big_bone"]:
+	for k in ["wood", "stone", "magic_wood", "magic_stone", "coins", "bone", "arrow_bone", "big_bone"]:
 		if c.get(k, 0) <= 0:
 			continue
 		var t := TextureRect.new()

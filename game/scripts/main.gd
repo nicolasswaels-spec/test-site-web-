@@ -234,6 +234,14 @@ var embers: CPUParticles3D
 var sky_unlocked := false
 var orb4
 var angels_left := 0   # anges squelettes (4e sphère seulement, 3 maximum)
+# défense sans fin (après la 4e sphère)
+const ENDLESS_PREP := 60.0
+const ENDLESS_START_LEVEL := 36
+const ENDLESS_LEVEL_EVERY := 12.0    # +1 niveau toutes les 12 s
+var endless_t := 0.0                 # temps tenu
+var endless_spawn_t := 0.0
+var endless_boss_t := 0.0
+var endless_dir_t := 0.0
 var storm_mats: Array[ShaderMaterial] = []
 var zone2_blockers: Array[Node] = []   # forêt et pics qui occupent la zone 2 avant son ouverture
 var spires: Array[Node3D] = []
@@ -1129,6 +1137,17 @@ func _process(delta: float) -> void:
 				hud.set_wave("COLOSSE DES NUÉES", "Grêle : décale-toi · Cercles bleus : bouge · Bourrasque : abrite-toi derrière un mur")
 			else:
 				hud.set_wave("TITAN DE LAVE", "Boules de feu : abrite-toi · Onde de choc : saute · Cercles rouges : bouge !")
+		"pre_endless":
+			countdown -= delta
+			hud.set_wave("DÉFENSE SANS FIN DANS %d s" % int(ceil(countdown)), "Renforce tes défenses autour de la 4e sphère")
+			if near_orb:
+				prompt = "[E / X] SPHÈRE"
+			if countdown <= 0.0:
+				_start_endless()
+		"endless":
+			_update_endless(delta)
+			var best := _best_endless()
+			hud.set_wave("SANS FIN  %s" % _fmt_time(endless_t), "Niveau des squelettes : %d%s" % [max_level(), ("   ·   record : %s" % _fmt_time(best)) if best > 0.0 else ""])
 		"free":
 			hud.set_wave("FORÊT LIBÉRÉE", "Les quatre sphères sont sauves. Explore librement !")
 
@@ -1312,6 +1331,8 @@ func _spawn_zombie(boss: bool, archer := false, angel := false) -> void:
 ## sont nettement plus bas). Il monte à chaque vague et redescend au début de chaque nouvelle sphère :
 ##   zone 1 : 1, 3, 4, 5, 7, 8, 9, 10, 12, 13 ; 2e sphère : 12 à 21 ; 3e sphère : 21 à 30.
 func max_level() -> int:
+	if state == "endless":
+		return ENDLESS_START_LEVEL + int(endless_t / ENDLESS_LEVEL_EVERY)
 	match zone:
 		2: return wave + 11
 		4: return wave + 20
@@ -1371,10 +1392,18 @@ func _end_wave() -> void:
 		elif zone == 4:
 			_complete_zone4()
 		else:
-			state = "free"
+			# 4e sphère sauvée : 1 min (+ report) puis la défense sans fin
+			state = "pre_endless"
+			countdown = ENDLESS_PREP + carry_time
+			carry_time = 0.0
 			Music.play("game")
 			Sfx.play("win")
-			hud.show_center("VICTOIRE !", "Les quatre sphères sont sauves. La forêt et le ciel t'appartiennent.", 6.0)
+			for p in players:
+				p.gain_tokens(1)
+				if not p.dead:
+					p.hp = p.max_hp()
+			hud.show_center("VICTOIRE !", "Les quatre sphères sont sauves... mais ils arrivent sans fin.", 5.0)
+			hud.show_notice("DÉFENSE SANS FIN dans 1 min : les squelettes arrivent en continu, de plus en plus forts\n(boss, archers, anges...). Tiens le plus longtemps possible : un chronomètre mesure ton record.", 9.0)
 		return
 	state = "break"
 	Music.play("game")
@@ -2078,6 +2107,88 @@ func on_cloud_harvested(c: Node) -> void:
 	get_tree().create_timer(rng.randf_range(12.0, 25.0), false).timeout.connect(func(): spawn_cloud(air))
 
 
+# ------------------------------------------------------------------ défense sans fin
+
+func _start_endless() -> void:
+	if state == "endless":
+		return
+	state = "endless"
+	endless_t = 0.0
+	endless_spawn_t = 2.0
+	endless_boss_t = 50.0
+	endless_dir_t = 0.0
+	Music.play("battle")
+	Sfx.play("horn", -2.0)
+	hud.show_center("DÉFENSE SANS FIN", "Tiens le plus longtemps possible !", 3.0)
+
+
+func _update_endless(delta: float) -> void:
+	endless_t += delta
+	# directions d'arrivée renouvelées régulièrement
+	endless_dir_t -= delta
+	if endless_dir_t <= 0.0:
+		endless_dir_t = 25.0
+		for m in spawn_markers:
+			m.queue_free()
+		spawn_markers.clear()
+		spawn_angles.clear()
+		var base := rng.randf() * TAU
+		for i in 3:
+			var a := base + TAU * i / 3.0 + rng.randf_range(-0.3, 0.3)
+			var diff := wrapf(a - PI * 0.5, -PI, PI)
+			if absf(diff) < 0.6:
+				a += 1.2 * (1.0 if diff >= 0.0 else -1.0)
+			spawn_angles.append(a)
+			var marker := _make_spawn_marker()
+			marker.position = _spawn_center() + Vector3(cos(a), 0, sin(a)) * _spawn_radius()
+			add_child(marker)
+			spawn_markers.append(marker)
+	# flux continu, limité en nombre en même temps (la limite monte doucement)
+	var alive := 0
+	var angels := 0
+	for z in zombie_cache:
+		if is_instance_valid(z) and not z.guard and not z.dead:
+			alive += 1
+			if z.get("angel"):
+				angels += 1
+	var cap := mini(60, 16 + int(endless_t / 30.0))
+	endless_spawn_t -= delta
+	endless_boss_t -= delta
+	if endless_spawn_t > 0.0 or alive >= cap:
+		return
+	endless_spawn_t = maxf(0.45, 1.5 - endless_t / 400.0)
+	if endless_boss_t <= 0.0:
+		endless_boss_t = maxf(25.0, 60.0 - endless_t / 30.0)
+		_spawn_zombie(true)
+		return
+	var r := rng.randf()
+	if r < 0.05 and angels < 3:
+		_spawn_zombie(false, true, true)
+	elif r < 0.15:
+		_spawn_zombie(false, true)
+	else:
+		_spawn_zombie(false)
+
+
+func _fmt_time(t: float) -> String:
+	var s := int(t)
+	return "%d:%02d" % [s / 60, s % 60]
+
+
+func _best_endless() -> float:
+	var cf := ConfigFile.new()
+	if cf.load("user://records.cfg") != OK:
+		return 0.0
+	return float(cf.get_value("sans_fin", "meilleur", 0.0))
+
+
+func _save_best_endless(t: float) -> void:
+	var cf := ConfigFile.new()
+	cf.load("user://records.cfg")
+	cf.set_value("sans_fin", "meilleur", t)
+	cf.save("user://records.cfg")
+
+
 ## Où réapparaît un joueur qui n'a plus de vie : loin de la sphère, ou à l'entrée de l'arène du titan.
 func respawn_anchor() -> Vector3:
 	if zone == 5:
@@ -2168,6 +2279,12 @@ func skip_zone() -> void:
 					titan.die()
 				_teleport_players(SKY_CENTER + Vector3(0, 0.6, 16))
 				return
+			if state == "pre_endless":
+				_start_endless()
+				return
+			if state == "endless":
+				endless_t += 300.0   # mode test : avance de 5 minutes (niveaux +25)
+				return
 			wave = TOTAL_WAVES
 			state = "wave"
 			_end_wave()
@@ -2214,12 +2331,16 @@ func orb_launch_text() -> String:
 		"explore":
 			if zone == 2 or zone == 4 or zone == 5:
 				return "LANCER LE COMBAT (%de SPHÈRE)" % {2: 2, 4: 3, 5: 4}[zone]
+		"pre_endless":
+			return "LANCER LA DÉFENSE SANS FIN"
 	return ""
 
 
 ## Bouton « lancer » du menu de la sphère : le temps restant est en partie reporté (50 %).
 func orb_launch() -> void:
 	match state:
+		"pre_endless":
+			_start_endless()
 		"idle":
 			if not Settings.test_mode:
 				_carry_over(countdown)
@@ -2328,6 +2449,7 @@ func _apply_test_mode(p) -> void:
 	p.unlock_rifle()
 	p.unlock_cryo()
 	p.unlock_shock()
+	p.unlock_sniper()
 	p.set_loadout(0, p.W.PISTOL)
 	p.set_loadout(1, p.W.RIFLE)
 	p._select_weapon(p.W.PISTOL)
@@ -2488,6 +2610,14 @@ func _finish(victory: bool) -> void:
 	if victory:
 		Sfx.play("win")
 		hud.show_end("VICTOIRE !", "Les 10 vagues ont été repoussées. La sphère est sauve.")
+	elif endless_t > 0.0:
+		Sfx.play("lose")
+		var best := _best_endless()
+		var record := endless_t > best
+		if record:
+			_save_best_endless(endless_t)
+		hud.show_end("FIN DE LA DÉFENSE", "Tu as tenu %s (niveau %d atteint).%s" % [_fmt_time(endless_t), ENDLESS_START_LEVEL + int(endless_t / ENDLESS_LEVEL_EVERY),
+			"\nNOUVEAU RECORD !" if record else "\nRecord : %s" % _fmt_time(best)])
 	else:
 		Sfx.play("lose")
 		hud.show_end("DÉFAITE", "La sphère a été détruite à la vague %d." % wave)

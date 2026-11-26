@@ -548,7 +548,10 @@ class Arrow extends Node3D:
 static func level_hp(lvl: int) -> float:
 	if lvl <= 10:
 		return 40.0 + (186.0 - 40.0) * (lvl - 1) / 9.0     # zone 1 : 40 -> 186
-	return (4.0 + 14.0 * lvl) * 1.4                         # niveau 11 = 221 PV, niveau 20 = 398 PV
+	var hp := (4.0 + 14.0 * lvl) * 1.4                      # niveau 11 = 221 PV, niveau 20 = 398 PV
+	if lvl > 40:
+		hp *= pow(1.07, lvl - 40)   # défense sans fin : les PV finissent par exploser
+	return hp
 
 
 static func level_speed(lvl: int) -> float:

@@ -55,6 +55,8 @@ The Pathless).
 - Menu de la sphère (E / X) : LANCER + CRÉATION D'ARME (dès la 2e sphère : cryo, onde de choc).
 - Onde de choc : 1 os par tir, cône 120°, 6 m, 225 dégâts (440 max), 4 s ; améliorations dégâts / rechargement / portée.
 - Arbre de compétences (page PERSONNAGE de l'inventaire) : 27 compétences, prérequis + jetons (1 / vague, 3 après le titan).
+- Fusil de précision (création d'arme) ; défense sans fin après la 4e sphère (flux continu, niveaux croissants,
+  chronomètre et record dans user://records.cfg).
 - Musique : fichiers à déposer dans `game/assets/music/` (`menu`, `game`, `battle` en mp3/ogg/wav).
 
 ## Organisation du code (`game/`)
