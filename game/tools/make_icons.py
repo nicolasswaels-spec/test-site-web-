@@ -1,3 +1,5 @@
+# Ancien générateur d'icônes (dessins simples). Les icônes actuelles de assets/ui/ sont des
+# icônes peintes générées avec OpenArt ; relancer ce script les écraserait.
 # Génère les icônes de ressources (128 px, fond transparent), dessinées à la main en PIL.
 import math, random, sys
 from PIL import Image, ImageDraw, ImageFilter

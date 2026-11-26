@@ -246,6 +246,7 @@ func _ready() -> void:
 	top.add_theme_constant_override("separation", 2)
 	root.add_child(top)
 	wave_title = _label(top, "PRÉPARATION", 34, UI.YELLOW)
+	UI.style_title(wave_title, 38)
 	wave_sub = _label(top, "", 18)
 	var orb_row := HBoxContainer.new()
 	orb_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -317,10 +318,14 @@ func _ready() -> void:
 	slot_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slot_row.add_theme_constant_override("separation", 8)
 	br.add_child(slot_row)
-	slot_on = UI.box(Color(0.2, 0.5, 1.0, 0.9), 8, 14.0, 8.0)
-	slot_on.border_color = Color.WHITE
+	slot_on = UI.box(Color(0.42, 0.26, 0.10, 0.9), 10, 14.0, 8.0)
+	slot_on.border_color = Color(1.0, 0.8, 0.4)
 	slot_on.set_border_width_all(3)
-	slot_off = UI.box(Color(0.05, 0.05, 0.15, 0.65), 8, 14.0, 8.0)
+	slot_on.shadow_color = Color(1.0, 0.7, 0.3, 0.35)
+	slot_on.shadow_size = 10
+	slot_off = UI.box(Color(0.07, 0.06, 0.16, 0.72), 10, 14.0, 8.0)
+	slot_off.border_color = Color(1.0, 0.8, 0.42, 0.25)
+	slot_off.set_border_width_all(1)
 	for txt in ["1\nPISTOLET", "2\nFUSIL", "3\nHACHE", "4\nBÂTIR"]:
 		var p := PanelContainer.new()
 		p.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -337,8 +342,7 @@ func _ready() -> void:
 	_place(center_box, 0.5, 0.22, 0.5, 0.22, -500, 0, 500, 160)
 	root.add_child(center_box)
 	center_title = _label(center_box, "", 72, UI.YELLOW)
-	center_title.add_theme_constant_override("outline_size", 14)
-	center_title.add_theme_color_override("font_outline_color", UI.DARK)
+	UI.style_title(center_title, 80)
 	center_sub = _label(center_box, "", 24)
 	center_box.modulate.a = 0.0
 
@@ -448,32 +452,49 @@ func _bar(color: Color, min_size: Vector2) -> ProgressBar:
 
 
 func _overlay(title: String, sub: String, buttons: Array, callbacks: Array) -> Control:
+	# fond : la scène floutée et assombrie ; au centre, un panneau de verre liseré d'or
 	var dim := ColorRect.new()
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0.03, 0.02, 0.1, 0.7)
+	dim.material = UI.blur_material()
 	dim.visible = false
 	root.add_child(dim)
 	var cc := CenterContainer.new()
 	cc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	dim.add_child(cc)
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(520, 0)
+	cc.add_child(panel)
 	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 16)
-	cc.add_child(vb)
-	var t := _label(vb, title, 80, UI.YELLOW)
-	t.add_theme_constant_override("outline_size", 14)
-	t.add_theme_color_override("font_outline_color", UI.DARK)
-	var s := _label(vb, sub, 24)
+	vb.add_theme_constant_override("separation", 14)
+	panel.add_child(vb)
+	var t := _label(vb, title, 64, UI.YELLOW)
+	UI.style_title(t, 64)
+	var line := ColorRect.new()
+	line.color = UI.GOLD_LINE
+	line.custom_minimum_size = Vector2(260, 2)
+	line.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_child(line)
+	var s := _label(vb, sub, 20)
+	s.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	s.custom_minimum_size = Vector2(460, 0)
 	for i in buttons.size():
 		var b := Button.new()
 		if i == 0:
 			dim.set_meta("first", b)
+		else:
+			b.theme_type_variation = "SecondaryButton"
+			b.add_theme_font_size_override("font_size", 24)
 		b.text = buttons[i]
-		b.custom_minimum_size = Vector2(360, 66)
+		b.custom_minimum_size = Vector2(400, 60 if i == 0 else 52)
 		b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		b.pressed.connect(callbacks[i])
 		vb.add_child(b)
 	dim.set_meta("title", t)
 	dim.set_meta("sub", s)
+	dim.visibility_changed.connect(func():
+		if dim.visible:
+			UI.pop_in(panel))
 	return dim
 
 
@@ -966,7 +987,7 @@ func _orb_launch() -> void:
 func _build_craft_panel() -> void:
 	var dim := ColorRect.new()
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0.02, 0.02, 0.06, 0.82)
+	dim.material = UI.blur_material()
 	dim.visible = false
 	root.add_child(dim)
 	craft_panel = dim
@@ -974,17 +995,15 @@ func _build_craft_panel() -> void:
 	cc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	dim.add_child(cc)
 	var panel := PanelContainer.new()
-	var ps := UI.box(Color(0.08, 0.08, 0.11, 0.95), 6, 28.0, 20.0)
-	ps.border_color = Color(0.35, 0.35, 0.42)
-	ps.set_border_width_all(2)
-	panel.add_theme_stylebox_override("panel", ps)
 	cc.add_child(panel)
+	dim.visibility_changed.connect(func():
+		if dim.visible:
+			UI.pop_in(panel))
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 14)
 	panel.add_child(vb)
 	var t := _label(vb, "CRÉATION D'ARME", 44, UI.YELLOW)
-	t.add_theme_constant_override("outline_size", 10)
-	t.add_theme_color_override("font_outline_color", UI.DARK)
+	UI.style_title(t, 50)
 	_label(vb, "L'arme fabriquée est rangée dans l'inventaire (à équiper en emplacement 1 ou 2).", 16, Color(0.75, 0.78, 0.9))
 	craft_row = GridContainer.new()
 	craft_row.columns = 2
@@ -994,7 +1013,8 @@ func _build_craft_panel() -> void:
 	vb.add_child(craft_row)
 	var back := Button.new()
 	back.text = "RETOUR"
-	back.custom_minimum_size = Vector2(260, 54)
+	back.theme_type_variation = "SecondaryButton"
+	back.custom_minimum_size = Vector2(260, 52)
 	back.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	back.pressed.connect(_close_craft)
 	vb.add_child(back)

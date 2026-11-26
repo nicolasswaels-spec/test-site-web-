@@ -125,6 +125,10 @@ game/
 Pour équilibrer le jeu, les valeurs se trouvent en tête de `player.gd` (dégâts, coût des pièces),
 dans `main.gd` (`_start_wave` et `_spawn_zombie` : nombre, PV et vitesse des zombies) et dans `orb.gd` (PV de la sphère).
 
+## Interface
+
+Menu principal : la caméra avance lentement dans la forêt au crépuscule (vraie scène 3D du jeu) ; en graphismes « LÉGERS », l'illustration peinte sert de fond. Écran **COMMANDES** (clavier et manette), écran de chargement illustré. Toutes les fenêtres (pause, inventaire, sphère, création d'arme) : fond flouté, panneau de verre sombre liseré d'or, bouton principal ambré et boutons secondaires en verre, animations d'apparition et de survol.
+
 ## Crédits
 
 - Modèles 3D de nature (sapins, herbe, plantes, buissons, rochers, arbres morts) et leurs textures :
@@ -134,3 +138,5 @@ dans `main.gd` (`_start_wave` et `_spawn_zombie` : nombre, PV et vitesse des zom
 - Personnages des joueurs : pack **KayKit Character Pack: Adventurers** de Kay Lousberg, licence **CC0** (`assets/characters/`).
 - Ennemis : squelettes animés du pack **KayKit Character Pack: Skeletons** de [Kay Lousberg](https://www.kaylousberg.com), licence **CC0**. Fichiers dans `assets/skeletons/`.
 - Tout le reste (fusil, hache, sphère, constructions, sons, shaders) est généré par le code du jeu.
+- Polices : **Lilita One** (titres, boutons) et **Nunito** (textes), licence **SIL Open Font License** (`assets/fonts/`, fichiers OFL inclus).
+- Logo « ZONE ZÉRO », illustration de l'écran titre / de chargement (`assets/ui/keyart.jpg`) et icônes peintes des ressources et des armes (`assets/ui/`) : générés avec **OpenArt** (Seedream 5.5, GPT Image 2.5) pour ce projet.

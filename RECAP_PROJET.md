@@ -58,6 +58,8 @@ The Pathless).
 - Fusil de précision (création d'arme) ; défense sans fin après la 4e sphère (flux continu, niveaux croissants,
   chronomètre et record dans user://records.cfg).
 - Éclair de Zeus (création d'arme à la sphère des nuages seulement ; ZEUS_* dans upgrades.gd).
+- Interface : thème dans ui.gd (polices Lilita One / Nunito, boutons principal / « SecondaryButton », fonds flous),
+  menu principal 3D dans menu.gd, images OpenArt dans assets/ui/ (logo.png, keyart.jpg, icônes).
 - Musique : fichiers à déposer dans `game/assets/music/` (`menu`, `game`, `battle` en mp3/ogg/wav).
 
 ## Organisation du code (`game/`)

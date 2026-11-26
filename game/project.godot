@@ -14,6 +14,7 @@ GameInput="*res://scripts/input_setup.gd"
 Sfx="*res://scripts/sfx.gd"
 Settings="*res://scripts/settings.gd"
 Music="*res://scripts/music.gd"
+UiFx="*res://scripts/ui_fx.gd"
 
 [display]
 

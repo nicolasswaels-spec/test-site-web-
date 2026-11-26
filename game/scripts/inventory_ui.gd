@@ -48,18 +48,18 @@ const ITEM_W := {"pistol": 0, "rifle": 1, "cryo": 4, "shock": 5, "sniper": 6, "z
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	color = Color(0.02, 0.02, 0.06, 0.82)
+	color = Color.WHITE
+	material = UI.blur_material(Color(0.04, 0.03, 0.11, 0.62))
 	visible = false
 	var cc := CenterContainer.new()
 	cc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(cc)
 	var panel := PanelContainer.new()
-	var ps := UI.box(Color(0.08, 0.08, 0.11, 0.94), 6, 28.0, 18.0)
-	ps.border_color = Color(0.35, 0.35, 0.42)
-	ps.set_border_width_all(2)
-	panel.add_theme_stylebox_override("panel", ps)
 	panel.custom_minimum_size = Vector2(1000, 660)
 	cc.add_child(panel)
+	visibility_changed.connect(func():
+		if visible:
+			UI.pop_in(panel))
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 8)
 	panel.add_child(vb)
@@ -102,13 +102,13 @@ func _label(parent: Node, txt: String, size: int, color := Color.WHITE) -> Label
 
 ## Titre de section, gras et penché comme dans les menus de Fortnite.
 func _section(parent: Node, txt: String) -> Label:
-	var l := _label(parent, txt, 22, Color(0.92, 0.92, 0.96))
+	var l := _label(parent, txt, 24, UI.CREAM)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	l.add_theme_constant_override("outline_size", 8)
+	# police des titres, légèrement penchée (esprit Fortnite)
 	var f := FontVariation.new()
-	f.base_font = get_theme_default_font()
-	f.variation_transform = Transform2D(Vector2(1, 0), Vector2(-0.2, 1), Vector2.ZERO)
-	f.variation_embolden = 0.6
+	f.base_font = UI.title_font()
+	f.variation_transform = Transform2D(Vector2(1, 0), Vector2(-0.15, 1), Vector2.ZERO)
 	l.add_theme_font_override("font", f)
 	return l
 
@@ -166,7 +166,7 @@ func open(player) -> void:
 func show_page(i: int) -> void:
 	page = i
 	for k in tab_buttons.size():
-		tab_buttons[k].modulate = Color.WHITE if k == page else Color(0.5, 0.5, 0.58)
+		tab_buttons[k].theme_type_variation = "" if k == page else "SecondaryButton"
 	for c in body.get_children():
 		body.remove_child(c)
 		c.queue_free()
