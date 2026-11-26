@@ -22,7 +22,8 @@ pts = [o.matrix_world @ v.co for o in meshes for v in o.data.vertices]
 mn = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
 mx = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
 c = (mn + mx) / 2
-k = length / (mx.x - mn.x)
+import os
+k = length / ((mx.z - mn.z) if os.environ.get("AXIS") == "z" else (mx.x - mn.x))   # AXIS=z : hache (manche vertical)
 m = Matrix.Scale(k, 4) @ (Matrix.Rotation(math.pi, 4, "Z") if flip else Matrix.Identity(4)) @ Matrix.Translation(-c)
 for o in meshes:
     o.data.transform(m)

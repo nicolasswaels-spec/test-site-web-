@@ -373,6 +373,12 @@ func _gun_from_model(w: int, path: String, hip: Vector3, ads_z: float, gscale: f
 	viewmodel.add_child(g)
 	var cmat := _sight_mat(sight_col)
 	var mk := _attach_model(g, path, 1.0, cmat)
+	# variante de Dieu (modèle fissuré et lumineux, même forme) : cachée jusqu'au déblocage
+	var god_path := path.replace(".glb", "_god.glb")
+	var god_model: Node3D = null
+	if ResourceLoader.exists(god_path):
+		god_model = _attach_model(g, god_path, 1.0, cmat)["model"]
+		god_model.visible = false
 	var glow := OmniLight3D.new()
 	glow.light_color = sight_col
 	glow.light_energy = 0.2
@@ -391,7 +397,7 @@ func _gun_from_model(w: int, path: String, hip: Vector3, ads_z: float, gscale: f
 	m.add_child(li)
 	gun_data[w] = {"node": g, "muzzle": m, "flash": fl, "light": li, "crystal": cmat, "glow": glow,
 		"hip": hip, "ads": _ads_from(mk["sight"], gscale, ads_z, below), "rest": Vector3(0, deg_to_rad(rest_deg), 0),
-		"hand_r": mk["hand_r"], "hand_l": mk["hand_l"]}
+		"hand_r": mk["hand_r"], "hand_l": mk["hand_l"], "model": mk["model"], "god_model": god_model}
 	return g
 
 
@@ -409,6 +415,7 @@ func _attach_model(g: Node3D, path: String, k: float, crystal: StandardMaterial3
 		if mk:
 			out[n] = inst.transform * mk.position
 	_tune_model(inst, crystal)
+	out["model"] = inst
 	return out
 
 
@@ -458,11 +465,14 @@ func _build_axe() -> void:
 	viewmodel.add_child(axe)
 	axe_pivot = Node3D.new()
 	axe.add_child(axe_pivot)
-	# modèle Blender (tools/blender/axe.py) : manche vertical, tranchant vers l'avant
+	# modèle Meshy (visuel OpenArt) : manche vertical, tranchant vers l'avant ; la main (repère hand_r)
+	# est ramenée au point de prise historique (0, -0.04, 0)
 	var h := Node3D.new()
 	h.rotation_degrees = Vector3(-25, 0, 18)
 	axe_pivot.add_child(h)
-	_attach_model(h, "res://assets/weapons/axe.glb", 1.0)
+	var mk := _attach_model(h, "res://assets/weapons/axe.glb", 1.0)
+	if mk.has("hand_r"):
+		(mk["model"] as Node3D).position += Vector3(0, -0.04, 0) - mk["hand_r"]
 
 
 func _build_ghost() -> void:
@@ -753,6 +763,9 @@ func unlock_god(item: String) -> bool:
 func _gild(w: int) -> void:
 	if not gun_data.has(w):
 		return
+	if gun_data[w].get("god_model"):
+		gun_data[w]["model"].visible = false
+		gun_data[w]["god_model"].visible = true
 	var gold := Color(1.0, 0.78, 0.3)
 	var m: StandardMaterial3D = gun_data[w]["crystal"]
 	m.albedo_color = Color(gold.r, gold.g, gold.b, m.albedo_color.a)
