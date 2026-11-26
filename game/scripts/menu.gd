@@ -1,18 +1,34 @@
 extends Control
-## Menu principal : la caméra avance lentement dans la forêt au crépuscule (vraie scène 3D du jeu :
-## sapins, herbe, lucioles, rayons de lumière, sphère turquoise au loin) ; à gauche le logo et les
-## boutons ; écran « COMMANDES » séparé.
+## Menu principal : illustration animée — la keyart (forêt au crépuscule, sphère turquoise) et le
+## voyageur encapuchonné rendu dans Blender (tools/blender/render_menu_character.py), avec parallaxe
+## (souris + lent balancement), respiration, yeux et sphère qui pulsent, brume et lucioles.
+## À gauche le logo et les boutons ; écran « COMMANDES » séparé.
 
 const UI = preload("res://scripts/ui.gd")
-const Nature = preload("res://scripts/nature.gd")
-const Mats = preload("res://scripts/mats.gd")
-const Main = preload("res://scripts/main.gd")
-
-const CAM_START := 10.0
-const CAM_END := -24.0
-const CAM_SPEED := 0.6          # m/s : travelling très lent
 const KEYART := "res://assets/ui/keyart.jpg"
-const ORB_POS := Vector3(2.5, 0.0, -40.0)
+const HERO := "res://assets/ui/menu_character.png"
+const HERO_EYES := "res://assets/ui/menu_character_eyes.png"
+const ART_SIZE := Vector2(1920, 1080)
+const ORB_PX := Vector2(1374, 640)       # sphère de la keyart (pixels de l'image 1920×1080)
+const HERO_FEET := Vector2(1600, 1000)   # pieds du personnage (pivot de la respiration)
+
+const FOG_SHADER := """
+shader_type canvas_item;
+render_mode blend_add;
+uniform float t = 0.0;
+float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float n(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y);
+}
+void fragment() {
+	vec2 p = UV * vec2(5.0, 2.5) + vec2(t * 0.04, 0.0);
+	float f = n(p) * 0.6 + n(p * 2.1 - vec2(t * 0.07, 0.0)) * 0.4;
+	// brume basse : dense au niveau du sol, nulle en haut et tout en bas
+	float band = smoothstep(0.45, 0.72, UV.y) * (1.0 - smoothstep(0.88, 1.0, UV.y));
+	COLOR = vec4(0.42, 0.36, 0.7, 1.0) * f * band * 0.22;
+}
+"""
 
 const SIDE_SHADER := """
 shader_type canvas_item;
@@ -23,8 +39,14 @@ void fragment() {
 }
 """
 
-var cam: Camera3D
 var t := 0.0
+var art: Control           # scène 1920×1080, mise à l'échelle pour couvrir l'écran
+var bg: TextureRect
+var hero: TextureRect
+var eyes: TextureRect
+var orb_glow: TextureRect
+var fog_mat: ShaderMaterial
+var flies: CPUParticles2D
 var fade: ColorRect
 var buttons: Array[Button] = []
 var commands_panel: Control
@@ -41,237 +63,142 @@ func _ready() -> void:
 	Settings.test_mode = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	theme = UI.make_theme()
-	if Settings.high_quality:
-		_build_world()
-	else:
-		# graphismes légers : l'illustration peinte en fond, sans 3D
-		var art := TextureRect.new()
-		art.texture = UI.texture(KEYART)
-		art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		add_child(art)
+	_build_art()
 	_build_ui()
 	_intro()
 
 
-# ------------------------------------------------------------------ forêt en arrière-plan
+# ------------------------------------------------------------------ illustration animée
 
-func _build_world() -> void:
-	var high: bool = Settings.high_quality
-	var world := Node3D.new()
-	add_child(world)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 7
-	# ciel, brouillard coloré, bloom
-	var env := Environment.new()
-	env.background_mode = Environment.BG_SKY
-	var sky := Sky.new()
-	var sm := ShaderMaterial.new()
-	var sh := Shader.new()
-	sh.code = Main.SKY_SHADER
-	sm.shader = sh
-	sky.sky_material = sm
-	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_sky_contribution = 0.6
-	env.ambient_light_color = Color(0.22, 0.24, 0.5)
-	env.ambient_light_energy = 0.35
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.glow_enabled = true
-	env.glow_intensity = 1.0
-	env.glow_bloom = 0.15
-	env.glow_hdr_threshold = 0.9
-	env.fog_enabled = true
-	env.fog_light_color = Color(0.17, 0.17, 0.38)
-	env.fog_sun_scatter = 0.35
-	env.fog_density = 0.009
-	env.fog_aerial_perspective = 0.35
-	env.fog_sky_affect = 0.25
-	if high:
-		env.volumetric_fog_enabled = true
-		env.volumetric_fog_density = 0.0035
-		env.volumetric_fog_albedo = Color(0.85, 0.85, 1.0)
-		env.volumetric_fog_emission = Color(0.05, 0.04, 0.12)
-		env.volumetric_fog_emission_energy = 0.3
-		env.volumetric_fog_anisotropy = 0.7
-		env.volumetric_fog_length = 70.0
-	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.25
-	env.adjustment_contrast = 1.15
-	var we := WorldEnvironment.new()
-	we.environment = env
-	world.add_child(we)
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-12, 145, 0)
-	sun.light_energy = 1.4
-	sun.light_color = Color(1.0, 0.68, 0.42)
-	sun.light_volumetric_fog_energy = 2.5
-	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 60.0 if high else 35.0
-	world.add_child(sun)
-	var fill := DirectionalLight3D.new()
-	fill.rotation_degrees = Vector3(-60, -30, 0)
-	fill.light_energy = 0.25
-	fill.light_color = Color(0.45, 0.5, 1.0)
-	world.add_child(fill)
-	# sol
-	var ground := MeshInstance3D.new()
-	var pm := PlaneMesh.new()
-	pm.size = Vector2(300, 300)
-	ground.mesh = pm
-	var gm := ShaderMaterial.new()
-	var gsh := Shader.new()
-	gsh.code = Main.GROUND_SHADER
-	gm.shader = gsh
-	ground.material_override = gm
-	ground.position = Vector3(0, 0, -40)
-	world.add_child(ground)
-	# sapins : de part et d'autre d'un sentier qui mène à la sphère
-	var pines := Nature.pines()
-	var per := {}
-	for i in (320 if high else 170):
-		var x := rng.randf_range(-45.0, 45.0)
-		var z := rng.randf_range(-130.0, 14.0)
-		if absf(x - _path_x(z)) < 4.5 or Vector2(x - ORB_POS.x, z - ORB_POS.z).length() < 9.0:
-			continue
-		var s := rng.randf_range(0.8, 1.5)
-		var k := rng.randi() % pines.size()
-		if not per.has(k):
-			per[k] = []
-		per[k].append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s, s)), Vector3(x, 0, z)))
-	for k in per:
-		_multimesh(world, pines[k], per[k])
-	# herbe, plantes rouges, buissons
-	var grass: Array = []
-	for i in (2600 if high else 1100):
-		var x := rng.randf_range(-22.0, 22.0)
-		var z := rng.randf_range(-90.0, 14.0)
-		if absf(x - _path_x(z)) < 1.2:
-			continue
-		var s := rng.randf_range(0.8, 1.3)
-		grass.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s, s)), Vector3(x, 0, z)))
-	_multimesh(world, Nature.grass(), grass)
-	for v in [1, 2]:
-		var pl: Array = []
-		for i in 70:
-			var x := rng.randf_range(-16.0, 16.0)
-			var z := rng.randf_range(-80.0, 10.0)
-			if absf(x - _path_x(z)) < 2.0:
-				continue
-			var s := rng.randf_range(0.6, 1.1)
-			pl.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s, s)), Vector3(x, 0, z)))
-		_multimesh(world, Nature.red_plant(v), pl)
-	var bushes: Array = []
-	for i in 60:
-		var x := rng.randf_range(-20.0, 20.0)
-		var z := rng.randf_range(-90.0, 10.0)
-		if absf(x - _path_x(z)) < 3.0:
-			continue
-		var s := rng.randf_range(1.0, 2.0)
-		bushes.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s, s)), Vector3(x, 0, z)))
-	_multimesh(world, Nature.bush(false), bushes)
-	for i in 6:
-		var dt := MeshInstance3D.new()
-		dt.mesh = Nature.dead_tree(1 + i % 3)
-		dt.position = Vector3(rng.randf_range(-25, 25), 0, rng.randf_range(-100, -20))
-		dt.rotation.y = rng.randf() * TAU
-		world.add_child(dt)
-	# la sphère au bout du sentier (socle de pierre + lueur turquoise)
-	var stone := Mats.col(Color(0.3, 0.28, 0.38), 0.9)
-	Mats.cylinder(world, 0.9, 1.2, 0.6, stone, ORB_POS + Vector3(0, 0.3, 0), Vector3.ZERO, 10)
-	var glow_mat := StandardMaterial3D.new()
-	glow_mat.albedo_color = Color(0.3, 1.0, 0.95)
-	glow_mat.emission_enabled = true
-	glow_mat.emission = Color(0.3, 1.0, 0.9)
-	glow_mat.emission_energy_multiplier = 5.0
-	Mats.sphere(world, 0.75, glow_mat, ORB_POS + Vector3(0, 1.6, 0), 24)
-	Nature.glow_halo(world, Color(0.2, 0.7, 0.65), 7.0, ORB_POS + Vector3(0, 1.6, 0))
-	var ol := OmniLight3D.new()
-	ol.light_color = Color(0.3, 1.0, 0.9)
-	ol.light_energy = 4.0
-	ol.omni_range = 16.0
-	ol.light_volumetric_fog_energy = 3.0
-	ol.position = ORB_POS + Vector3(0, 2.0, 0)
-	world.add_child(ol)
-	# lucioles autour de la caméra
-	cam = Camera3D.new()
-	cam.fov = 62.0
-	cam.far = 300.0
-	world.add_child(cam)
-	cam.current = true
-	var ff := CPUParticles3D.new()
-	ff.amount = 120 if high else 60
-	ff.lifetime = 7.0
-	ff.preprocess = 7.0
-	ff.local_coords = false
-	ff.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	ff.emission_box_extents = Vector3(14, 2.5, 18)
-	ff.direction = Vector3.UP
-	ff.spread = 180.0
-	ff.gravity = Vector3(0, 0.05, 0)
-	ff.initial_velocity_min = 0.1
-	ff.initial_velocity_max = 0.4
-	var q := QuadMesh.new()
-	q.size = Vector2(0.05, 0.05)
-	var fm := StandardMaterial3D.new()
-	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	fm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
-	fm.albedo_color = Color(1.0, 0.9, 0.45)
-	fm.emission_enabled = true
-	fm.emission = Color(1.0, 0.85, 0.4)
-	fm.emission_energy_multiplier = 3.0
-	q.material = fm
-	ff.mesh = q
-	ff.position = Vector3(0, 1.5, -12)
-	cam.add_child(ff)
-	t = 0.0
-	_place_camera()
+func _layer(tex_path: String, size: Vector2, pos := Vector2.ZERO) -> TextureRect:
+	var r := TextureRect.new()
+	r.texture = UI.texture(tex_path)
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	r.stretch_mode = TextureRect.STRETCH_SCALE
+	r.size = size
+	r.position = pos
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	art.add_child(r)
+	return r
 
 
-## Le sentier serpente doucement.
-func _path_x(z: float) -> float:
-	return sin(z * 0.05) * 3.0
+## Halo radial additif (lueur de la sphère).
+func _glow_sprite(center: Vector2, radius: float, col: Color) -> TextureRect:
+	var g := Gradient.new()
+	g.set_color(0, col)
+	g.set_color(1, Color(col.r, col.g, col.b, 0.0))
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = Vector2(0.5, 0.5)
+	gt.fill_to = Vector2(1.0, 0.5)
+	gt.width = 256
+	gt.height = 256
+	var r := TextureRect.new()
+	r.texture = gt
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	r.size = Vector2(radius, radius) * 2.0
+	r.position = center - Vector2(radius, radius)
+	r.pivot_offset = Vector2(radius, radius)
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var cm := CanvasItemMaterial.new()
+	cm.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	r.material = cm
+	art.add_child(r)
+	return r
 
 
-func _multimesh(parent: Node, mesh: Mesh, xforms: Array) -> void:
-	if xforms.is_empty():
-		return
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = mesh
-	mm.instance_count = xforms.size()
-	for i in xforms.size():
-		mm.set_instance_transform(i, xforms[i])
-	var mmi := MultiMeshInstance3D.new()
-	mmi.multimesh = mm
-	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	parent.add_child(mmi)
+func _build_art() -> void:
+	var clip := Control.new()
+	clip.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	clip.clip_contents = true
+	clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(clip)
+	art = Control.new()
+	art.size = ART_SIZE
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	clip.add_child(art)
+	# fond un peu plus grand que l'écran : marge pour la parallaxe
+	bg = _layer(KEYART, ART_SIZE * 1.06, -ART_SIZE * 0.03)
+	orb_glow = _glow_sprite(ORB_PX, 150.0, Color(0.25, 0.95, 0.9, 0.35))
+	var fog := ColorRect.new()
+	fog.size = ART_SIZE * 1.1
+	fog.position = -ART_SIZE * 0.05
+	fog.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fog_mat = ShaderMaterial.new()
+	var fsh := Shader.new()
+	fsh.code = FOG_SHADER
+	fog_mat.shader = fsh
+	fog.material = fog_mat
+	art.add_child(fog)
+	if ResourceLoader.exists(HERO):
+		hero = _layer(HERO, ART_SIZE)
+		hero.pivot_offset = HERO_FEET
+		eyes = _layer(HERO_EYES, ART_SIZE)
+		eyes.pivot_offset = HERO_FEET
+		var em := CanvasItemMaterial.new()
+		em.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+		eyes.material = em
+	# lucioles
+	flies = CPUParticles2D.new()
+	flies.amount = 46
+	flies.lifetime = 9.0
+	flies.preprocess = 9.0
+	flies.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	flies.emission_rect_extents = Vector2(980, 260)
+	flies.position = Vector2(960, 720)
+	flies.direction = Vector2(0.3, -1)
+	flies.spread = 70.0
+	flies.gravity = Vector2.ZERO
+	flies.initial_velocity_min = 6.0
+	flies.initial_velocity_max = 22.0
+	flies.scale_amount_min = 2.0
+	flies.scale_amount_max = 4.5
+	var ramp := Gradient.new()
+	ramp.offsets = PackedFloat32Array([0.0, 0.2, 0.5, 0.8, 1.0])
+	ramp.colors = PackedColorArray([Color(1, 0.8, 0.35, 0), Color(1, 0.85, 0.4, 1), Color(1, 0.75, 0.3, 0.3), Color(1, 0.85, 0.45, 1), Color(1, 0.8, 0.35, 0)])
+	flies.color_ramp = ramp
+	var fm := CanvasItemMaterial.new()
+	fm.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	flies.material = fm
+	art.add_child(flies)
+	_fit_art()
+	get_viewport().size_changed.connect(_fit_art)
 
 
-func _place_camera() -> void:
-	var z := CAM_START - t * CAM_SPEED
-	var pos := Vector3(_path_x(z) + sin(t * 0.21) * 0.4, 1.75 + sin(t * 0.37) * 0.08, z)
-	cam.position = pos
-	var look := ORB_POS + Vector3(sin(t * 0.13) * 2.0, 2.4, 0)
-	cam.look_at(look, Vector3.UP)
+## La scène 1920×1080 couvre tout l'écran (recadrée au besoin), centrée.
+func _fit_art() -> void:
+	var vs := get_viewport_rect().size
+	var k := maxf(vs.x / ART_SIZE.x, vs.y / ART_SIZE.y)
+	art.scale = Vector2(k, k)
+	art.position = (vs - ART_SIZE * k) * 0.5
 
 
 func _process(delta: float) -> void:
-	if cam == null:
-		if fade:
-			fade.color.a = maxf(fade.color.a - delta * 0.8, 0.0)
+	if fade:
+		fade.color.a = maxf(fade.color.a - delta * 0.8, 0.0)
+	if art == null:
 		return
 	t += delta
-	var z := CAM_START - t * CAM_SPEED
-	# en fin de travelling : fondu au noir puis on recommence
-	var remain := z - CAM_END
-	if fade:
-		fade.color.a = clampf(1.0 - remain / 3.0, 0.0, 1.0) if remain < 3.0 else maxf(fade.color.a - delta * 0.8, 0.0)
-	if z <= CAM_END:
-		t = 0.0
-	_place_camera()
+	# parallaxe : la souris (et un lent balancement) déplace les plans à des vitesses différentes
+	var vs := get_viewport_rect().size
+	var m := (get_viewport().get_mouse_position() / vs - Vector2(0.5, 0.5)) * 2.0
+	m = m.clamp(Vector2(-1, -1), Vector2(1, 1)) + Vector2(sin(t * 0.11), sin(t * 0.07) * 0.5) * 0.35
+	bg.position = -ART_SIZE * 0.03 - m * 14.0
+	orb_glow.position = ORB_PX - orb_glow.size * 0.5 - m * 14.0
+	orb_glow.modulate.a = 0.75 + 0.25 * sin(t * 1.7)
+	orb_glow.scale = Vector2.ONE * (1.0 + 0.06 * sin(t * 1.7))
+	fog_mat.set_shader_parameter("t", t)
+	flies.position = Vector2(960, 720) - m * 40.0
+	if hero:
+		hero.position = -m * 28.0
+		var br := sin(t * 1.6)               # respiration
+		hero.scale = Vector2(1.0 + 0.003 * br, 1.0 + 0.007 * br)
+		eyes.position = hero.position
+		eyes.scale = hero.scale
+		# yeux : pulsation lente + clignement de temps en temps
+		var blink := 0.0 if fmod(t, 5.3) < 0.12 else 1.0
+		eyes.modulate.a = (0.65 + 0.35 * sin(t * 2.3)) * blink
 
 
 # ------------------------------------------------------------------ interface

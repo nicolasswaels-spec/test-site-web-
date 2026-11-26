@@ -140,7 +140,10 @@ Menu principal : la caméra avance lentement dans la forêt au crépuscule (vrai
 - Armes en main (pistolet, fusil, cryo, onde de choc, précision, Zeus, hache) : modélisées pour le jeu dans
   Blender par script (`tools/blender/*.py`, voir `tools/blender/README.md`), exportées dans `assets/weapons/*.glb`.
 - Coffres : pack **KayKit Dungeon Remastered** de Kay Lousberg, licence **CC0** (`assets/chests/`).
-- Personnages des joueurs : pack **KayKit Character Pack: Adventurers** de Kay Lousberg, licence **CC0** (`assets/characters/`).
+- Personnage des joueurs (le voyageur encapuchonné) : visuel généré avec OpenArt d'après un croquis de l'auteur, mis en 3D,
+  squeletté et animé avec Meshy, assemblé dans Blender (`tools/blender/assemble_character.py`, `extract_arms.py`) :
+  `assets/characters/traveler.glb` (avatar en coop) et `fp_arm_r/l.glb` (bras à la 1re personne).
+- Menu principal : illustration animée (keyart + voyageur rendu par `tools/blender/render_menu_character.py`).
 - Ennemis : squelettes animés du pack **KayKit Character Pack: Skeletons** de [Kay Lousberg](https://www.kaylousberg.com), licence **CC0**. Fichiers dans `assets/skeletons/`.
 - Tout le reste (fusil, hache, sphère, constructions, sons, shaders) est généré par le code du jeu.
 - Polices : **Lilita One** (titres, boutons) et **Nunito** (textes), licence **SIL Open Font License** (`assets/fonts/`, fichiers OFL inclus).

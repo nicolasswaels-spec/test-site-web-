@@ -63,6 +63,12 @@ The Pathless).
 - Armes en main : modèles Blender faits par script (`tools/blender/<arme>.py`, outils communs dans `common.py`),
   exportés en `assets/weapons/<arme>.glb` ; chargés par `_gun_from_model()` / `_attach_model()` dans player.gd
   (repères muzzle / sight / hand_r / hand_l lus dans le modèle ; cristal « sight_crystal » qui s'estompe en visée).
+- Personnage : voyageur encapuchonné (OpenArt → Meshy : image vers 3D, squelette, animations Idle / Walking_A /
+  Running_A / Jump_Idle / Death_A) ; assemblé par tools/blender/assemble_character.py → assets/characters/traveler.glb ;
+  bras 1re personne découpés par extract_arms.py (fp_arm_r/l.glb). Clé API Meshy enregistrée dans l'environnement
+  (hôte api.meshy.ai), fichiers sur assets.meshy.ai. Préférence : générer UNE seule version à la fois et demander l'avis.
+- Menu principal : illustration animée (menu.gd : keyart + menu_character.png rendu par render_menu_character.py,
+  parallaxe souris, respiration, yeux et sphère qui pulsent, brume, lucioles).
 - Musique : fichiers à déposer dans `game/assets/music/` (`menu`, `game`, `battle` en mp3/ogg/wav).
 
 ## Organisation du code (`game/`)
@@ -84,7 +90,7 @@ scripts/
   hud.gd               interface d'un joueur (barres, minimap, pause, fin, navigation manette)
   hud_group.gd         diffuse les messages généraux aux HUD des deux joueurs
   inventory_ui.gd      inventaire en cases (ressources, os, armes + fiche d'actions) et page Améliorations
-  menu.gd              menu principal
+  menu.gd              menu principal (illustration animée)
   skills.gd            arbre de compétences (données : effets, parents, prérequis) ; effets codés dans player.gd
   cloud_res.gd         petits nuages à récolter (couche 128 : traversables mais touchés par la hache)
   sky_titan.gd         colosse des nuées (variante du titan : grêle, éclairs, bourrasque, tempête < 30 %, anges)

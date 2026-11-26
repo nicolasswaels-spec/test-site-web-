@@ -43,16 +43,13 @@ for m in list(bpy.data.materials):
     if m.users == 0:
         bpy.data.materials.remove(m)
 
-# une piste NLA par animation (l'exportateur en fait autant d'animations dans Godot)
+# animations : chaque action est liée au squelette (slot) puis exportée en mode « ACTIONS »
 ad = arm.animation_data_create()
-ad.action = None
 for act in actions:
-    tr = ad.nla_tracks.new()
-    tr.name = act.name
-    st = tr.strips.new(act.name, int(act.frame_range[0]), act)
-    if hasattr(st, "action_slot") and act.slots:
-        st.action_slot = act.slots[0]
-    tr.mute = False
+    ad.action = act
+    if act.slots:
+        ad.action_slot = act.slots[0]
+ad.action = None
 
 # yeux lumineux : pixels turquoise vifs de la couleur de base -> texture d'émission
 mat = body.data.materials[0]
@@ -82,6 +79,6 @@ for im in bpy.data.images:
         im.pack()
 
 bpy.ops.object.select_all(action="SELECT")
-bpy.ops.export_scene.gltf(filepath=out, export_format="GLB", export_animation_mode="NLA_TRACKS",
+bpy.ops.export_scene.gltf(filepath=out, export_format="GLB", export_animation_mode="ACTIONS",
                           export_image_format="JPEG", export_image_quality=88)
 print("OK", out, [a.name for a in actions])
