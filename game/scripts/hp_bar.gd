@@ -203,3 +203,96 @@ static func vial_material(color: Color) -> ShaderMaterial:
 	m.shader = _vial
 	m.set_shader_parameter("liquid", color)
 	return m
+
+
+## Liquide de la fiole illustrée (image OpenArt par-dessus) : dessiné seulement dans l'intérieur du
+## verre (texture « mask »), entre y_top et y_bot (UV). boil (0..1) : ébullition qui monte quand
+## la vie baisse : bulles plus nombreuses, plus grosses et plus rapides, surface qui bouillonne,
+## écume, vapeur, couleur qui chauffe et vacille.
+const VIAL_LIQUID := """
+shader_type canvas_item;
+uniform sampler2D mask : filter_linear;
+uniform float y_top = 0.1;
+uniform float y_bot = 0.9;
+uniform float level = 1.0;
+uniform float lag = 1.0;
+uniform float slosh = 0.0;
+uniform float boil = 0.0;
+uniform float aspect = 4.0;      // hauteur / largeur du rectangle
+uniform vec4 liquid : source_color = vec4(0.85, 0.08, 0.12, 1.0);
+
+float hash(float n) { return fract(sin(n) * 43758.5453); }
+float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vn(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash2(i), hash2(i + vec2(1, 0)), f.x), mix(hash2(i + vec2(0, 1)), hash2(i + vec2(1, 1)), f.x), f.y);
+}
+
+void fragment() {
+	float m = texture(mask, UV).r;
+	float t = TIME;
+	vec2 p = vec2(UV.x, UV.y * aspect);            // unités : largeur
+	float top = y_top * aspect; float bot = y_bot * aspect;
+	float surf = mix(bot, top, level);
+	float b = boil;
+	// surface : vagues + bouillonnement (bosses qui éclatent)
+	float wave = sin(p.x * 18.0 + t * 3.0) * (0.012 + 0.05 * slosh) + sin(p.x * 31.0 - t * 2.1) * 0.006;
+	wave += (vn(vec2(p.x * 14.0, t * (2.0 + 6.0 * b))) - 0.5) * 0.07 * b;
+	float s = surf + wave * step(0.002, level);
+	float lagy = mix(bot, top, lag) + wave;
+	vec3 glass = vec3(0.04, 0.03, 0.07);
+	vec4 col = vec4(glass, 0.55);
+	if (p.y > s) {
+		float depth = clamp((p.y - s) / max(bot - top, 0.01), 0.0, 1.0);
+		vec3 lc = liquid.rgb * mix(1.3, 0.5, depth);
+		// chaleur : plus clair et vacillant quand ça bout
+		lc = mix(lc, liquid.rgb * 1.8 + vec3(0.25, 0.1, 0.0), b * (0.25 + 0.15 * sin(t * 13.0 + p.y * 9.0)));
+		lc += liquid.rgb * 0.08 * sin(p.y * 10.0 - t * 1.4 + sin(p.x * 9.0 + t) * 1.2);
+		// bulles
+		int n = 6 + int(b * 22.0);
+		for (int i = 0; i < 28; i++) {
+			if (i >= n) break;
+			float fi = float(i);
+			float bx = 0.2 + hash(fi * 3.1) * 0.6;
+			float sp = (0.15 + hash(fi * 7.7) * 0.25) * (1.0 + 3.0 * b);
+			float ph = fract(t * sp + hash(fi));
+			float by = bot - ph * (bot - s);
+			float br = (0.012 + 0.018 * hash(fi * 5.3)) * (1.0 + 1.5 * b) * (0.6 + 0.4 * ph);
+			float d = length(p - vec2(bx + sin(t * 3.0 + fi) * 0.02 * (1.0 + b), by));
+			float ring = smoothstep(br, br * 0.7, d) - smoothstep(br * 0.7, br * 0.3, d) * 0.6;
+			lc = mix(lc, vec3(1.0, 0.95, 0.9), clamp(ring, 0.0, 1.0) * 0.6);
+		}
+		// écume claire à la surface (plus épaisse en ébullition)
+		float foam = 1.0 - smoothstep(0.0, 0.015 + 0.04 * b, p.y - s);
+		foam *= 0.5 + 0.5 * vn(vec2(p.x * 40.0, t * 4.0));
+		lc = mix(lc, vec3(1.0, 0.92, 0.85), foam * (0.45 + 0.4 * b));
+		col = vec4(lc, 0.97);
+	} else {
+		if (p.y > lagy) {
+			col = vec4(mix(glass, liquid.rgb + 0.35, 0.5), 0.8);   // traîne de la valeur perdue
+		}
+		// vapeur au-dessus du liquide qui bout
+		float steam = vn(vec2(p.x * 10.0, p.y * 6.0 + t * 1.5)) * smoothstep(s - 0.6, s, p.y) * b;
+		col.rgb = mix(col.rgb, vec3(0.9, 0.85, 0.85), steam * 0.45);
+		col.a = max(col.a, steam * 0.5);
+	}
+	col.a *= m;
+	COLOR = col;
+}
+"""
+
+static var _vial_liquid: Shader
+
+
+static func vial_liquid_material(color: Color, mask: Texture2D, y_top: float, y_bot: float, aspect: float) -> ShaderMaterial:
+	if _vial_liquid == null:
+		_vial_liquid = Shader.new()
+		_vial_liquid.code = VIAL_LIQUID
+	var m := ShaderMaterial.new()
+	m.shader = _vial_liquid
+	m.set_shader_parameter("liquid", color)
+	m.set_shader_parameter("mask", mask)
+	m.set_shader_parameter("y_top", y_top)
+	m.set_shader_parameter("y_bot", y_bot)
+	m.set_shader_parameter("aspect", aspect)
+	return m

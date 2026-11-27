@@ -3,6 +3,9 @@ extends CanvasLayer
 
 const UI = preload("res://scripts/ui.gd")
 const HpBar = preload("res://scripts/hp_bar.gd")
+## intérieur du verre de la fiole (fraction de la hauteur de l'image), mesuré par tools/key_vial.py
+const VIAL_Y_TOP := 0.2204
+const VIAL_Y_BOT := 0.8616
 const Upg = preload("res://scripts/upgrades.gd")
 const InventoryUI = preload("res://scripts/inventory_ui.gd")
 
@@ -164,10 +167,10 @@ var orb_lag := 1.0
 var orb_title := ""
 var orb_label: Label
 var alert_label: Label
-var hp_bar: ColorRect
+var hp_bar: Control
 var hp_vial: ShaderMaterial
 var hp_num: Label
-var shield_bar: ColorRect
+var shield_bar: Control
 var shield_vial: ShaderMaterial
 var shield_num: Label
 var vial_state := {"hp": [1.0, 1.0, 0.0, -1.0], "sh": [1.0, 1.0, 0.0, -1.0]}   # niveau, traîne, agitation, dernière valeur
@@ -293,25 +296,18 @@ func _ready() -> void:
 	skill_label = _label(root, "", 18, Color(1.0, 0.8, 0.55))
 	skill_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_place(skill_label, 0.0, 1.0, 0.0, 1.0, 24, -128, 560, -100)
-	# fioles le long du bord gauche : vie (rouge) et bouclier (bleu, si débloqué)
-	hp_bar = ColorRect.new()
-	_place(hp_bar, 0.0, 0.5, 0.0, 0.5, 18, -190, 70, 122)
-	hp_vial = HpBar.vial_material(Color(0.88, 0.1, 0.14))
-	hp_vial.set_shader_parameter("aspect", 312.0 / 52.0)
-	hp_bar.material = hp_vial
-	hp_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(hp_bar)
-	hp_num = _label(root, "100", 20, Color(1.0, 0.75, 0.72))
-	_place(hp_num, 0.0, 0.5, 0.0, 0.5, 4, 126, 84, 152)
-	shield_bar = ColorRect.new()
-	_place(shield_bar, 0.0, 0.5, 0.0, 0.5, 78, -150, 116, 82)
-	shield_vial = HpBar.vial_material(Color(0.25, 0.62, 1.0))
-	shield_vial.set_shader_parameter("aspect", 232.0 / 38.0)
-	shield_bar.material = shield_vial
-	shield_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(shield_bar)
-	shield_num = _label(root, "0", 16, Color(0.7, 0.85, 1.0))
-	_place(shield_num, 0.0, 0.5, 0.0, 0.5, 62, 86, 132, 110)
+	# fioles illustrées (OpenArt) le long du bord gauche : vie (rouge) et bouclier (bleu, si débloqué).
+	# Le liquide animé est dessiné sous l'image, dans l'intérieur du verre (masque).
+	var hpv := _vial(Color(0.86, 0.07, 0.12), Vector2(18, -200), 92.0)
+	hp_bar = hpv[0]
+	hp_vial = hpv[1]
+	hp_num = _label(root, "100", 20, Color(1.0, 0.78, 0.75))
+	_place(hp_num, 0.0, 0.5, 0.0, 0.5, 18, 140, 110, 166)
+	var shv := _vial(Color(0.2, 0.6, 1.0), Vector2(108, -130), 66.0)
+	shield_bar = shv[0]
+	shield_vial = shv[1]
+	shield_num = _label(root, "0", 16, Color(0.72, 0.87, 1.0))
+	_place(shield_num, 0.0, 0.5, 0.0, 0.5, 106, 116, 176, 140)
 
 	# --- bas droite : armes, munitions, bois
 	var br := VBoxContainer.new()
@@ -562,6 +558,32 @@ func _process(delta: float) -> void:
 		notice_label.visible = notice_t > 0.0
 
 
+## Fiole illustrée : liquide (shader + masque de l'intérieur du verre) sous l'image de la fiole.
+## pos : coin haut gauche (ancré au milieu du bord gauche), w : largeur affichée.
+func _vial(color: Color, pos: Vector2, w: float) -> Array:
+	var frame: Texture2D = load("res://assets/ui/vial/vial_frame.png")
+	var mask: Texture2D = load("res://assets/ui/vial/vial_mask.png")
+	var h := w * frame.get_height() / frame.get_width()
+	var box := Control.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_place(box, 0.0, 0.5, 0.0, 0.5, pos.x, pos.y, pos.x + w, pos.y + h)
+	root.add_child(box)
+	var liquid := ColorRect.new()
+	liquid.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_full(liquid)
+	var m := HpBar.vial_liquid_material(color, mask, VIAL_Y_TOP, VIAL_Y_BOT, h / w)
+	liquid.material = m
+	box.add_child(liquid)
+	var tr := TextureRect.new()
+	tr.texture = frame
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_SCALE
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_full(tr)
+	box.add_child(tr)
+	return [box, m]
+
+
 ## Fiole : niveau, traîne qui rattrape les pertes, agitation du liquide quand la valeur change.
 func _update_vial(k: String, m: ShaderMaterial, v: float, mx: float) -> void:
 	var st: Array = vial_state[k]
@@ -587,7 +609,8 @@ func update_player(p) -> void:
 	if has_shield:
 		_update_vial("sh", shield_vial, p.shield, p.shield_max())
 		shield_num.text = str(int(ceil(p.shield)))
-	hp_vial.set_shader_parameter("danger", 1.0 if p.hp < p.max_hp() * 0.25 and not p.dead else 0.0)
+	# ébullition : commence sous 55 % de vie, à fond sous 10 %
+	hp_vial.set_shader_parameter("boil", 0.0 if p.dead else clampf((0.55 - p.hp / p.max_hp()) / 0.45, 0.0, 1.0))
 	var extra := ""
 	if p.has_skill("A7"):
 		extra += "   FEU %s" % ("PRÊT (C / ◀)" if p.fireball_cd <= 0.0 else "%d s" % int(ceil(p.fireball_cd)))

@@ -108,27 +108,52 @@ void fragment() {
 
 ## Lave en mouvement : plaques de croûte noire qui dérivent, fentes et centre en fusion.
 ## UV.x = position en travers (m), UV.y = position le long (m) ; UV2.x = travers normalisé (-1..1).
-## Lave en fusion (comme le visuel de référence) : orange-jaune vif, plus jaune au centre,
-## lignes de courant claires qui ondulent et filent avec le flot, remous plus sombres, bords rouges.
-## UV.x = travers (m), UV.y = long (m) ; UV2.x = travers normalisé (-1..1).
+## Lave en fusion : texture peinte OpenArt (tex_lava) qui coule le long de la coulée, en deux
+## couches de vitesse et d'échelle différentes (le courant semble tourbillonner), plus chaude au
+## centre, assombrie contre les berges. UV.x = travers (m), UV.y = long (m) ; UV2.x = travers -1..1.
 const LAVA_SHADER := """
 shader_type spatial;
 render_mode unshaded, shadows_disabled;
-uniform float speed = 0.5;
-""" + NOISE + """
+uniform sampler2D lava_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform float speed = 0.45;
+uniform float tile = 7.0;     // mètres par répétition de la texture
 void fragment() {
 	float side = abs(UV2.x);
-	float flow = UV.y - TIME * speed;
-	float n = vnoise(vec3(UV.x * 0.35, flow * 0.12, TIME * 0.05));
-	float n2 = vnoise(vec3(UV.x * 0.9, flow * 0.4, 3.0 + TIME * 0.1));
-	float lines = sin((UV.x + (n - 0.5) * 3.0) * 3.2 + (n2 - 0.5) * 2.5);
-	float streak = smoothstep(0.8, 0.97, lines) * (1.0 - side * 0.6);
-	float dark = smoothstep(0.55, 0.85, vnoise(vec3(UV.x * 0.5, flow * 0.25, 7.0))) * 0.45 + side * side * 0.5;
-	vec3 col = mix(vec3(0.95, 0.36, 0.04), vec3(1.0, 0.62, 0.14), 1.0 - side);
-	col = mix(col, vec3(0.75, 0.16, 0.02), dark);
-	col = mix(col, vec3(1.0, 0.82, 0.4), streak * 0.7);
-	col = mix(col, vec3(0.55, 0.1, 0.02), smoothstep(0.86, 1.0, side));
-	ALBEDO = col * 1.05;   // sans éclairage : couleur exacte, pas brûlée par les lumières de la coulée
+	vec2 uv = vec2(UV.x, UV.y) / tile;
+	vec3 a = texture(lava_tex, uv + vec2(0.0, -TIME * speed / tile)).rgb;
+	vec3 b = texture(lava_tex, uv * 0.63 + vec2(0.31, -TIME * speed * 0.55 / tile)).rgb;
+	vec3 col = mix(a, b, 0.4);
+	col = max(col, a * 0.9);
+	// plus chaud et clair au centre, plus rouge et sombre contre les berges
+	col *= mix(1.15, 0.7, smoothstep(0.35, 1.0, side));
+	col = mix(col, vec3(0.45, 0.08, 0.02), smoothstep(0.88, 1.0, side) * 0.8);
+	col *= 0.95 + 0.08 * sin(TIME * 2.0 + UV.y * 0.5);
+	ALBEDO = col;
+}
+"""
+
+## Croûte de lave refroidie (berges, dalles, plaques qui flottent) : texture peinte OpenArt
+## (tex_crust) projetée du dessus, les fentes orange de la texture brillent.
+const CRUST_SHADER := """
+shader_type spatial;
+render_mode diffuse_lambert_wrap;
+uniform sampler2D crust_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform float tile = 3.0;
+varying vec3 wp;
+varying vec3 wn;
+void vertex() {
+	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	wn = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+}
+void fragment() {
+	// projection sur trois axes (faces du dessus et côtés des dalles)
+	vec3 bw = pow(abs(wn), vec3(4.0));
+	bw /= bw.x + bw.y + bw.z;
+	vec3 c = texture(crust_tex, wp.zy / tile).rgb * bw.x + texture(crust_tex, wp.xz / tile).rgb * bw.y + texture(crust_tex, wp.xy / tile).rgb * bw.z;
+	float glow = smoothstep(0.25, 0.5, c.r - c.b);
+	ALBEDO = c;
+	EMISSION = c * glow * 1.6 * (0.85 + 0.25 * sin(TIME * 1.5 + wp.x * 0.4));
+	ROUGHNESS = 0.9;
 }
 """
 
@@ -229,14 +254,8 @@ static func magma_material() -> ShaderMaterial:
 static func bank_material() -> ShaderMaterial:
 	if not _cache.has("bank_mat"):
 		var m := ShaderMaterial.new()
-		m.shader = _shader(ROCK_SHADER)
-		m.set_shader_parameter("crack_scale", 1.6)
-		m.set_shader_parameter("crack_amount", 0.35)
-		m.set_shader_parameter("crack_mask", 0.72)
-		m.set_shader_parameter("ash_amount", 0.0)
-		m.set_shader_parameter("heat_height", 1.2)
-		m.set_shader_parameter("base_dark", Color(0.035, 0.025, 0.025))
-		m.set_shader_parameter("base_light", Color(0.09, 0.06, 0.05))
+		m.shader = _shader(CRUST_SHADER)
+		m.set_shader_parameter("crust_tex", load("res://assets/nature/volcanic/tex_crust.jpg"))
 		_cache["bank_mat"] = m
 	return _cache["bank_mat"]
 
@@ -253,6 +272,7 @@ static func lava_material() -> ShaderMaterial:
 	if not _cache.has("lava_mat"):
 		var m := ShaderMaterial.new()
 		m.shader = _shader(LAVA_SHADER)
+		m.set_shader_parameter("lava_tex", load("res://assets/nature/volcanic/tex_lava.jpg"))
 		_cache["lava_mat"] = m
 	return _cache["lava_mat"]
 

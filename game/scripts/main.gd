@@ -78,6 +78,7 @@ static func orb_cell(center: Vector3) -> Vector3:
 const GROUND_SHADER := """
 shader_type spatial;
 render_mode diffuse_lambert_wrap, specular_disabled;
+uniform sampler2D ash_tex : source_color, filter_linear_mipmap, repeat_enable;   // sol de cendre (OpenArt)
 varying vec3 wpos;
 void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -101,14 +102,18 @@ void fragment() {
 	vec2 c3 = vec2(-170.0, -160.0);
 	float r3 = length(wpos.xz - c3);
 	float b3 = smoothstep(74.0, 56.0, r3 + noise(wpos.xz * 0.1) * 8.0);
-	vec3 basalt = mix(vec3(0.045, 0.042, 0.05), vec3(0.11, 0.105, 0.12), n) + vec3(0.08, 0.08, 0.09) * smoothstep(0.55, 0.85, noise(wpos.xz * 0.5));   // cendre volcanique gris-violet
+	// cendre volcanique peinte (texture OpenArt), deux échelles mélangées pour casser la répétition
+	vec3 ash_a = texture(ash_tex, wpos.xz / 9.0).rgb;
+	vec3 ash_b = texture(ash_tex, wpos.zx / 23.0 + vec2(0.37, 0.61)).rgb;
+	vec3 basalt = mix(ash_a, ash_b, 0.35 * smoothstep(0.3, 0.7, noise(wpos.xz * 0.04)));
+	float ash_glow = smoothstep(0.25, 0.45, ash_a.r - ash_a.b);   // cendre volcanique gris-violet
 	float crack = smoothstep(0.008, 0.0, abs(noise(wpos.xz * 0.32) - 0.5)) * smoothstep(0.55, 0.75, noise(wpos.xz * 0.07));
 	grass = mix(grass, basalt, b3);
-	dirt = mix(dirt, vec3(0.20, 0.12, 0.09), b3);
+	dirt = mix(dirt, basalt * 0.85, b3);
 	r = min(min(r, r2), r3);
 	ALBEDO = mix(dirt, grass, smoothstep(4.5, 7.0, r + dirt_n));
-	// volcan : sol de cendre sans grandes fissures (la lave est dans les coulées)
-	crack *= 0.0;
+	// volcan : petites fissures incandescentes de la texture
+	EMISSION = vec3(1.0, 0.35, 0.05) * ash_glow * b3 * (0.9 + 0.4 * sin(TIME * 1.7 + wpos.x * 0.3));
 	ROUGHNESS = 1.0;
 }
 """
@@ -445,6 +450,7 @@ func _build_ground() -> void:
 	var sh := Shader.new()
 	sh.code = GROUND_SHADER
 	mat.shader = sh
+	mat.set_shader_parameter("ash_tex", load("res://assets/nature/volcanic/tex_ash.jpg"))
 	mi.material_override = mat
 	ground.add_child(mi)
 	var cs := CollisionShape3D.new()
