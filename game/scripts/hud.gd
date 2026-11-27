@@ -164,7 +164,13 @@ var orb_lag := 1.0
 var orb_title := ""
 var orb_label: Label
 var alert_label: Label
-var hp_bar: ProgressBar
+var hp_bar: ColorRect
+var hp_vial: ShaderMaterial
+var hp_num: Label
+var shield_bar: ColorRect
+var shield_vial: ShaderMaterial
+var shield_num: Label
+var vial_state := {"hp": [1.0, 1.0, 0.0, -1.0], "sh": [1.0, 1.0, 0.0, -1.0]}   # niveau, traîne, agitation, dernière valeur
 var hp_label: Label
 var skill_label: Label   # bouclier / boule de feu (au-dessus de la vie)
 var scope: ColorRect     # vue à travers la lunette du fusil de précision
@@ -277,7 +283,7 @@ func _ready() -> void:
 	# --- bas gauche : vie
 	var hp_panel := PanelContainer.new()
 	hp_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_place(hp_panel, 0.0, 1.0, 0.0, 1.0, 20, -96, 380, -20)
+	_place(hp_panel, 0.0, 1.0, 0.0, 1.0, 20, -70, 200, -20)
 	root.add_child(hp_panel)
 	var hp_vb := VBoxContainer.new()
 	hp_vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -287,8 +293,25 @@ func _ready() -> void:
 	skill_label = _label(root, "", 18, Color(1.0, 0.8, 0.55))
 	skill_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_place(skill_label, 0.0, 1.0, 0.0, 1.0, 24, -128, 560, -100)
-	hp_bar = _bar(Color(0.35, 0.85, 0.3), Vector2(340, 20))
-	hp_vb.add_child(hp_bar)
+	# fioles le long du bord gauche : vie (rouge) et bouclier (bleu, si débloqué)
+	hp_bar = ColorRect.new()
+	_place(hp_bar, 0.0, 0.5, 0.0, 0.5, 18, -190, 70, 122)
+	hp_vial = HpBar.vial_material(Color(0.88, 0.1, 0.14))
+	hp_vial.set_shader_parameter("aspect", 312.0 / 52.0)
+	hp_bar.material = hp_vial
+	hp_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(hp_bar)
+	hp_num = _label(root, "100", 20, Color(1.0, 0.75, 0.72))
+	_place(hp_num, 0.0, 0.5, 0.0, 0.5, 4, 126, 84, 152)
+	shield_bar = ColorRect.new()
+	_place(shield_bar, 0.0, 0.5, 0.0, 0.5, 78, -150, 116, 82)
+	shield_vial = HpBar.vial_material(Color(0.25, 0.62, 1.0))
+	shield_vial.set_shader_parameter("aspect", 232.0 / 38.0)
+	shield_bar.material = shield_vial
+	shield_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(shield_bar)
+	shield_num = _label(root, "0", 16, Color(0.7, 0.85, 1.0))
+	_place(shield_num, 0.0, 0.5, 0.0, 0.5, 62, 86, 132, 110)
 
 	# --- bas droite : armes, munitions, bois
 	var br := VBoxContainer.new()
@@ -539,15 +562,36 @@ func _process(delta: float) -> void:
 		notice_label.visible = notice_t > 0.0
 
 
+## Fiole : niveau, traîne qui rattrape les pertes, agitation du liquide quand la valeur change.
+func _update_vial(k: String, m: ShaderMaterial, v: float, mx: float) -> void:
+	var st: Array = vial_state[k]
+	var dt := get_process_delta_time()
+	var lv := clampf(v / maxf(mx, 1.0), 0.0, 1.0)
+	if st[3] >= 0.0 and absf(v - st[3]) > 0.5:
+		st[2] = minf(1.0, st[2] + absf(v - st[3]) / maxf(mx, 1.0) * 4.0 + 0.3)
+	st[3] = v
+	st[0] = lv
+	st[1] = maxf(lv, move_toward(st[1], lv, dt * 0.35))
+	st[2] = maxf(0.0, st[2] - dt * 0.8)
+	m.set_shader_parameter("level", lv)
+	m.set_shader_parameter("lag", st[1])
+	m.set_shader_parameter("slosh", st[2])
+
+
 func update_player(p) -> void:
-	hp_bar.max_value = p.max_hp()
-	hp_bar.value = p.hp
+	_update_vial("hp", hp_vial, p.hp, p.max_hp())
+	hp_num.text = str(int(ceil(p.hp)))
+	var has_shield: bool = p.shield_max() > 0.0
+	shield_bar.visible = has_shield
+	shield_num.visible = has_shield
+	if has_shield:
+		_update_vial("sh", shield_vial, p.shield, p.shield_max())
+		shield_num.text = str(int(ceil(p.shield)))
+	hp_vial.set_shader_parameter("danger", 1.0 if p.hp < p.max_hp() * 0.25 and not p.dead else 0.0)
 	var extra := ""
-	if p.shield_max() > 0.0:
-		extra += "   BOUCLIER %d" % int(ceil(p.shield))
 	if p.has_skill("A7"):
 		extra += "   FEU %s" % ("PRÊT (C / ◀)" if p.fireball_cd <= 0.0 else "%d s" % int(ceil(p.fireball_cd)))
-	hp_label.text = "%d PV      VIES %d" % [int(ceil(p.hp)), p.lives]
+	hp_label.text = "VIES %d" % p.lives
 	skill_label.text = extra.strip_edges()
 	var counts := {"wood": p.wood, "magic_wood": p.magic_wood, "stone": p.stone, "magic_stone": p.magic_stone,
 		"cloud": p.clouds, "magic_cloud": p.magic_clouds, "coins": p.coins}

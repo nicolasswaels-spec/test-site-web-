@@ -105,3 +105,101 @@ static func canvas_material() -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	m.shader = _canvas
 	return m
+
+
+## Fiole verticale (vie, bouclier) : verre, bouchon doré, liquide dont la surface ondule et
+## s'agite quand la valeur change, bulles qui montent, reflet. level / lag : 0..1.
+const VIAL := """
+shader_type canvas_item;
+uniform float level = 1.0;
+uniform float lag = 1.0;
+uniform float slosh = 0.0;       // agitation (coup reçu / soin), retombe à 0
+uniform float aspect = 6.0;      // hauteur / largeur
+uniform vec4 liquid : source_color = vec4(0.85, 0.08, 0.12, 1.0);
+uniform float danger = 0.0;      // > 0 : clignote (vie basse)
+
+float hash(float n) { return fract(sin(n) * 43758.5453); }
+float sd_box(vec2 p, vec2 b) { vec2 d = abs(p) - b; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0); }
+
+void fragment() {
+	float A = aspect;
+	vec2 p = vec2(UV.x - 0.5, UV.y * A);      // unités : largeur de la fiole
+	float t = TIME;
+	float aa = 1.5 * fwidth(p.x);
+	// bouchon doré
+	float cap = sd_box(p - vec2(0.0, 0.17), vec2(0.36, 0.13)) - 0.05;
+	float neck = sd_box(p - vec2(0.0, 0.38), vec2(0.27, 0.09));
+	// corps : capsule
+	float top = 0.45; float bot = A - 0.06; float r = 0.42;
+	float yc = clamp(p.y, top + r, bot - r);
+	float body = length(vec2(p.x, p.y - yc)) - r;
+	float shape = min(min(cap, neck), body);
+	float alpha = 1.0 - smoothstep(-aa, aa, shape);
+	vec3 col;
+	float a = 1.0;
+	if (body < 0.0 && p.y > top + 0.02) {
+		float inner = body + 0.075;
+		// contenu : liquide ou vide (verre sombre)
+		float ih_top = top + 0.08; float ih_bot = bot - 0.08;
+		float surf = mix(ih_bot, ih_top, level);
+		float wave = sin(p.x * 9.0 + t * 3.0) * (0.025 + 0.07 * slosh) + sin(p.x * 15.0 - t * 2.2) * (0.012 + 0.04 * slosh);
+		surf += wave * step(0.001, level) * step(level, 0.999);
+		float surf_lag = mix(ih_bot, ih_top, lag) + wave;
+		vec3 glass = vec3(0.05, 0.04, 0.09);
+		col = glass; a = 0.62;
+		if (inner < 0.0) {
+			if (p.y > surf) {
+				float depth = (p.y - surf) / max(ih_bot - ih_top, 0.01);
+				vec3 lc = liquid.rgb * mix(1.25, 0.55, clamp(depth * 1.4, 0.0, 1.0));
+				// reflets mouvants dans le liquide
+				lc += liquid.rgb * 0.09 * sin(p.y * 4.0 - t * 1.5 + sin(p.x * 4.0 + t) * 1.2);
+				// ligne claire de la surface
+				lc = mix(lc, vec3(1.0, 0.95, 0.9), (1.0 - smoothstep(0.0, 0.05, p.y - surf)) * 0.55);
+				// bulles qui montent
+				for (int i = 0; i < 7; i++) {
+					float fi = float(i);
+					float bx = (hash(fi * 3.1) - 0.5) * 0.5;
+					float sp = 0.25 + hash(fi * 7.7) * 0.35;
+					float by = ih_bot - fract(t * sp + hash(fi)) * (ih_bot - surf);
+					float br = 0.025 + 0.025 * hash(fi * 5.3);
+					float d = length(p - vec2(bx + sin(t * 2.0 + fi) * 0.03, by));
+					lc = mix(lc, vec3(1.0), (1.0 - smoothstep(br * 0.6, br, d)) * 0.5 * step(surf, by));
+				}
+				lc *= 1.0 + danger * (0.35 + 0.35 * sin(t * 9.0));
+				col = lc; a = 1.0;
+			} else if (p.y > surf_lag) {
+				col = mix(glass, liquid.rgb + 0.3, 0.55); a = 0.85;   // traîne de la valeur perdue
+			}
+		}
+		// paroi du verre + reflet vertical
+		float rim = smoothstep(-0.075, -0.02, body);
+		col = mix(col, vec3(0.75, 0.8, 0.95), rim * 0.55); a = max(a, rim);
+		float shine = (1.0 - smoothstep(0.0, 0.05, abs(p.x + 0.2))) * smoothstep(top + 0.1, top + 0.4, p.y) * (1.0 - smoothstep(bot - 0.5, bot - 0.2, p.y));
+		col += vec3(0.5) * shine; 
+		// graduations
+		float g = step(0.0, inner) * 0.0 + (1.0 - smoothstep(0.0, 0.012, abs(fract((p.y - ih_top) / (ih_bot - ih_top) * 4.0 + 0.5) - 0.5) * (ih_bot - ih_top) / 4.0)) * step(0.18, p.x) * step(p.x, 0.3);
+		col = mix(col, vec3(1.0, 0.9, 0.7), g * 0.5);
+	} else {
+		// bouchon et col : or
+		float lit = 0.5 + 0.5 * cos(p.x * 3.0);
+		col = mix(vec3(0.45, 0.26, 0.08), vec3(1.0, 0.82, 0.45), lit);
+		col *= 0.85 + 0.15 * step(0.5, fract(p.y * 9.0));
+	}
+	// contour sombre
+	float edge = smoothstep(-0.03, 0.0, shape);
+	col = mix(col, vec3(0.03, 0.02, 0.05), edge);
+	COLOR = vec4(col, a * alpha);
+}
+"""
+
+static var _vial: Shader
+
+
+static func vial_material(color: Color) -> ShaderMaterial:
+	if _vial == null:
+		_vial = Shader.new()
+		_vial.code = VIAL
+	var m := ShaderMaterial.new()
+	m.shader = _vial
+	m.set_shader_parameter("liquid", color)
+	return m
