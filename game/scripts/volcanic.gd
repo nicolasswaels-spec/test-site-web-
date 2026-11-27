@@ -37,7 +37,8 @@ render_mode diffuse_lambert_wrap;
 uniform float crack_amount = 1.0;
 uniform float crack_scale = 0.55;
 uniform float ash_amount = 1.0;
-uniform float heat_height = 2.5;   // au-dessus de cette hauteur (m), plus de lave dans les fissures
+uniform float heat_height = 2.5;
+uniform float crack_mask = 0.5;   // plus haut = moins de fissures   // au-dessus de cette hauteur (m), plus de lave dans les fissures
 uniform vec3 base_dark : source_color = vec3(0.045, 0.035, 0.04);
 uniform vec3 base_light : source_color = vec3(0.14, 0.115, 0.11);
 varying vec3 wp;
@@ -54,9 +55,15 @@ void fragment() {
 	float ash = smoothstep(0.45, 0.85, wn.y + (vnoise(wp * 2.3) - 0.5) * 0.5) * ash_amount;
 	col = mix(col, vec3(0.30, 0.28, 0.27), ash * 0.85);
 	// fissures de lave
-	float e = cracks3(wp * crack_scale);
-	float c = 1.0 - smoothstep(0.0, 0.07, e);
-	c *= smoothstep(0.3, 0.55, vnoise(wp * 0.35 + 3.1));
+	// fissures irrégulières : position déformée par du bruit, largeur variable, réseau incomplet,
+	// plus de fines craquelures secondaires
+	vec3 q = wp * crack_scale;
+	q += (vec3(vnoise(q * 0.7), vnoise(q * 0.7 + 7.3), vnoise(q * 0.7 + 13.1)) - 0.5) * 1.1;
+	float wdt = 0.025 + 0.06 * vnoise(wp * 1.3 + 5.0);
+	float c = 1.0 - smoothstep(0.0, wdt, cracks3(q));
+	c *= smoothstep(crack_mask - 0.12, crack_mask + 0.12, vnoise(wp * 0.45 + 3.1));
+	float c2 = (1.0 - smoothstep(0.0, 0.025, cracks3(q * 2.7 + 4.0))) * smoothstep(0.55, 0.75, vnoise(wp * 0.9 + 1.7));
+	c = max(c, c2 * 0.6);
 	float heat = clamp(1.0 - wp.y / heat_height, 0.0, 1.0) * (1.0 - ash * 0.8) * crack_amount;
 	float pulse = 0.75 + 0.25 * sin(TIME * 1.6 + wp.x * 0.7 + wp.z * 0.4);
 	vec3 hot = mix(vec3(1.0, 0.22, 0.03), vec3(1.0, 0.6, 0.15), c);
@@ -153,6 +160,22 @@ static func charred_material() -> ShaderMaterial:
 		m.set_shader_parameter("base_light", Color(0.09, 0.07, 0.065))
 		_cache["char_mat"] = m
 	return _cache["char_mat"]
+
+
+## Rocher magmatique (à miner) : basalte noir parcouru de larges veines de lave sur toute sa hauteur.
+static func magma_material() -> ShaderMaterial:
+	if not _cache.has("magma_mat"):
+		var m := ShaderMaterial.new()
+		m.shader = _shader(ROCK_SHADER)
+		m.set_shader_parameter("crack_scale", 1.3)
+		m.set_shader_parameter("crack_amount", 1.4)
+		m.set_shader_parameter("crack_mask", 0.4)
+		m.set_shader_parameter("ash_amount", 0.35)
+		m.set_shader_parameter("heat_height", 6.0)
+		m.set_shader_parameter("base_dark", Color(0.03, 0.022, 0.022))
+		m.set_shader_parameter("base_light", Color(0.11, 0.08, 0.07))
+		_cache["magma_mat"] = m
+	return _cache["magma_mat"]
 
 
 ## Bourrelets de lave refroidie au bord des coulées : sans cendre, fissures chaudes.

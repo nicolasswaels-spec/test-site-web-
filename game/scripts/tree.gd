@@ -4,6 +4,7 @@ extends StaticBody3D
 const Nature = preload("res://scripts/nature.gd")
 
 const Harvest = preload("res://scripts/harvest.gd")
+const Volcanic = preload("res://scripts/volcanic.gd")
 
 const WOOD_PER_HIT := 15
 const WOOD_FELL := 40          # bois du dernier coup, +80 % par cible touchée (jusqu'à ×3,4)
@@ -37,14 +38,17 @@ func _ready() -> void:
 		variants = Nature.maples()
 	elif species == 2:
 		variants = Nature.birches()
-	elif species == 3:
-		variants = Nature.ash_pines()
 	var mi := MeshInstance3D.new()
-	mi.mesh = variants[kind % variants.size()]
+	if species == 3:
+		# arbre calciné (modèle Blender) : charbon, braises dans l'écorce, sans feuillage
+		mi.mesh = Volcanic.mesh("charred_%d" % (kind % 4 + 1))
+		mi.material_override = Volcanic.charred_material()
+	else:
+		mi.mesh = variants[kind % variants.size()]
 	visual.add_child(mi)
 	if magic:
 		_add_magic_look(mi)
-	trunk_radius = float(mi.mesh.get_meta("trunk_radius", 0.35)) * tree_scale
+	trunk_radius = (0.45 if species == 3 else float(mi.mesh.get_meta("trunk_radius", 0.35))) * tree_scale
 
 	var shape := CollisionShape3D.new()
 	var cyl := CylinderShape3D.new()

@@ -2,6 +2,7 @@ extends StaticBody3D
 ## Rocher : on y récolte de la pierre à la hache (débloqué à la vague 5).
 
 const Nature = preload("res://scripts/nature.gd")
+const Volcanic = preload("res://scripts/volcanic.gd")
 const Harvest = preload("res://scripts/harvest.gd")
 const Mats = preload("res://scripts/mats.gd")
 
@@ -34,24 +35,30 @@ func _ready() -> void:
 	add_child(visual)
 	var m := MeshInstance3D.new()
 	m.mesh = Nature.rock(variant)
-	m.scale = Vector3.ONE * rock_scale
-	visual.add_child(m)
+	var sc := rock_scale
 	if magic:
 		m.material_override = Nature.rock_material("magic")
 	elif volcanic:
-		m.material_override = Nature.rock_material("volcanic")
+		# rocher magmatique (modèle Blender) : basalte veiné de lave, mis à la taille du rocher normal
+		var ref_h: float = m.mesh.get_aabb().size.y
+		m.mesh = Volcanic.mesh(["rock_block", "rock_crag", "rock_slab", "rock_block"][variant % 4])
+		m.material_override = Volcanic.magma_material()
+		sc = rock_scale * ref_h / m.mesh.get_aabb().size.y * 1.15
+		visual.rotation.y = randf() * TAU
+	m.scale = Vector3.ONE * sc
+	visual.add_child(m)
 	var ab: AABB = m.mesh.get_aabb()
-	radius = maxf(ab.size.x, ab.size.z) * 0.5 * rock_scale
+	radius = maxf(ab.size.x, ab.size.z) * 0.5 * sc
 	# collision = enveloppe convexe du rocher (suit sa vraie forme : coups et cibles sur la surface)
 	var cs := CollisionShape3D.new()
 	var hull := m.mesh.create_convex_shape(true, true) as ConvexPolygonShape3D
 	var pts := PackedVector3Array()
 	for v in hull.points:
-		pts.append(v * rock_scale)
+		pts.append(visual.basis * (v * sc))
 	hull.points = pts
 	cs.shape = hull
 	add_child(cs)
-	col_center = Vector3(0, ab.size.y * rock_scale * 0.4, 0)
+	col_center = Vector3(0, ab.size.y * sc * 0.4, 0)
 	if magic:
 		_add_crystals(ab.size.y * rock_scale)
 	col_radius = radius

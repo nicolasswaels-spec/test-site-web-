@@ -1737,7 +1737,7 @@ func _build_zone3() -> void:
 		add_child(sw)
 
 	# Décor de fond : arbres calcinés, colonnes de basalte, volcans au loin
-	var burnt: Array = [Nature.burnt_tree(1), Nature.burnt_tree(2), Nature.burnt_tree(3)]
+	var burnt: Array = [Volcanic.mesh("charred_1"), Volcanic.mesh("charred_2"), Volcanic.mesh("charred_3")]
 	var entries: Array = []
 	for i in 260:
 		var a := rng.randf() * TAU

@@ -158,3 +158,6 @@ assets/                modèles 3D CC0 : nature (Quaternius), skeletons, chests,
 - Barre de vie d'une construction : seulement quand on la vise (ou pendant sa réparation).
 - Radar tournant : la flèche du joueur pointe toujours vers le haut, la carte tourne, le « N » suit le nord.
 - Zone volcanique (scripts/volcanic.gd + tools/blender/volcanic_props.py) : rochers de basalte à facettes avec fissures de lave, volcans à cratère avec coulées sur les flancs et panache de fumée, arbres calcinés (charbon + braises), vraies coulées de lave animées (croûte qui dérive, bourrelets de roche) qui remplacent les mares (zone de dégâts suivant la coulée), braises plus nombreuses et cendres qui tombent, brouillard enfumé rouge au lieu du rose.
+- Arbres à couper de la zone volcanique : arbres calcinés modélisés (tools/blender/charred_trees.py, 4 variantes : tronc crevassé, racines, branches mortes cassées, sans feuillage), aussi utilisés en décor.
+- Rochers à miner de la zone volcanique : rochers magmatiques (formes de volcanic_props.py, veines de lave irrégulières, Volcanic.magma_material).
+- Bras FPS, nouvelle piste : le voyageur exporté sans squelette pour Mixamo (game/tools/mixamo/traveler_for_mixamo.fbx, tools/blender/export_for_mixamo.py) ; le fichier riggé par Mixamo est attendu dans game/tools/mixamo/.
