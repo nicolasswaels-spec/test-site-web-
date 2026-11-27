@@ -222,6 +222,10 @@ func _ready() -> void:
 ## Bras du voyageur à la 1re personne (tools/blender/rig_fp_arm.py) : modèle Meshy avec un squelette
 ## doigt par doigt. Repère du modèle : +X = vers les doigts, +Z = normale de la paume, pouce vers -Y.
 const FP_ARM := preload("res://assets/characters/fp_arm.glb")
+const FpArms = preload("res://scripts/fp_arms.gd")
+## Nouveaux bras (voyageur riggé par Mixamo, fp_arms.gd) : en cours de mise au point, désactivés
+const USE_MIXAMO_ARMS := false
+var fp_arms: Node3D = null
 const ARM_SCALE := 0.78
 const PALM_N := Vector3(0, 0, 1)
 const GRIP_HALF := 0.024   # demi-épaisseur d'une poignée (m)
@@ -242,6 +246,9 @@ const SHOULDERS := [Vector3(0.34, -0.9, 0.05), Vector3(-0.32, -0.9, -0.05)]
 ## Place un bras : centre de la paume sur « hand », avant-bras vers « elbow » (hors de l'écran),
 ## paume tournée vers « palm_dir ». side : 0 = droit, 1 = gauche (miroir du droit).
 func _add_arm(parent: Node3D, hand: Vector3, elbow: Vector3, side := 0, palm_dir := Vector3.LEFT, grip := "pistol") -> void:
+	if USE_MIXAMO_ARMS:
+		_add_arm_mx(parent, hand, elbow, side, palm_dir, grip)
+		return
 	var m: Node3D = FP_ARM.instantiate()
 	var x := (hand - elbow).normalized()
 	var z := (palm_dir - x * palm_dir.dot(x)).normalized()
@@ -277,6 +284,9 @@ func _add_arm(parent: Node3D, hand: Vector3, elbow: Vector3, side := 0, palm_dir
 ## Coude : l'os « upper » (haut du bras) vise l'épaule, quelle que soit la position de la main
 ## (arme qui recule, coup de hache...). Appelé à chaque image pour les bras visibles.
 func _update_arms() -> void:
+	if USE_MIXAMO_ARMS:
+		_update_arms_mx()
+		return
 	for a in arm_rigs:
 		var skel: Skeleton3D = a["skel"]
 		if not is_instance_valid(skel) or not skel.is_visible_in_tree():
@@ -298,6 +308,44 @@ func _update_arms() -> void:
 		var g_basis := Basis(q) * cur_g.basis
 		var local := parent_g.basis.inverse() * g_basis
 		skel.set_bone_pose_rotation(ui, local.get_rotation_quaternion())
+
+
+## Bras : un seul squelette (voyageur riggé par Mixamo, scripts/fp_arms.gd) sous la caméra.
+## Chaque arme déclare où vont les mains (dans son repère) ; à chaque image, les mains de l'arme
+## visible sont posées dessus par cinématique inverse (elles suivent recul, balancement, hache).
+## hand : centre de la poignée ; elbow : point vers lequel file l'avant-bras (donne la direction
+## des doigts et celle du coude) ; palm_dir : de la paume vers la poignée.
+func _add_arm_mx(parent: Node3D, hand: Vector3, elbow: Vector3, side := 0, palm_dir := Vector3.LEFT, grip := "pistol") -> void:
+	if fp_arms == null:
+		fp_arms = FpArms.new()
+		cam.add_child(fp_arms)
+		fp_arms.visible = false
+	arm_rigs.append({"node": parent, "hand": hand, "elbow": elbow, "side": side, "palm": palm_dir, "grip": grip})
+
+
+func _update_arms_mx() -> void:
+	if fp_arms == null:
+		return
+	var shown := false
+	var used := {}
+	for a in arm_rigs:
+		var n: Node3D = a["node"]
+		if not is_instance_valid(n) or not n.is_visible_in_tree():
+			continue
+		shown = true
+		var gt := n.global_transform
+		var hand: Vector3 = a["hand"]
+		var elbow: Vector3 = a["elbow"]
+		var grip := gt * hand
+		var back := (gt * elbow - grip).normalized()
+		var palm := (gt.basis * (a["palm"] as Vector3)).normalized()
+		var side := "Right" if a["side"] == 0 else "Left"
+		used[side] = true
+		fp_arms.solve(side, grip, -back, palm, back, a["grip"])
+	for side in ["Right", "Left"]:
+		if not used.has(side):
+			fp_arms.hide_arm(side)
+	fp_arms.visible = shown
 
 
 ## Plie les doigts : chaque phalange tourne autour de (direction de l'os × normale de la paume).
