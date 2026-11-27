@@ -3,6 +3,7 @@ extends RefCounted
 ## coulées de lave animées (ruban qui serpente au sol, bordé de bourrelets de roche refroidie).
 ## Les formes des rochers et du volcan viennent de tools/blender/volcanic_props.py.
 
+const Mats = preload("res://scripts/mats.gd")
 const ROCKS := ["rock_block", "rock_spire", "rock_slab", "rock_crag"]
 
 const NOISE := """
@@ -283,6 +284,7 @@ static func mesh(name: String) -> Mesh:
 	if not _cache.has(k):
 		var ps: PackedScene = load("res://assets/nature/volcanic/%s.glb" % name)
 		var inst := ps.instantiate()
+		Mats.fix_glb_textures(inst, "res://assets/nature/volcanic/%s.glb" % name)
 		var mi := inst.find_children("*", "MeshInstance3D", true, false)[0] as MeshInstance3D
 		_cache[k] = mi.mesh
 		inst.free()

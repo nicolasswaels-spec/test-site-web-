@@ -28,6 +28,7 @@ func _ready() -> void:
 	# Socle sculpté : dalles de pierre à runes turquoise et pilier au losange lumineux
 	if ResourceLoader.exists(ALTAR):
 		var altar := (load(ALTAR) as PackedScene).instantiate() as Node3D
+		Mats.fix_glb_textures(altar, ALTAR)
 		altar.rotation_degrees.y = 90.0
 		add_child(altar)
 	else:

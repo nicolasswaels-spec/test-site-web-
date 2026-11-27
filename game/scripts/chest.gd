@@ -2,6 +2,7 @@ extends StaticBody3D
 ## Coffre au trésor gardé par des squelettes. On l'ouvre avec E / X : butin aléatoire
 ## (commun, rare, légendaire ; l'arme cryogénique est très rare : 4 %).
 
+const Mats = preload("res://scripts/mats.gd")
 const MODEL := preload("res://assets/chests/chest.glb")
 const MODEL_GOLD := preload("res://assets/chests/chest_gold.glb")
 const RARITY_COLORS := {"COMMUN": Color(0.85, 0.85, 0.9), "RARE": Color(0.3, 0.6, 1.0), "LÉGENDAIRE": Color(1.0, 0.7, 0.15)}
@@ -18,6 +19,7 @@ func _ready() -> void:
 	collision_layer = 16
 	collision_mask = 0
 	var model: Node3D = (MODEL_GOLD if gold else MODEL).instantiate()
+	Mats.fix_glb_textures(model, (MODEL_GOLD if gold else MODEL).resource_path)
 	model.scale = Vector3.ONE * 1.3
 	add_child(model)
 	lid = model.find_child("*_lid", true, false)

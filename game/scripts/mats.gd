@@ -58,3 +58,47 @@ static func cylinder(parent: Node3D, top: float, bottom: float, height: float, m
 	mi.rotation_degrees = rot_deg
 	parent.add_child(mi)
 	return mi
+
+
+## Textures des modèles .glb (Meshy) rebranchées depuis les fichiers du projet : les images
+## extraites du .glb (<nom>_Image_0.jpg, <nom>_emission.jpg...) sont chargées explicitement.
+## Si la texture d'émission manque, l'émission est coupée : sinon Godot la remplace par du blanc
+## (x2 à x3) et le modèle entier devient blanc (constaté sur Mac).
+static var _fixed := {}
+static func fix_glb_textures(root: Node, glb_path: String) -> void:
+	var dir := glb_path.get_base_dir()
+	var base := glb_path.get_file().get_basename()
+	var files: Array[String] = []
+	for f in DirAccess.get_files_at(dir):
+		f = f.trim_suffix(".import").trim_suffix(".remap")
+		if f.begins_with(base + "_") and (f.ends_with(".jpg") or f.ends_with(".png")) and not files.has(f):
+			# « rifle_god_… » n'appartient pas à « rifle »
+			if base.find("_god") < 0 and f.begins_with(base + "_god"):
+				continue
+			files.append(f)
+	var albedo := ""
+	var emission := ""
+	for f in files:
+		if f.find("emission") >= 0:
+			emission = dir + "/" + f
+		elif f.find("Image_0") >= 0 and albedo == "":
+			albedo = dir + "/" + f
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = (mi as MeshInstance3D).mesh
+		if mesh == null:
+			continue
+		for i in mesh.get_surface_count():
+			var m := mesh.surface_get_material(i) as StandardMaterial3D
+			if m == null or _fixed.has(m):
+				continue
+			_fixed[m] = true
+			if (m.albedo_texture == null or not ResourceLoader.exists(m.albedo_texture.resource_path)) and albedo != "" and ResourceLoader.exists(albedo):
+				m.albedo_texture = load(albedo)
+			if m.emission_enabled:
+				if emission != "" and ResourceLoader.exists(emission):
+					m.emission_texture = load(emission)
+					m.emission = Color.BLACK
+					m.emission_operator = BaseMaterial3D.EMISSION_OP_ADD
+					m.emission_energy_multiplier = minf(m.emission_energy_multiplier, 3.0)
+				else:
+					m.emission_enabled = false

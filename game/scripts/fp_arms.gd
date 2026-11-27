@@ -12,9 +12,11 @@ const SIDES := ["Right", "Left"]
 ## 41 os, « index » plie les quatre doigts ensemble ; un squelette à 65 os sépare les doigts
 ## (Middle, Ring, Pinky prennent alors la valeur « fingers », l'index garde la sienne).
 const GRIPS := {
-	"pistol": {"index": 0.55, "fingers": 0.85, "thumb": 0.5},
-	"support": {"index": 0.45, "fingers": 0.45, "thumb": 0.3},
-	"fist": {"index": 0.9, "fingers": 0.95, "thumb": 0.6},
+	# index presque tendu le long de la gâchette, les autres doigts enroulés autour de la poignée
+	"pistol": {"index": 0.18, "fingers": 0.72, "thumb": 0.45, "half": 0.03},
+	# main d'appui sous le garde-main : doigts peu pliés (ils remontent sur le côté sans traverser)
+	"support": {"index": 0.3, "fingers": 0.32, "thumb": 0.2, "half": 0.05},
+	"fist": {"index": 0.85, "fingers": 0.9, "thumb": 0.55, "half": 0.03},
 }
 const GRIP_HALF := 0.022      # demi-épaisseur d'une poignée : la paume se pose contre, pas dedans
 const REACH := 0.86           # distance épaule-poignet, en fraction de la longueur du bras
@@ -94,7 +96,8 @@ func solve(side: String, grip: Vector3, fingers: Vector3, palm: Vector3, out: Ve
 	var o := (to_sk.basis * out).normalized()
 	var G := to_sk * grip
 	# poignet : la paume posée contre la poignée, les doigts dépassent vers l'avant
-	var W: Vector3 = G - Pm * (GRIP_HALF / sc) - F * r["palm"]
+	var g: Dictionary = GRIPS.get(grip_kind, GRIPS["pistol"])
+	var W: Vector3 = G - Pm * (g.get("half", GRIP_HALF) / sc) - F * r["palm"]
 	var l1: float = r["l1"]
 	var l2: float = r["l2"]
 	var S: Vector3 = W + o * (l1 + l2) * REACH
@@ -113,7 +116,7 @@ func solve(side: String, grip: Vector3, fingers: Vector3, palm: Vector3, out: Ve
 	var want_m := Basis(F, Pm, F.cross(Pm))
 	var hb := want_m * rest_m.inverse() * skel.get_bone_global_rest(r["Hand"]).basis
 	_set_global(r["Hand"], Transform3D(hb.orthonormalized(), W))
-	_curl(r, GRIPS.get(grip_kind, GRIPS["pistol"]))
+	_curl(r, g)
 
 
 ## Oriente un os (axe Y = le long de l'os) de a vers b, origine en a.

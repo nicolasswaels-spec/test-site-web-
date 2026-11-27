@@ -416,6 +416,7 @@ func _build_avatar() -> void:
 	add_child(avatar)
 	var col: Color = PLAYER_COLORS[index % 2]
 	var model: Node3D = AVATAR_MODEL.instantiate()
+	Mats.fix_glb_textures(model, AVATAR_MODEL.resource_path)
 	model.rotation.y = PI          # le modèle regarde vers +Z, le joueur vers -Z
 	model.scale = Vector3.ONE * 1.0  # 1,75 m
 	avatar.add_child(model)
@@ -501,6 +502,7 @@ func _attach_model(g: Node3D, path: String, k: float, crystal: StandardMaterial3
 	inst.rotation_degrees.y = 90.0
 	inst.scale = Vector3.ONE * k
 	g.add_child(inst)
+	Mats.fix_glb_textures(inst, path)
 	var out := {}
 	for n in ["muzzle", "sight", "hand_r", "hand_l"]:
 		var mk := inst.find_child(n, true, false) as Node3D
