@@ -2600,7 +2600,7 @@ func add_player(use_kbm: bool, pad_id: int) -> Node:
 			if q.index == i:
 				mask &= ~q.body_layer()
 			else:
-				mask &= ~q.view_layer()
+				mask &= ~q.view_layer() & ~q.arms_layer()
 		views[i]["camera"].cull_mask = mask
 	_layout_views()
 	if router and is_instance_valid(router):

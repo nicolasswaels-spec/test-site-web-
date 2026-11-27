@@ -18,6 +18,10 @@ const GRIPS := {
 }
 const GRIP_HALF := 0.022      # demi-épaisseur d'une poignée : la paume se pose contre, pas dedans
 const REACH := 0.86           # distance épaule-poignet, en fraction de la longueur du bras
+## Calques de rendu des bras (un par joueur, voir player.arms_layer) : les petites lumières des
+## armes les excluent (sinon les gants prennent leur teinte), la caméra de l'autre joueur aussi.
+const ALL_LAYERS := (1 << 12) | (1 << 13)
+var layer := 1 << 12
 
 var skel: Skeleton3D
 var rig := {}                 # par côté : indices des os, longueurs, repère de la main au repos
@@ -29,6 +33,7 @@ func _ready() -> void:
 	skel = m.find_children("*", "Skeleton3D", true, false)[0]
 	for mi in m.find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		(mi as MeshInstance3D).layers = layer
 		for i in (mi as MeshInstance3D).mesh.get_surface_count():
 			var sm := (mi as MeshInstance3D).mesh.surface_get_material(i) as StandardMaterial3D
 			if sm:
@@ -49,7 +54,7 @@ func _ready() -> void:
 		var t := skel.get_bone_global_rest(r["HandThumb1"]).origin - w
 		var pn := f.cross(t).normalized()
 		var hips := skel.get_bone_global_rest(skel.find_bone(P + "Hips")).origin
-		if pn.dot(Vector3(hips.x - w.x, 0, 0)) < 0.0:
+		if pn.dot(hips - w) < 0.0:   # paume tournée vers le corps (pose A) ou vers le bas (T-pose)
 			pn = -pn
 		pn = (pn - f * pn.dot(f)).normalized()
 		r["F"] = f

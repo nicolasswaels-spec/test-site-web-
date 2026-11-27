@@ -171,6 +171,11 @@ func view_layer() -> int:
 
 
 ## Couche de rendu du corps (invisible pour ce joueur, visible pour l'autre)
+## Calque des bras à la première personne (invisibles pour la caméra de l'autre joueur).
+func arms_layer() -> int:
+	return 1 << (12 + index)
+
+
 func body_layer() -> int:
 	return 1 << (2 + index)
 
@@ -224,7 +229,7 @@ func _ready() -> void:
 const FP_ARM := preload("res://assets/characters/fp_arm.glb")
 const FpArms = preload("res://scripts/fp_arms.gd")
 ## Nouveaux bras (voyageur riggé par Mixamo, fp_arms.gd) : en cours de mise au point, désactivés
-const USE_MIXAMO_ARMS := false
+const USE_MIXAMO_ARMS := true
 var fp_arms: Node3D = null
 const ARM_SCALE := 0.78
 const PALM_N := Vector3(0, 0, 1)
@@ -318,6 +323,7 @@ func _update_arms() -> void:
 func _add_arm_mx(parent: Node3D, hand: Vector3, elbow: Vector3, side := 0, palm_dir := Vector3.LEFT, grip := "pistol") -> void:
 	if fp_arms == null:
 		fp_arms = FpArms.new()
+		fp_arms.layer = arms_layer()
 		cam.add_child(fp_arms)
 		fp_arms.visible = false
 	arm_rigs.append({"node": parent, "hand": hand, "elbow": elbow, "side": side, "palm": palm_dir, "grip": grip})
@@ -467,6 +473,7 @@ func _gun_from_model(w: int, path: String, hip: Vector3, ads_z: float, gscale: f
 	glow.light_color = sight_col
 	glow.light_energy = 0.2
 	glow.omni_range = 0.4
+	glow.light_cull_mask = 0xFFFFF & ~FpArms.ALL_LAYERS   # n'éclaire pas les bras (gants verdâtres)
 	glow.position = mk["sight"]
 	g.add_child(glow)
 	var m := Marker3D.new()
@@ -478,6 +485,7 @@ func _gun_from_model(w: int, path: String, hip: Vector3, ads_z: float, gscale: f
 	li.light_color = flash_col
 	li.omni_range = 6.0
 	li.light_energy = 0.0
+	li.light_cull_mask = 0xFFFFF & ~FpArms.ALL_LAYERS
 	m.add_child(li)
 	gun_data[w] = {"node": g, "muzzle": m, "flash": fl, "light": li, "crystal": cmat, "glow": glow,
 		"hip": hip, "ads": _ads_from(mk["sight"], gscale, ads_z, below), "rest": Vector3(0, deg_to_rad(rest_deg), 0),
