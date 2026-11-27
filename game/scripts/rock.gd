@@ -39,10 +39,9 @@ func _ready() -> void:
 	if magic:
 		m.material_override = Nature.rock_material("magic")
 	elif volcanic:
-		# rocher magmatique (modèle Blender) : basalte veiné de lave, mis à la taille du rocher normal
+		# rocher magmatique (modèle Meshy d'après le visuel de la zone) : basalte, cendre, veines de lave, mis à la taille du rocher normal
 		var ref_h: float = m.mesh.get_aabb().size.y
-		m.mesh = Volcanic.mesh(["rock_block", "rock_crag", "rock_slab", "rock_block"][variant % 4])
-		m.material_override = Volcanic.magma_material()
+		m.mesh = Volcanic.mesh("meshy_rock")
 		sc = rock_scale * ref_h / m.mesh.get_aabb().size.y * 1.15
 		visual.rotation.y = randf() * TAU
 	m.scale = Vector3.ONE * sc

@@ -38,7 +38,7 @@ uniform float crack_amount = 1.0;
 uniform float crack_scale = 0.55;
 uniform float ash_amount = 1.0;
 uniform float heat_height = 2.5;
-uniform float crack_mask = 0.5;   // plus haut = moins de fissures   // au-dessus de cette hauteur (m), plus de lave dans les fissures
+uniform float crack_mask = 0.62;   // plus haut = moins de fissures
 uniform vec3 base_dark : source_color = vec3(0.045, 0.035, 0.04);
 uniform vec3 base_light : source_color = vec3(0.14, 0.115, 0.11);
 varying vec3 wp;
@@ -108,25 +108,72 @@ void fragment() {
 
 ## Lave en mouvement : plaques de croûte noire qui dérivent, fentes et centre en fusion.
 ## UV.x = position en travers (m), UV.y = position le long (m) ; UV2.x = travers normalisé (-1..1).
+## Lave en fusion (comme le visuel de référence) : orange-jaune vif, plus jaune au centre,
+## lignes de courant claires qui ondulent et filent avec le flot, remous plus sombres, bords rouges.
+## UV.x = travers (m), UV.y = long (m) ; UV2.x = travers normalisé (-1..1).
 const LAVA_SHADER := """
 shader_type spatial;
-render_mode diffuse_lambert_wrap, shadows_disabled;
-uniform float speed = 0.45;
+render_mode unshaded, shadows_disabled;
+uniform float speed = 0.5;
 """ + NOISE + """
 void fragment() {
-	vec2 p = vec2(UV.x, UV.y - TIME * speed);
 	float side = abs(UV2.x);
-	float e = cracks3(vec3(p * 0.55, TIME * 0.05));
-	float n = vnoise(vec3(p * 0.9, TIME * 0.2));
-	// croûte : plus présente sur les bords (lave qui refroidit), fentes brillantes entre les plaques
-	float crust = smoothstep(0.03, 0.09, e) * smoothstep(-0.2, 0.55, side + (n - 0.5) * 0.7);
-	vec3 hot = mix(vec3(0.95, 0.2, 0.02), vec3(1.0, 0.6, 0.15), smoothstep(0.4, 0.9, n) * (1.0 - side));
-	vec3 rock = mix(vec3(0.06, 0.03, 0.025), vec3(0.16, 0.07, 0.04), n);
-	ALBEDO = mix(hot, rock, crust);
-	EMISSION = hot * (1.0 - crust) * (1.3 + 0.3 * sin(TIME * 2.0 + UV.y * 0.8));
-	ROUGHNESS = mix(0.4, 0.95, crust);
+	float flow = UV.y - TIME * speed;
+	float n = vnoise(vec3(UV.x * 0.35, flow * 0.12, TIME * 0.05));
+	float n2 = vnoise(vec3(UV.x * 0.9, flow * 0.4, 3.0 + TIME * 0.1));
+	float lines = sin((UV.x + (n - 0.5) * 3.0) * 3.2 + (n2 - 0.5) * 2.5);
+	float streak = smoothstep(0.8, 0.97, lines) * (1.0 - side * 0.6);
+	float dark = smoothstep(0.55, 0.85, vnoise(vec3(UV.x * 0.5, flow * 0.25, 7.0))) * 0.45 + side * side * 0.5;
+	vec3 col = mix(vec3(0.95, 0.36, 0.04), vec3(1.0, 0.62, 0.14), 1.0 - side);
+	col = mix(col, vec3(0.75, 0.16, 0.02), dark);
+	col = mix(col, vec3(1.0, 0.82, 0.4), streak * 0.7);
+	col = mix(col, vec3(0.55, 0.1, 0.02), smoothstep(0.86, 1.0, side));
+	ALBEDO = col * 1.05;   // sans éclairage : couleur exacte, pas brûlée par les lumières de la coulée
 }
 """
+
+## Plaques de croûte noire qui flottent et dérivent le long d'une coulée (en boucle).
+class FlowSlabs extends Node3D:
+	var pts: PackedVector3Array
+	var half: PackedFloat32Array
+	var cum: PackedFloat32Array
+	var total := 1.0
+	var slabs: Array = []   # [noeud, distance de départ, décalage en travers (-1..1), vitesse]
+	func setup(p: PackedVector3Array, h: PackedFloat32Array, mesh: Mesh, mat: Material, n: int) -> void:
+		pts = p
+		half = h
+		cum.resize(p.size())
+		cum[0] = 0.0
+		for i in range(1, p.size()):
+			cum[i] = cum[i - 1] + p[i].distance_to(p[i - 1])
+		total = maxf(cum[p.size() - 1], 1.0)
+		for k in n:
+			var mi := MeshInstance3D.new()
+			mi.mesh = mesh
+			mi.material_override = mat
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			var sc := randf_range(0.35, 0.8)
+			mi.scale = Vector3(sc * randf_range(1.0, 1.6), sc * 0.18, sc)
+			add_child(mi)
+			slabs.append([mi, randf() * total, randf_range(-0.55, 0.55), randf_range(0.35, 0.6), randf() * TAU])
+	func _process(_d: float) -> void:
+		var t := Time.get_ticks_msec() * 0.001
+		for s in slabs:
+			var d := fmod(s[1] + t * s[3], total)
+			var i := 1
+			while i < cum.size() - 1 and cum[i] < d:
+				i += 1
+			var k := clampf((d - cum[i - 1]) / maxf(cum[i] - cum[i - 1], 0.001), 0.0, 1.0)
+			var c := pts[i - 1].lerp(pts[i], k)
+			var dir := (pts[i] - pts[i - 1]).normalized()
+			var side := Vector3(-dir.z, 0, dir.x)
+			var w := lerpf(half[i - 1], half[i], k)
+			var mi: MeshInstance3D = s[0]
+			mi.position = Vector3(c.x, 0.06, c.z) + side * s[2] * w
+			mi.rotation.y = s[4] + t * 0.15
+			# apparition / disparition douce aux extrémités de la coulée
+			var e := minf(d, total - d)
+			mi.visible = e > 1.0
 
 static var _cache := {}
 
@@ -183,8 +230,9 @@ static func bank_material() -> ShaderMaterial:
 	if not _cache.has("bank_mat"):
 		var m := ShaderMaterial.new()
 		m.shader = _shader(ROCK_SHADER)
-		m.set_shader_parameter("crack_scale", 2.2)
-		m.set_shader_parameter("crack_amount", 0.55)
+		m.set_shader_parameter("crack_scale", 1.6)
+		m.set_shader_parameter("crack_amount", 0.35)
+		m.set_shader_parameter("crack_mask", 0.72)
 		m.set_shader_parameter("ash_amount", 0.0)
 		m.set_shader_parameter("heat_height", 1.2)
 		m.set_shader_parameter("base_dark", Color(0.035, 0.025, 0.025))
@@ -250,7 +298,7 @@ static func build_flow(parent: Node3D, pts: PackedVector3Array, half: PackedFloa
 		# bourrelets de roche refroidie de chaque côté : bord de lave -> crête -> sol
 		var brow := []
 		for sg in [-1.0, 1.0]:
-			brow.append([c + s * sg * w + Vector3.UP * 0.06, c + s * sg * (w + 0.55) + Vector3.UP * 0.32, c + s * sg * (w + 1.5) + Vector3.UP * -0.02])
+			brow.append([c + s * sg * w + Vector3.UP * 0.05, c + s * sg * (w + 0.5) + Vector3.UP * 0.14, c + s * sg * (w + 1.3) + Vector3.UP * -0.02])
 		if i > 0:
 			for k in 4:
 				var u0 := -1.0 + k * 0.5
@@ -281,6 +329,36 @@ static func build_flow(parent: Node3D, pts: PackedVector3Array, half: PackedFloa
 	bm.mesh = bank.commit()
 	bm.material_override = bank_material()
 	parent.add_child(bm)
+	# berges : dalles de basalte plates posées le long des bords (comme sur le visuel)
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	var tfs: Array[Transform3D] = []
+	var acc := 0.0
+	for i in range(1, pts.size()):
+		acc += pts[i].distance_to(pts[i - 1])
+		if acc < 2.2:
+			continue
+		acc = 0.0
+		var dir := (pts[i] - pts[i - 1]).normalized()
+		var sd := Vector3(-dir.z, 0, dir.x)
+		for sg in [-1.0, 1.0]:
+			if randf() < 0.25:
+				continue
+			var sc := randf_range(0.7, 1.3)
+			var b := Basis(Vector3.UP, randf() * TAU).scaled(Vector3(sc * randf_range(1.2, 2.0), sc * randf_range(0.25, 0.5), sc * randf_range(1.0, 1.6)))
+			tfs.append(Transform3D(b, Vector3(pts[i].x, -0.08, pts[i].z) + sd * sg * (half[i] + randf_range(0.2, 0.9))))
+	mm.mesh = mesh("rock_slab")
+	mm.instance_count = tfs.size()
+	for i in tfs.size():
+		mm.set_instance_transform(i, tfs[i])
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.material_override = bank_material()
+	parent.add_child(mmi)
+	# croûte noire qui flotte et dérive
+	var fs := FlowSlabs.new()
+	parent.add_child(fs)
+	fs.setup(pts, half, mesh("rock_slab"), bank_material(), maxi(4, int(pts.size() / 4.0)))
 	# quelques lumières le long de la coulée
 	var step := maxi(1, int(pts.size() / 3.0))
 	for i in range(step / 2, pts.size(), step):

@@ -40,9 +40,9 @@ func _ready() -> void:
 		variants = Nature.birches()
 	var mi := MeshInstance3D.new()
 	if species == 3:
-		# arbre calciné (modèle Blender) : charbon, braises dans l'écorce, sans feuillage
-		mi.mesh = Volcanic.mesh("charred_%d" % (kind % 4 + 1))
-		mi.material_override = Volcanic.charred_material()
+		# arbre calciné (modèle Meshy d'après le visuel de la zone) : charbon, braises dans les crevasses
+		mi.mesh = Volcanic.mesh("meshy_tree")
+		mi.scale = Vector3.ONE * [9.5, 8.5, 10.5, 11.0, 9.0][kind % 5]
 	else:
 		mi.mesh = variants[kind % variants.size()]
 	visual.add_child(mi)

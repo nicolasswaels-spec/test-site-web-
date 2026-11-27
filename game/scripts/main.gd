@@ -101,14 +101,14 @@ void fragment() {
 	vec2 c3 = vec2(-170.0, -160.0);
 	float r3 = length(wpos.xz - c3);
 	float b3 = smoothstep(74.0, 56.0, r3 + noise(wpos.xz * 0.1) * 8.0);
-	vec3 basalt = mix(vec3(0.05, 0.04, 0.04), vec3(0.13, 0.10, 0.09), n) + vec3(0.12, 0.11, 0.105) * smoothstep(0.6, 0.85, noise(wpos.xz * 0.5));   // basalte + plaques de cendre
-	float crack = smoothstep(0.014, 0.0, abs(noise(wpos.xz * 0.32) - 0.5)) * smoothstep(0.45, 0.7, noise(wpos.xz * 0.07));
+	vec3 basalt = mix(vec3(0.045, 0.042, 0.05), vec3(0.11, 0.105, 0.12), n) + vec3(0.08, 0.08, 0.09) * smoothstep(0.55, 0.85, noise(wpos.xz * 0.5));   // cendre volcanique gris-violet
+	float crack = smoothstep(0.008, 0.0, abs(noise(wpos.xz * 0.32) - 0.5)) * smoothstep(0.55, 0.75, noise(wpos.xz * 0.07));
 	grass = mix(grass, basalt, b3);
 	dirt = mix(dirt, vec3(0.20, 0.12, 0.09), b3);
 	r = min(min(r, r2), r3);
 	ALBEDO = mix(dirt, grass, smoothstep(4.5, 7.0, r + dirt_n));
-	ALBEDO = mix(ALBEDO, vec3(0.9, 0.3, 0.05), crack * b3);
-	EMISSION = vec3(1.0, 0.32, 0.05) * crack * b3 * (0.9 + 0.3 * sin(TIME * 1.3 + wpos.x * 0.2));
+	// volcan : sol de cendre sans grandes fissures (la lave est dans les coulées)
+	crack *= 0.0;
 	ROUGHNESS = 1.0;
 }
 """
@@ -241,6 +241,7 @@ var zone3_blockers: Array[Node] = []
 var titan
 var lava_pools: Array = []   # [position, rayon]
 var world_env: Environment
+var sun_light: DirectionalLight3D
 var embers: CPUParticles3D
 var ash: CPUParticles3D
 var sky_unlocked := false
@@ -417,6 +418,7 @@ func _build_environment() -> void:
 	sun.light_energy = 1.6
 	sun.light_color = Color(1.0, 0.68, 0.42)
 	sun.light_volumetric_fog_energy = 2.5
+	sun_light = sun
 	sun.shadow_enabled = true
 	sun.shadow_blur = 1.5
 	sun.directional_shadow_max_distance = 70.0 if high else 40.0
@@ -611,7 +613,7 @@ func _build_scenery() -> void:
 	# braises de la zone volcanique (actives seulement là-bas)
 	# braises orange qui montent en tourbillonnant, lumineuses (mélange additif)
 	embers = fireflies.duplicate()
-	embers.amount = 260 if high else 120
+	embers.amount = 150 if high else 70
 	embers.lifetime = 6.0
 	embers.preprocess = 6.0
 	embers.emission_box_extents = Vector3(24, 5, 24)
@@ -1737,7 +1739,7 @@ func _build_zone3() -> void:
 		add_child(sw)
 
 	# Décor de fond : arbres calcinés, colonnes de basalte, volcans au loin
-	var burnt: Array = [Volcanic.mesh("charred_1"), Volcanic.mesh("charred_2"), Volcanic.mesh("charred_3")]
+	var burnt: Array = [Volcanic.mesh("meshy_tree")]
 	var entries: Array = []
 	for i in 260:
 		var a := rng.randf() * TAU
@@ -1748,9 +1750,8 @@ func _build_zone3() -> void:
 		if absf(pos.z - ZONE2_CENTER.z) < CORRIDOR2_HALF + 3.0 and pos.x > c.x:
 			continue
 		var sc := rng.randf_range(0.9, 1.6)
-		entries.append([rng.randi() % 3, Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc)), pos)])
-	for mmi in _add_forest(burnt, entries):
-		(mmi as MultiMeshInstance3D).material_override = Volcanic.charred_material()
+		entries.append([0, Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc) * 8.0), pos)])   # arbre Meshy : hauteur 1 m -> 7 à 13 m
+	_add_forest(burnt, entries)
 	# Rochers de basalte (modèles Blender + shader à fissures de lave) : éperons autour de la zone,
 	# petits blocs à l'intérieur (sans collision, assez bas pour ne gêner personne)
 	var rock_entries: Array = []
@@ -1770,11 +1771,9 @@ func _build_zone3() -> void:
 			continue
 		var sc := rng.randf_range(0.25, 0.6)
 		rock_entries.append([[0, 2, 3][rng.randi() % 3], Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc * 0.7, sc)), pos)])
-	var rock_meshes: Array = []
-	for nm in Volcanic.ROCKS:
-		rock_meshes.append(Volcanic.mesh(nm))
-	for mmi in _add_forest(rock_meshes, rock_entries):
-		(mmi as MultiMeshInstance3D).material_override = Volcanic.rock_material()
+	for e in rock_entries:
+		e[0] = 0
+	for mmi in _add_forest([Volcanic.mesh("meshy_rock")], rock_entries):
 		(mmi as MultiMeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	# Volcans au loin : cônes à cratère, coulées qui descendent des flancs, panache de fumée
 	for v in [[Vector3(-330, 0, -120), 75.0], [Vector3(-300, 0, -260), 95.0], [Vector3(-260, 0, -40), 60.0]]:
@@ -1821,6 +1820,41 @@ func _build_zone3() -> void:
 		smoke.color_ramp = sramp
 		smoke.position = vp + Vector3(0, vh - 2.0, 0)
 		add_child(smoke)
+
+	# Colonnes de fumée grise qui montent du sol (fissures)
+	for i in 7:
+		var a := rng.randf() * TAU
+		var r := rng.randf_range(20.0, ZONE3_RADIUS + 20.0)
+		var smk_p := c + Vector3(cos(a) * r, 0, sin(a) * r)
+		var smk := CPUParticles3D.new()
+		smk.amount = 16
+		smk.lifetime = 7.0
+		smk.preprocess = 7.0
+		smk.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+		smk.emission_sphere_radius = 0.4
+		smk.direction = Vector3.UP
+		smk.spread = 6.0
+		smk.gravity = Vector3(0.35, 0.6, 0.1)
+		smk.initial_velocity_min = 1.2
+		smk.initial_velocity_max = 1.8
+		smk.scale_amount_min = 1.2
+		smk.scale_amount_max = 2.6
+		var smk_q := QuadMesh.new()
+		var smk_m := StandardMaterial3D.new()
+		smk_m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		smk_m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		smk_m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		smk_m.vertex_color_use_as_albedo = true
+		smk_m.albedo_texture = Volcanic.soft_dot()
+		smk_q.material = smk_m
+		smk.mesh = smk_q
+		var smk_r := Gradient.new()
+		smk_r.set_color(0, Color(0.55, 0.5, 0.55, 0.0))
+		smk_r.add_point(0.2, Color(0.55, 0.5, 0.55, 0.35))
+		smk_r.set_color(smk_r.get_point_count() - 1, Color(0.4, 0.38, 0.45, 0.0))
+		smk.color_ramp = smk_r
+		smk.position = smk_p
+		add_child(smk)
 
 	# Coulées de lave qui serpentent dans la zone (brûlent les joueurs qui marchent dedans) ;
 	# le centre (titan puis 3e sphère) et le couloir d'arrivée restent dégagés
@@ -2343,17 +2377,19 @@ func _update_biome(delta: float) -> void:
 	var sk: float = get_meta("sky_k", 0.0)
 	sk = move_toward(sk, sky_k, delta * 0.5)
 	set_meta("sky_k", sk)
-	world_env.fog_light_color = Color(0.17, 0.17, 0.38).lerp(Color(0.26, 0.09, 0.05), cur).lerp(Color(0.42, 0.48, 0.72), sk)
-	world_env.ambient_light_color = Color(0.22, 0.24, 0.5).lerp(Color(0.45, 0.22, 0.16), cur).lerp(Color(0.6, 0.65, 0.85), sk)
+	world_env.fog_light_color = Color(0.17, 0.17, 0.38).lerp(Color(0.24, 0.15, 0.22), cur).lerp(Color(0.42, 0.48, 0.72), sk)
+	world_env.ambient_light_color = Color(0.22, 0.24, 0.5).lerp(Color(0.38, 0.27, 0.36), cur).lerp(Color(0.6, 0.65, 0.85), sk)
 	world_env.ambient_light_energy = lerpf(0.35, 0.45, sk)
 	world_env.fog_density = lerpf(lerpf(0.011, 0.016, cur), 0.006, sk)
 	# volcan : air enfumé, moins de reflets roses du ciel couchant dans le brouillard
 	world_env.fog_aerial_perspective = lerpf(0.35, 0.05, cur * (1.0 - sk))
 	world_env.fog_sun_scatter = lerpf(0.35, 0.08, cur * (1.0 - sk))
-	world_env.fog_sky_affect = lerpf(0.25, 0.6, cur * (1.0 - sk))
+	world_env.fog_sky_affect = lerpf(0.25, 0.1, cur * (1.0 - sk))
+	if sun_light:
+		sun_light.light_volumetric_fog_energy = lerpf(2.5, 0.7, cur * (1.0 - sk))   # moins de rayons roses dans la fumée
 	if world_env.volumetric_fog_enabled:
-		world_env.volumetric_fog_albedo = Color(0.85, 0.85, 1.0).lerp(Color(0.42, 0.3, 0.27), cur * (1.0 - sk))
-		world_env.volumetric_fog_emission = Color(0.05, 0.04, 0.12).lerp(Color(0.16, 0.04, 0.01), cur * (1.0 - sk))
+		world_env.volumetric_fog_albedo = Color(0.85, 0.85, 1.0).lerp(Color(0.6, 0.5, 0.58), cur * (1.0 - sk))
+		world_env.volumetric_fog_emission = Color(0.05, 0.04, 0.12).lerp(Color(0.1, 0.04, 0.05), cur * (1.0 - sk))
 	embers.emitting = cur > 0.3 and sk < 0.5
 	fireflies.emitting = cur < 0.7 and sk < 0.5
 	embers.global_position = player.global_position + Vector3(0, 1.5, 0)
