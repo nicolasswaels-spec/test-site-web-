@@ -2016,21 +2016,27 @@ func _update_build_target() -> void:
 				build_target = st
 
 
-## Ennemi sous le viseur (pour afficher sa barre de vie).
+var aimed_struct = null   # construction sous le viseur (sa barre de vie s'affiche)
+
+## Ennemi (ou construction) sous le viseur (pour afficher sa barre de vie).
 func _update_aimed_enemy() -> void:
 	if hud == null:
 		return
 	if dead:
 		hud.set_enemy(null)
+		aimed_struct = null
 		return
 	var from := cam.global_position
 	var q := PhysicsRayQueryParameters3D.create(from, from - cam.global_transform.basis.z * 120.0, 1 | 4 | 8 | 16)
 	q.exclude = [get_rid()]
 	var r := get_world_3d().direct_space_state.intersect_ray(q)
+	aimed_struct = null
 	if not r.is_empty() and r.collider and r.collider.is_in_group("zombie"):
 		hud.set_enemy(r.collider)
 	else:
 		hud.set_enemy(null)
+		if not r.is_empty() and r.collider and r.collider.is_in_group("structure"):
+			aimed_struct = r.collider
 
 
 func _try_repair() -> void:

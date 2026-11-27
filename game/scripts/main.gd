@@ -3,6 +3,7 @@ extends Node3D
 
 const Mats = preload("res://scripts/mats.gd")
 const Nature = preload("res://scripts/nature.gd")
+const Volcanic = preload("res://scripts/volcanic.gd")
 const PlayerScript = preload("res://scripts/player.gd")
 const ZombieScript = preload("res://scripts/zombie.gd")
 const TreeScript = preload("res://scripts/tree.gd")
@@ -100,19 +101,19 @@ void fragment() {
 	vec2 c3 = vec2(-170.0, -160.0);
 	float r3 = length(wpos.xz - c3);
 	float b3 = smoothstep(74.0, 56.0, r3 + noise(wpos.xz * 0.1) * 8.0);
-	vec3 basalt = mix(vec3(0.07, 0.05, 0.05), vec3(0.16, 0.11, 0.10), n);
-	float crack = smoothstep(0.035, 0.0, abs(noise(wpos.xz * 0.32) - 0.5)) * smoothstep(0.3, 0.6, noise(wpos.xz * 0.07));
+	vec3 basalt = mix(vec3(0.05, 0.04, 0.04), vec3(0.13, 0.10, 0.09), n) + vec3(0.12, 0.11, 0.105) * smoothstep(0.6, 0.85, noise(wpos.xz * 0.5));   // basalte + plaques de cendre
+	float crack = smoothstep(0.014, 0.0, abs(noise(wpos.xz * 0.32) - 0.5)) * smoothstep(0.45, 0.7, noise(wpos.xz * 0.07));
 	grass = mix(grass, basalt, b3);
 	dirt = mix(dirt, vec3(0.20, 0.12, 0.09), b3);
 	r = min(min(r, r2), r3);
 	ALBEDO = mix(dirt, grass, smoothstep(4.5, 7.0, r + dirt_n));
 	ALBEDO = mix(ALBEDO, vec3(0.9, 0.3, 0.05), crack * b3);
-	EMISSION = vec3(1.0, 0.32, 0.05) * crack * b3 * (1.4 + 0.5 * sin(TIME * 1.3 + wpos.x * 0.2));
+	EMISSION = vec3(1.0, 0.32, 0.05) * crack * b3 * (0.9 + 0.3 * sin(TIME * 1.3 + wpos.x * 0.2));
 	ROUGHNESS = 1.0;
 }
 """
 
-const LAVA_SHADER := """
+const LAVA_SHADER_OLD := """
 shader_type spatial;
 render_mode unshaded, shadows_disabled;
 varying vec3 wp;
@@ -241,6 +242,7 @@ var titan
 var lava_pools: Array = []   # [position, rayon]
 var world_env: Environment
 var embers: CPUParticles3D
+var ash: CPUParticles3D
 var sky_unlocked := false
 var orb4
 var angels_left := 0   # anges squelettes (4e sphère seulement, 3 maximum)
@@ -607,17 +609,49 @@ func _build_scenery() -> void:
 	fireflies.color_ramp = ramp
 	add_child(fireflies)
 	# braises de la zone volcanique (actives seulement là-bas)
+	# braises orange qui montent en tourbillonnant, lumineuses (mélange additif)
 	embers = fireflies.duplicate()
+	embers.amount = 260 if high else 120
+	embers.lifetime = 6.0
+	embers.preprocess = 6.0
+	embers.emission_box_extents = Vector3(24, 5, 24)
 	var em := fm.duplicate() as StandardMaterial3D
-	em.albedo_color = Color(1.0, 0.45, 0.1)
+	em.albedo_color = Color(1.0, 0.55, 0.18)
+	em.albedo_texture = Volcanic.soft_dot()
+	em.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	var eq := q.duplicate() as QuadMesh
-	eq.size = Vector2(0.07, 0.07)
+	eq.size = Vector2(0.11, 0.11)
 	eq.material = em
 	embers.mesh = eq
-	embers.gravity = Vector3(0, 0.4, 0)
-	embers.initial_velocity_max = 1.2
+	embers.gravity = Vector3(0.25, 0.55, 0.1)
+	embers.initial_velocity_min = 0.3
+	embers.initial_velocity_max = 1.4
+	embers.scale_amount_min = 0.4
+	embers.scale_amount_max = 1.3
+	embers.hue_variation_min = -0.03
+	embers.hue_variation_max = 0.03
 	embers.emitting = false
 	add_child(embers)
+	# cendres grises qui tombent doucement
+	ash = fireflies.duplicate()
+	ash.amount = 160 if high else 70
+	ash.lifetime = 8.0
+	ash.preprocess = 8.0
+	ash.emission_box_extents = Vector3(24, 6, 24)
+	var am := fm.duplicate() as StandardMaterial3D
+	am.albedo_color = Color(0.55, 0.52, 0.5, 0.8)
+	am.albedo_texture = Volcanic.soft_dot()
+	var aq := q.duplicate() as QuadMesh
+	aq.size = Vector2(0.06, 0.06)
+	aq.material = am
+	ash.mesh = aq
+	ash.direction = Vector3.DOWN
+	ash.spread = 40.0
+	ash.gravity = Vector3(0.2, -0.35, 0)
+	ash.initial_velocity_min = 0.1
+	ash.initial_velocity_max = 0.4
+	ash.emitting = false
+	add_child(ash)
 
 
 func _spawn_trees() -> void:
@@ -1715,60 +1749,116 @@ func _build_zone3() -> void:
 			continue
 		var sc := rng.randf_range(0.9, 1.6)
 		entries.append([rng.randi() % 3, Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc)), pos)])
-	_add_forest(burnt, entries)
-	var basalt := Mats.col(Color(0.10, 0.08, 0.08), 1.0)
-	for i in 40:
+	for mmi in _add_forest(burnt, entries):
+		(mmi as MultiMeshInstance3D).material_override = Volcanic.charred_material()
+	# Rochers de basalte (modèles Blender + shader à fissures de lave) : éperons autour de la zone,
+	# petits blocs à l'intérieur (sans collision, assez bas pour ne gêner personne)
+	var rock_entries: Array = []
+	for i in 70:
 		var a := rng.randf() * TAU
-		var r := ZONE3_RADIUS + rng.randf_range(4.0, 45.0)
-		var pos := c + Vector3(cos(a) * r, 0, sin(a) * r)
+		var r := ZONE3_RADIUS + rng.randf_range(3.0, 45.0)
+		var pos := c + Vector3(cos(a) * r, -0.2, sin(a) * r)
 		if _in_zone2_footprint(pos, 8.0) or (absf(pos.z - ZONE2_CENTER.z) < CORRIDOR2_HALF + 4.0 and pos.x > c.x):
 			continue
-		var hgt := rng.randf_range(4.0, 16.0)
-		Mats.cylinder(self, rng.randf_range(0.8, 2.0), rng.randf_range(1.5, 3.0), hgt, basalt, pos + Vector3(0, hgt * 0.5 - 0.5, 0), Vector3(rng.randf_range(-8, 8), 0, rng.randf_range(-8, 8)), 6)
+		var sc := rng.randf_range(2.0, 6.5)
+		rock_entries.append([rng.randi() % 4, Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc * rng.randf_range(0.8, 1.5), sc)), pos)])
+	for i in 45:
+		var a := rng.randf() * TAU
+		var r := rng.randf_range(18.0, ZONE3_RADIUS - 3.0)
+		var pos := c + Vector3(cos(a) * r, -0.05, sin(a) * r)
+		if absf(pos.z - c.z) < CORRIDOR2_HALF + 2.0 and pos.x > c.x:
+			continue
+		var sc := rng.randf_range(0.25, 0.6)
+		rock_entries.append([[0, 2, 3][rng.randi() % 3], Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc * 0.7, sc)), pos)])
+	var rock_meshes: Array = []
+	for nm in Volcanic.ROCKS:
+		rock_meshes.append(Volcanic.mesh(nm))
+	for mmi in _add_forest(rock_meshes, rock_entries):
+		(mmi as MultiMeshInstance3D).material_override = Volcanic.rock_material()
+		(mmi as MultiMeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	# Volcans au loin : cônes à cratère, coulées qui descendent des flancs, panache de fumée
 	for v in [[Vector3(-330, 0, -120), 75.0], [Vector3(-300, 0, -260), 95.0], [Vector3(-260, 0, -40), 60.0]]:
 		var vp: Vector3 = v[0]
 		var vh: float = v[1]
-		var cone := Mats.cylinder(self, vh * 0.12, vh * 0.9, vh, Mats.col(Color(0.09, 0.06, 0.07), 1.0), vp + Vector3(0, vh * 0.5 - 2.0, 0), Vector3.ZERO, 14)
+		var cone := MeshInstance3D.new()
+		cone.mesh = Volcanic.mesh("volcano")
+		cone.material_override = Volcanic.volcano_material()
 		cone.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		Mats.cylinder(self, vh * 0.11, vh * 0.12, 1.0, Mats.col(Color(1.0, 0.35, 0.05), 0.5, 6.0), vp + Vector3(0, vh - 2.0, 0), Vector3.ZERO, 14)
+		cone.transform = Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(vh * 1.1, vh, vh * 1.1)), vp + Vector3(0, -2.0, 0))
+		add_child(cone)
 		var gl := OmniLight3D.new()
 		gl.light_color = Color(1.0, 0.4, 0.1)
 		gl.light_energy = 6.0
 		gl.omni_range = vh * 0.6
 		gl.position = vp + Vector3(0, vh + 4.0, 0)
 		add_child(gl)
+		var smoke := CPUParticles3D.new()
+		smoke.amount = 24
+		smoke.lifetime = 9.0
+		smoke.preprocess = 9.0
+		smoke.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+		smoke.emission_sphere_radius = vh * 0.08
+		smoke.direction = Vector3.UP
+		smoke.spread = 12.0
+		smoke.gravity = Vector3(1.5, 2.0, 0)
+		smoke.initial_velocity_min = 3.0
+		smoke.initial_velocity_max = 5.0
+		smoke.scale_amount_min = vh * 0.12
+		smoke.scale_amount_max = vh * 0.22
+		var sq := QuadMesh.new()
+		var smat := StandardMaterial3D.new()
+		smat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		smat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		smat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		smat.vertex_color_use_as_albedo = true
+		smat.albedo_texture = Volcanic.soft_dot()
+		sq.material = smat
+		smoke.mesh = sq
+		var sramp := Gradient.new()
+		sramp.set_color(0, Color(0.9, 0.35, 0.1, 0.0))
+		sramp.add_point(0.15, Color(0.6, 0.25, 0.12, 0.45))
+		sramp.set_color(sramp.get_point_count() - 1, Color(0.12, 0.08, 0.08, 0.0))
+		smoke.color_ramp = sramp
+		smoke.position = vp + Vector3(0, vh - 2.0, 0)
+		add_child(smoke)
 
-	# Mares de lave (brûlent les joueurs qui marchent dedans)
-	var lava := ShaderMaterial.new()
-	var lsh := Shader.new()
-	lsh.code = LAVA_SHADER
-	lava.shader = lsh
+	# Coulées de lave qui serpentent dans la zone (brûlent les joueurs qui marchent dedans) ;
+	# le centre (titan puis 3e sphère) et le couloir d'arrivée restent dégagés
 	lava_pools.clear()
-	for i in 7:
-		var pos := Vector3.ZERO
-		for attempt in 30:
-			var a := rng.randf() * TAU
-			var r := rng.randf_range(24.0, ZONE3_RADIUS - 8.0)
-			pos = c + Vector3(cos(a) * r, 0, sin(a) * r)
-			if absf(pos.z - c.z) < CORRIDOR2_HALF + 4.0 and pos.x > c.x:
-				continue
-			var ok := true
-			for lp in lava_pools:
-				if (lp[0] as Vector3).distance_to(pos) < lp[1] + 8.0:
-					ok = false
-			if ok:
+	var flows := 0
+	var guard := 0
+	while flows < 6 and guard < 80:
+		guard += 1
+		var a0 := rng.randf() * TAU
+		var p := c + Vector3(cos(a0) * (ZONE3_RADIUS - 4.0), 0, sin(a0) * (ZONE3_RADIUS - 4.0))
+		if absf(p.z - c.z) < CORRIDOR2_HALF + 8.0 and p.x > c.x:
+			continue
+		var heading := atan2(c.z - p.z, c.x - p.x) + rng.randf_range(-0.7, 0.7)
+		var pts := PackedVector3Array()
+		var half := PackedFloat32Array()
+		var n := rng.randi_range(22, 36)
+		var base_w := rng.randf_range(1.3, 2.3)
+		for i in n:
+			pts.append(p)
+			var tt := float(i) / (n - 1)
+			# s'affine à la source, s'élargit en bas de coulée (petit lac)
+			half.append(base_w * (0.55 + 0.45 * minf(tt * 4.0, 1.0)) * (1.0 + 0.6 * smoothstep(0.75, 1.0, tt)) * (0.85 + 0.3 * rng.randf()))
+			heading += rng.randf_range(-0.28, 0.28)
+			p += Vector3(cos(heading), 0, sin(heading)) * 1.8
+			var dc := Vector2(p.x - c.x, p.z - c.z).length()
+			if dc < 22.0 or dc > ZONE3_RADIUS - 2.0 or (absf(p.z - c.z) < CORRIDOR2_HALF + 3.0 and p.x > c.x):
 				break
-		var rad := rng.randf_range(2.5, 4.5)
-		var pool := Mats.cylinder(self, rad, rad, 0.06, lava, pos + Vector3(0, 0.04, 0), Vector3.ZERO, 24)
-		pool.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		Mats.cylinder(self, rad + 0.5, rad + 0.7, 0.25, Mats.col(Color(0.08, 0.06, 0.06), 1.0), pos, Vector3.ZERO, 24)
-		var ll := OmniLight3D.new()
-		ll.light_color = Color(1.0, 0.4, 0.1)
-		ll.light_energy = 2.0
-		ll.omni_range = rad * 3.0
-		ll.position = pos + Vector3(0, 1.0, 0)
-		add_child(ll)
-		lava_pools.append([pos, rad])
+		if pts.size() < 12:
+			continue
+		var ok := true
+		for lp in lava_pools:
+			for q in pts:
+				if (lp[0] as Vector3).distance_to(q) < lp[1] + 5.0:
+					ok = false
+		if not ok:
+			continue
+		lava_pools.append_array(Volcanic.build_flow(self, pts, half))
+		flows += 1
 
 	# Sapins calcinés à couper (le centre reste dégagé pour le titan puis la 3e sphère)
 	var placed: Array[Vector3] = []
@@ -2253,13 +2343,22 @@ func _update_biome(delta: float) -> void:
 	var sk: float = get_meta("sky_k", 0.0)
 	sk = move_toward(sk, sky_k, delta * 0.5)
 	set_meta("sky_k", sk)
-	world_env.fog_light_color = Color(0.17, 0.17, 0.38).lerp(Color(0.38, 0.12, 0.06), cur).lerp(Color(0.42, 0.48, 0.72), sk)
-	world_env.ambient_light_color = Color(0.22, 0.24, 0.5).lerp(Color(0.5, 0.2, 0.12), cur).lerp(Color(0.6, 0.65, 0.85), sk)
+	world_env.fog_light_color = Color(0.17, 0.17, 0.38).lerp(Color(0.26, 0.09, 0.05), cur).lerp(Color(0.42, 0.48, 0.72), sk)
+	world_env.ambient_light_color = Color(0.22, 0.24, 0.5).lerp(Color(0.45, 0.22, 0.16), cur).lerp(Color(0.6, 0.65, 0.85), sk)
 	world_env.ambient_light_energy = lerpf(0.35, 0.45, sk)
 	world_env.fog_density = lerpf(lerpf(0.011, 0.016, cur), 0.006, sk)
+	# volcan : air enfumé, moins de reflets roses du ciel couchant dans le brouillard
+	world_env.fog_aerial_perspective = lerpf(0.35, 0.05, cur * (1.0 - sk))
+	world_env.fog_sun_scatter = lerpf(0.35, 0.08, cur * (1.0 - sk))
+	world_env.fog_sky_affect = lerpf(0.25, 0.6, cur * (1.0 - sk))
+	if world_env.volumetric_fog_enabled:
+		world_env.volumetric_fog_albedo = Color(0.85, 0.85, 1.0).lerp(Color(0.42, 0.3, 0.27), cur * (1.0 - sk))
+		world_env.volumetric_fog_emission = Color(0.05, 0.04, 0.12).lerp(Color(0.16, 0.04, 0.01), cur * (1.0 - sk))
 	embers.emitting = cur > 0.3 and sk < 0.5
 	fireflies.emitting = cur < 0.7 and sk < 0.5
 	embers.global_position = player.global_position + Vector3(0, 1.5, 0)
+	ash.emitting = embers.emitting
+	ash.global_position = player.global_position + Vector3(0, 4.0, 0)
 
 
 ## MODE TEST : passe directement à l'étape suivante (zone 1 → zone 2 → titan → 3e sphère → fin).

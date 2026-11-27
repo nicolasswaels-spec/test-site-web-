@@ -2,6 +2,7 @@ extends CanvasLayer
 ## Interface en jeu : vie, munitions, bois, vagues, sphère, menus pause / fin.
 
 const UI = preload("res://scripts/ui.gd")
+const HpBar = preload("res://scripts/hp_bar.gd")
 const Upg = preload("res://scripts/upgrades.gd")
 const InventoryUI = preload("res://scripts/inventory_ui.gd")
 
@@ -58,7 +59,8 @@ class HitMarker extends Control:
 			draw_line(c + d * 7.0, c + d * 15.0, col, 3.0)
 
 
-## Mini-carte : nord en haut, joueur en bleu (flèche), squelettes en rouge, sphère défendue en vert.
+## Mini-carte tournante : la flèche du joueur pointe toujours vers le haut, c'est la carte qui tourne
+## (le « N » suit le nord). Squelettes en rouge, sphère défendue en vert.
 class Minimap extends Control:
 	var main
 	var player
@@ -76,8 +78,9 @@ class Minimap extends Control:
 				draw_line(prev, pt, col, 2.0)
 			prev = pt
 
+	var yaw := 0.0
 	func _w2m(c: Vector2, origin: Vector3, w: Vector3) -> Vector2:
-		return c + Vector2(w.x - origin.x, w.z - origin.z) * SCALE
+		return c + Vector2(w.x - origin.x, w.z - origin.z).rotated(yaw) * SCALE
 	func _draw() -> void:
 		if main == null or player == null:
 			return
@@ -85,6 +88,7 @@ class Minimap extends Control:
 		var r := size.x * 0.5
 		draw_circle(c, r, Color(0.05, 0.04, 0.12, 0.72))
 		var o: Vector3 = player.global_position
+		yaw = player.rotation.y
 		# limite de la zone en cours uniquement, coupée au bord du radar
 		var zc: Vector3 = main.zone_center(main.zone)
 		var zr: float = main.zone_radius(main.zone)
@@ -116,14 +120,16 @@ class Minimap extends Control:
 					ap = c + (ap - c).normalized() * (r - 7)
 				draw_circle(ap, 5.5, Color(0, 0, 0, 0.7))
 				draw_circle(ap, 4.0, Color(0.35, 0.65, 1.0))
-		var yaw: float = player.rotation.y
-		var fwd := Vector2(-sin(yaw), -cos(yaw))
-		var side := Vector2(-fwd.y, fwd.x)
+		var fwd := Vector2(0, -1)
+		var side := Vector2(1, 0)
 		var pts := PackedVector2Array([c + fwd * 9.0, c - fwd * 6.0 + side * 6.0, c - fwd * 3.0, c - fwd * 6.0 - side * 6.0])
 		draw_colored_polygon(pts, Color(0.35, 0.65, 1.0))
 		draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[3], pts[0]]), Color.WHITE, 1.5)
 		draw_arc(c, r, 0, TAU, 64, Color(1, 1, 1, 0.5), 2.0)
-		draw_string(ThemeDB.fallback_font, Vector2(c.x - 5, 16), "N", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 1, 1, 0.8))
+		# « N » sur le bord, dans la direction du nord
+		var npos := c + Vector2(0, -1).rotated(yaw) * (r - 11.0)
+		draw_circle(npos, 9.0, Color(0.05, 0.04, 0.12, 0.85))
+		draw_string(ThemeDB.fallback_font, npos + Vector2(-5, 5), "N", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 0.85, 0.4))
 
 
 var root: Control
@@ -134,8 +140,10 @@ var player          # joueur auquel appartient cette interface
 var minimap: Minimap
 var enemy_box: VBoxContainer
 var enemy_name: Label
-var enemy_bar: ProgressBar
-var enemy_fill: StyleBoxFlat
+var enemy_bar: ColorRect
+var enemy_bar_mat: ShaderMaterial
+var enemy_ref = null
+var enemy_lag := 1.0
 var confirm_panel: Control
 var confirm_title: Label
 var confirm_text: Label
@@ -349,11 +357,12 @@ func _ready() -> void:
 	prompt_label = _label(root, "", 26)
 	_place(prompt_label, 0.5, 0.6, 0.5, 0.6, -400, 0, 400, 40)
 	message_label = _label(root, "", 22, Color(1, 0.6, 0.4))
-	_place(message_label, 0.5, 0.67, 0.5, 0.67, -400, 0, 400, 40)
+	_place(message_label, 0.5, 0.645, 0.5, 0.645, -400, 0, 400, 40)
 	build_prompt = _label(root, "", 20, Color(0.85, 0.95, 1.0))
 	_place(build_prompt, 0.5, 0.56, 0.5, 0.56, -500, 0, 500, 60)
-	notice_label = _label(root, "", 22, Color(0.85, 0.85, 1.0))
-	_place(notice_label, 0.5, 0.36, 0.5, 0.36, -600, 0, 600, 110)
+	# messages d'information : en bas de l'écran (au-dessus de la barre d'armes), pas au milieu de la vue
+	notice_label = _label(root, "", 18, Color(0.85, 0.85, 1.0))
+	_place(notice_label, 0.5, 0.71, 0.5, 0.71, -560, 0, 560, 100)
 	notice_label.add_theme_stylebox_override("normal", UI.box(Color(0.06, 0.04, 0.16, 0.8), 12, 24.0, 14.0))
 	notice_label.visible = false
 
@@ -366,16 +375,16 @@ func _ready() -> void:
 	# barre de vie de l'ennemi visé (au-dessus du viseur)
 	enemy_box = VBoxContainer.new()
 	enemy_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_place(enemy_box, 0.5, 0.5, 0.5, 0.5, -110, -78, 110, -30)
+	_place(enemy_box, 0.5, 0.5, 0.5, 0.5, -120, -86, 120, -30)
 	root.add_child(enemy_box)
 	enemy_name = _label(enemy_box, "", 15, Color(1, 0.8, 0.75))
-	enemy_bar = ProgressBar.new()
-	enemy_bar.show_percentage = false
-	enemy_bar.custom_minimum_size = Vector2(220, 12)
+	# barre stylisée (même dessin que celle des murs)
+	enemy_bar = ColorRect.new()
+	enemy_bar.custom_minimum_size = Vector2(240, 22)
 	enemy_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	enemy_bar.add_theme_stylebox_override("background", UI.box(Color(0, 0, 0, 0.6), 4, 0.0, 0.0))
-	enemy_fill = UI.box(Color(0.95, 0.25, 0.2), 4, 0.0, 0.0)
-	enemy_bar.add_theme_stylebox_override("fill", enemy_fill)
+	enemy_bar_mat = HpBar.canvas_material()
+	enemy_bar_mat.set_shader_parameter("aspect", 240.0 / 22.0)
+	enemy_bar.material = enemy_bar_mat
 	enemy_box.add_child(enemy_bar)
 	enemy_box.visible = false
 
@@ -915,9 +924,14 @@ func set_enemy(z) -> void:
 	enemy_name.text = "%s%s  %d / %d" % [names.get(z.kind, "SQUELETTE"), lv, int(ceil(maxf(z.hp, 0.0))), int(z.max_hp)]
 	if z.is_frozen():
 		enemy_name.text += "   GLACE %d" % z.frost_level()
-	enemy_bar.max_value = z.max_hp
-	enemy_bar.value = maxf(z.hp, 0.0)
-	enemy_fill.bg_color = Color(1.0, 0.75, 0.15) if z.kind == "boss" or z.is_in_group("titan") else Color(0.95, 0.25, 0.2)
+	var ratio := clampf(z.hp / z.max_hp, 0.0, 1.0)
+	if z != enemy_ref:
+		enemy_ref = z
+		enemy_lag = ratio
+	enemy_lag = maxf(ratio, move_toward(enemy_lag, ratio, get_process_delta_time() * 0.6))
+	enemy_bar_mat.set_shader_parameter("ratio", ratio)
+	enemy_bar_mat.set_shader_parameter("lag", enemy_lag)
+	enemy_bar_mat.set_shader_parameter("tint", Color(1.0, 0.72, 0.15, 1.0) if z.kind == "boss" or z.is_in_group("titan") else Color(0.92, 0.2, 0.16, 1.0))
 
 
 # ------------------------------------------------------------------ fenêtre de confirmation

@@ -3,6 +3,7 @@ extends StaticBody3D
 ## Peut être réparée et améliorée (×3 PV). Sa vie s'affiche au-dessus d'elle.
 
 const Mats = preload("res://scripts/mats.gd")
+const HpBar = preload("res://scripts/hp_bar.gd")
 
 enum { WALL, FLOOR, RAMP }
 enum { WOOD, STONE, MAGIC_WOOD, MAGIC_STONE, CLOUD }
@@ -20,35 +21,6 @@ const UPGRADE_MULTS := [1.0, 3.0, 6.0, 24.0]
 const UPGRADE_COSTS := [50, 150, 1000]
 const MAX_LEVEL := 3
 const REPAIR_TIME := 5.0
-const BAR_SHADER := """
-shader_type spatial;
-render_mode unshaded, depth_test_disabled, cull_disabled, shadows_disabled, fog_disabled;
-uniform float ratio = 1.0;
-uniform float repair = 0.0;       // part de la barre qui sera réparée (bleu)
-uniform float level = 0.0;
-void vertex() {
-	// toujours face à la caméra, taille constante à l'écran
-	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(INV_VIEW_MATRIX[0], INV_VIEW_MATRIX[1], INV_VIEW_MATRIX[2], MODEL_MATRIX[3]);
-	float dist = -(MODELVIEW_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).z;
-	VERTEX *= clamp(dist, 2.0, 60.0) * 0.11;
-}
-void fragment() {
-	vec2 uv = UV;
-	float border = step(uv.x, 0.015) + step(0.985, uv.x) + step(uv.y, 0.12) + step(0.88, uv.y);
-	vec3 good = vec3(0.35, 0.95, 0.35);
-	vec3 bad = vec3(1.0, 0.25, 0.2);
-	vec3 col = vec3(0.08, 0.08, 0.1);
-	if (uv.x < ratio) {
-		col = mix(bad, good, ratio) * (1.0 - 0.25 * uv.y);
-	} else if (uv.x < ratio + repair) {
-		col = vec3(0.3, 0.6, 1.0) * (0.75 + 0.25 * sin(TIME * 8.0));
-	}
-	// graduations par tranche de 10 %
-	col *= 1.0 - 0.35 * step(0.96, fract(uv.x * 10.0));
-	col = mix(col, vec3(0.0), clamp(border, 0.0, 1.0));
-	ALBEDO = col;
-}
-"""
 const BUILD_TIME := 1.5
 const PIECE_NAMES := ["MUR", "SOL", "RAMPE"]
 const MAT_NAMES := ["BOIS", "PIERRE", "BOIS MAGIQUE", "PIERRE MAGIQUE", "NUAGE"]
@@ -178,7 +150,7 @@ var label: Label3D
 var shown_hp := -1
 var bar: MeshInstance3D
 var bar_mat: ShaderMaterial
-static var _bar_shader: Shader
+var bar_lag := 1.0
 var repair_t := 0.0          # temps de réparation restant
 var repair_rate := 0.0       # PV rendus par seconde pendant la réparation
 var repair_icon: Label3D
@@ -204,15 +176,12 @@ func _ready() -> void:
 	_rebuild_collision()
 
 	# Barre de vie (billboard, taille constante) + chiffres + symbole de réparation
-	if _bar_shader == null:
-		_bar_shader = Shader.new()
-		_bar_shader.code = BAR_SHADER
-	bar_mat = ShaderMaterial.new()
-	bar_mat.shader = _bar_shader
+	bar_mat = HpBar.spatial_material()
 	bar_mat.render_priority = 10
 	bar = MeshInstance3D.new()
 	var qm := QuadMesh.new()
-	qm.size = Vector2(2.4, 0.28)
+	qm.size = Vector2(3.0, 0.4)
+	bar_mat.set_shader_parameter("aspect", 3.0 / 0.4)
 	bar.mesh = qm
 	bar.material_override = bar_mat
 	bar.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -448,14 +417,22 @@ func _update_label() -> void:
 	if main:
 		for p in main.players:
 			d = minf(d, p.global_position.distance_to(global_position))
-	var damaged := hp < max_hp - 0.5
-	var show := d < 12.0 or (damaged and d < 35.0) or repair_t > 0.0
+	# barre seulement pour la construction visée (ou en réparation) : plus de forêt de barres
+	# au-dessus d'un tas de murs
+	var aimed := false
+	if main:
+		for p in main.players:
+			if p.get("aimed_struct") == self and p.global_position.distance_to(global_position) < 40.0:
+				aimed = true
+	var show := aimed or repair_t > 0.0
 	bar.visible = show
-	label.visible = show and d < 14.0
+	label.visible = show and d < 25.0
+	var ratio := hp / max_hp
+	bar_lag = ratio if not show else maxf(ratio, move_toward(bar_lag, ratio, get_process_delta_time() * 0.6))
 	if not show:
 		return
-	var ratio := hp / max_hp
 	bar_mat.set_shader_parameter("ratio", ratio)
+	bar_mat.set_shader_parameter("lag", bar_lag)
 	bar_mat.set_shader_parameter("repair", (repair_rate * repair_t) / max_hp if repair_t > 0.0 else 0.0)
 	var h := int(ceil(hp))
 	if h == shown_hp:
