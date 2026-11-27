@@ -28,6 +28,24 @@ keep = []
 for v in me.data.vertices:
     w = sum(g.weight for g in v.groups if any(k in names[g.group] for k in ARM_KEYS))
     keep.append(w > 0.55)
+# poids : seulement les os du bras (l'épaule et le torse restent près de la caméra dans le jeu,
+# un sommet qui leur serait lié s'étirerait à travers l'écran) ; l'épaule est reportée sur le bras
+gid = {g.name.replace("mixamorig:", ""): g.index for g in me.vertex_groups}
+for v, k in zip(me.data.vertices, keep):
+    if not k:
+        continue
+    acc = {}
+    for g in v.groups:
+        n = names[g.group]
+        if n.endswith("Shoulder"):
+            n = n.replace("Shoulder", "Arm")
+        if any(t in n for t in ("Arm", "ForeArm", "Hand")):
+            acc[n] = acc.get(n, 0.0) + g.weight
+    tot = sum(acc.values()) or 1.0
+    for g in list(v.groups):
+        me.vertex_groups[g.group].remove([v.index])
+    for n, w in acc.items():
+        me.vertex_groups[gid[n]].add([v.index], w / tot, "REPLACE")
 import bmesh
 bm = bmesh.new()
 bm.from_mesh(me.data)
