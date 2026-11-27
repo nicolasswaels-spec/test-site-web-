@@ -45,7 +45,7 @@ const MASK_SHOOT := 1 | 4 | 8 | 16 | 32
 
 const HIP_POS := Vector3(0.22, -0.19, -0.5)   # armes longues près de la caméra : la crosse sort de l'écran
 const ADS_POS := Vector3(0.0, -0.105, -0.66)
-const AXE_POS := Vector3(0.34, -0.32, -0.55)
+const AXE_POS := Vector3(0.34, -0.32 + 0.09, -0.55)   # remontée : la main et l avant-bras restent dans le champ
 const PISTOL_HIP := Vector3(0.15, -0.12, -0.34)
 const PISTOL_ADS := Vector3(0.0, -0.085, -0.36)
 
@@ -250,9 +250,9 @@ const SHOULDERS := [Vector3(0.34, -0.9, 0.05), Vector3(-0.32, -0.9, -0.05)]
 
 ## Place un bras : centre de la paume sur « hand », avant-bras vers « elbow » (hors de l'écran),
 ## paume tournée vers « palm_dir ». side : 0 = droit, 1 = gauche (miroir du droit).
-func _add_arm(parent: Node3D, hand: Vector3, elbow: Vector3, side := 0, palm_dir := Vector3.LEFT, grip := "pistol") -> void:
+func _add_arm(parent: Node3D, hand: Vector3, elbow: Vector3, side := 0, palm_dir := Vector3.LEFT, grip := "pistol", fingers := Vector3.ZERO) -> void:
 	if USE_MIXAMO_ARMS:
-		_add_arm_mx(parent, hand, elbow, side, palm_dir, grip)
+		_add_arm_mx(parent, hand, elbow, side, palm_dir, grip, fingers)
 		return
 	var m: Node3D = FP_ARM.instantiate()
 	var x := (hand - elbow).normalized()
@@ -320,13 +320,16 @@ func _update_arms() -> void:
 ## visible sont posées dessus par cinématique inverse (elles suivent recul, balancement, hache).
 ## hand : centre de la poignée ; elbow : point vers lequel file l'avant-bras (donne la direction
 ## des doigts et celle du coude) ; palm_dir : de la paume vers la poignée.
-func _add_arm_mx(parent: Node3D, hand: Vector3, elbow: Vector3, side := 0, palm_dir := Vector3.LEFT, grip := "pistol") -> void:
+func _add_arm_mx(parent: Node3D, hand: Vector3, elbow: Vector3, side := 0, palm_dir := Vector3.LEFT, grip := "pistol", fingers := Vector3.ZERO) -> void:
 	if fp_arms == null:
 		fp_arms = FpArms.new()
 		fp_arms.layer = arms_layer()
 		cam.add_child(fp_arms)
+		# mains recalées juste avant chaque image, après le mouvement de l'arme (recul, balancement,
+		# coup de hache) : un seul mouvement, sans une image de retard
+		RenderingServer.frame_pre_draw.connect(_update_arms)
 		fp_arms.visible = false
-	arm_rigs.append({"node": parent, "hand": hand, "elbow": elbow, "side": side, "palm": palm_dir, "grip": grip})
+	arm_rigs.append({"node": parent, "hand": hand, "elbow": elbow, "side": side, "palm": palm_dir, "grip": grip, "fingers": fingers})
 
 
 func _update_arms_mx() -> void:
@@ -345,9 +348,12 @@ func _update_arms_mx() -> void:
 		var grip := gt * hand
 		var back := (gt * elbow - grip).normalized()
 		var palm := (gt.basis * (a["palm"] as Vector3)).normalized()
+		# direction des doigts : donnée par l'arme (main d'appui, hache), sinon le prolongement de l'avant-bras
+		var fdir: Vector3 = a["fingers"]
+		var fingers := -back if fdir == Vector3.ZERO else (gt.basis * fdir).normalized()
 		var side := "Right" if a["side"] == 0 else "Left"
 		used[side] = true
-		fp_arms.solve(side, grip, -back, palm, back, a["grip"])
+		fp_arms.solve(side, grip, fingers, palm, back, a["grip"])
 	for side in ["Right", "Left"]:
 		if not used.has(side):
 			fp_arms.hide_arm(side)
@@ -390,10 +396,13 @@ func _build_arms() -> void:
 		_add_arm(g, hr, hr + Vector3(0.08, -0.25, 0.35), 0, Vector3.LEFT, "pistol")
 		if hl.z < hr.z - 0.15:
 			# arme longue : main gauche sous le garde-main, doigts qui passent en travers, paume vers le haut
-			_add_arm(g, hl, hl + Vector3(-0.24, -0.3, 0.22), 1, Vector3.UP, "support")   # coude bas et proche : avant-bras qui file hors champ
+			# main d'appui sous le garde-main : paume vers le haut, doigts en travers vers la droite,
+			# avant-bras qui part en bas à gauche, vers l'arrière
+			_add_arm(g, hl, hl + Vector3(-0.3, -0.32, 0.3), 1, Vector3.UP, "support", Vector3(1.0, 0.05, -0.45))
 		# armes courtes (pistolet...) : tenues d'une main
 	var h: Node3D = axe_pivot.get_child(0)
-	_add_arm(h, Vector3(0, -0.04, 0), Vector3(0.32, -0.2, 0.22), 0, Vector3(-1, 0, -1).normalized(), "fist")
+	# hache : poing autour du manche, avant-bras presque horizontal vers l'arrière-droite
+	_add_arm(h, Vector3(0, -0.04, 0), Vector3(0.3, -0.16, 0.42), 0, Vector3(-1, 0, -0.3).normalized(), "fist", Vector3(-0.15, 0.55, -0.8))
 
 
 func _apply_layers(n: Node, mask: int) -> void:
@@ -1112,7 +1121,6 @@ func _animate_avatar() -> void:
 
 func _process(delta: float) -> void:
 	_animate_avatar()
-	_update_arms()
 	if zeus_ray_boost > 0.0:
 		zeus_ray_boost = move_toward(zeus_ray_boost, 0.0, delta * 2.5)
 		for m in zeus_ray_mats:
@@ -1448,7 +1456,7 @@ func _spawn_bolt(a: Vector3, b: Vector3) -> void:
 ## Éclair de Zeus en main (modèle Blender, tools/blender/zeus.py) : marbre et or, éclair de cristal
 ## tenu par trois griffes, volutes de nuage.
 func _build_zeus() -> void:
-	var g := _gun_from_model(W.ZEUS, "res://assets/weapons/zeus.glb", HIP_POS + Vector3(0, 0.02, 0), -0.66, 0.62,
+	var g := _gun_from_model(W.ZEUS, "res://assets/weapons/zeus.glb", HIP_POS + Vector3(0, 0.02, 0), -0.66, 0.85,
 		Color(0.6, 0.85, 1.0), Color(0.7, 0.85, 1.0), 6.0, 0.06)
 	gun_data[W.ZEUS]["glow"].light_energy = 0.6
 	gun_data[W.ZEUS]["glow"].light_color = Color(1.0, 0.97, 0.9)
@@ -1616,19 +1624,19 @@ func _swing() -> void:
 	var tw := create_tween()
 	swing_tween = tw
 	# 1. armé : la hache recule et monte au-dessus de l'épaule
-	tw.tween_property(axe, "position", AXE_POS + Vector3(0.05, 0.08, 0.03), 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	tw.parallel().tween_property(axe_pivot, "rotation", Vector3(0.55, -0.2, -0.3), 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.tween_property(axe, "position", AXE_POS + Vector3(0.03, 0.06, 0.03), 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(axe_pivot, "rotation", Vector3(0.32, -0.08, -0.12), 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tw.parallel().tween_property(cam, "rotation:z", -0.025, 0.16)
 	tw.tween_callback(func(): Sfx.play("swing", -4.0))
 	# 2. frappe : arc rapide vers le bas et vers le centre
-	tw.tween_property(axe, "position", AXE_POS + Vector3(-0.16, -0.05, -0.18), 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tw.parallel().tween_property(axe_pivot, "rotation", Vector3(-1.45, 0.45, 0.65), 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_property(axe, "position", AXE_POS + Vector3(-0.07, -0.05, -0.2), 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(axe_pivot, "rotation", Vector3(-0.6, 0.12, 0.22), 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	tw.parallel().tween_property(cam, "rotation:z", 0.035, 0.09)
 	# 3. impact
 	tw.tween_callback(_axe_impact)
 	tw.tween_interval(0.06)
 	# 4. accompagnement puis retour
-	tw.tween_property(axe_pivot, "rotation", Vector3(-1.6, 0.55, 0.75), 0.06)
+	tw.tween_property(axe_pivot, "rotation", Vector3(-0.68, 0.14, 0.26), 0.06)
 	tw.tween_property(axe, "position", AXE_POS, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.parallel().tween_property(axe_pivot, "rotation", Vector3.ZERO, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.parallel().tween_property(cam, "rotation:z", 0.0, 0.2)
