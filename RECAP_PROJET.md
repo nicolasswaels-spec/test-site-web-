@@ -154,7 +154,7 @@ assets/                modèles 3D CC0 : nature (Quaternius), skeletons, chests,
 
 ### Interface et zone volcanique
 - Messages d'information en bas de l'écran (au-dessus de la barre d'armes), plus au milieu de la vue.
-- Barres de vie stylisées (scripts/hp_bar.gd, même dessin en 3D et dans l'interface) : bouts biseautés, liseré doré, reflet, graduations, traîne claire qui rattrape les dégâts. Utilisées pour les murs et pour le monstre visé.
+- Barres de vie stylisées (scripts/hp_bar.gd, même dessin en 3D et dans l'interface) : bouts biseautés, liseré doré, reflet, graduations, traîne claire qui rattrape les dégâts. Utilisées pour les murs, le monstre visé, et la barre du haut (sphère en turquoise, titan de lave et colosse des nuées en orange).
 - Barre de vie d'une construction : seulement quand on la vise (ou pendant sa réparation).
 - Radar tournant : la flèche du joueur pointe toujours vers le haut, la carte tourne, le « N » suit le nord.
 - Zone volcanique (scripts/volcanic.gd + tools/blender/volcanic_props.py) : rochers de basalte à facettes avec fissures de lave, volcans à cratère avec coulées sur les flancs et panache de fumée, arbres calcinés (charbon + braises), vraies coulées de lave animées (croûte qui dérive, bourrelets de roche) qui remplacent les mares (zone de dégâts suivant la coulée), braises plus nombreuses et cendres qui tombent, brouillard enfumé rouge au lieu du rose.

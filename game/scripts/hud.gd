@@ -158,7 +158,10 @@ var vignette_mat: ShaderMaterial
 var vignette_strength := 0.0
 var wave_title: Label
 var wave_sub: Label
-var orb_bar: ProgressBar
+var orb_bar: ColorRect
+var orb_bar_mat: ShaderMaterial
+var orb_lag := 1.0
+var orb_title := ""
 var orb_label: Label
 var alert_label: Label
 var hp_bar: ProgressBar
@@ -261,7 +264,13 @@ func _ready() -> void:
 	orb_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top.add_child(orb_row)
 	orb_label = _label(orb_row, "SPHÈRE", 16, Color(0.75, 0.9, 1.0))
-	orb_bar = _bar(Color(0.3, 0.8, 1.0), Vector2(320, 18))
+	# barre stylisée (même dessin que celles des murs et des monstres) : sphère et boss
+	orb_bar = ColorRect.new()
+	orb_bar.custom_minimum_size = Vector2(340, 26)
+	orb_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	orb_bar_mat = HpBar.canvas_material()
+	orb_bar_mat.set_shader_parameter("aspect", 340.0 / 26.0)
+	orb_bar.material = orb_bar_mat
 	orb_row.add_child(orb_bar)
 	alert_label = _label(top, "", 20, Color(1, 0.3, 0.25))
 
@@ -646,12 +655,15 @@ func set_wave(title: String, sub: String) -> void:
 
 
 func set_orb(hp: float, max_hp: float, title := "SPHÈRE") -> void:
-	orb_bar.max_value = max_hp
-	orb_bar.value = hp
+	var ratio := clampf(hp / maxf(max_hp, 1.0), 0.0, 1.0)
+	if title != orb_title:
+		orb_title = title
+		orb_lag = ratio
+	orb_lag = maxf(ratio, move_toward(orb_lag, ratio, get_process_delta_time() * 0.4))
 	orb_label.text = "%s %d  " % [title, int(ceil(hp))]
-	var fill := orb_bar.get_theme_stylebox("fill") as StyleBoxFlat
-	if fill:
-		fill.bg_color = Color(0.3, 0.8, 1.0) if title == "SPHÈRE" else Color(1.0, 0.35, 0.1)
+	orb_bar_mat.set_shader_parameter("ratio", ratio)
+	orb_bar_mat.set_shader_parameter("lag", orb_lag)
+	orb_bar_mat.set_shader_parameter("tint", Color(0.3, 0.82, 1.0, 1.0) if title == "SPHÈRE" else Color(1.0, 0.38, 0.1, 1.0))
 
 
 func set_alert(text: String) -> void:
