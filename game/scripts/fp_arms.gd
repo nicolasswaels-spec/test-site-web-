@@ -19,7 +19,7 @@ const GRIPS := {
 	"fist": {"index": 0.85, "fingers": 0.9, "thumb": 0.55, "half": 0.03},
 }
 const GRIP_HALF := 0.022      # demi-épaisseur d'une poignée : la paume se pose contre, pas dedans
-const REACH := 0.86           # distance épaule-poignet, en fraction de la longueur du bras
+const REACH := 0.96           # distance épaule-poignet, en fraction de la longueur du bras
 ## Calques de rendu des bras (un par joueur, voir player.arms_layer) : les petites lumières des
 ## armes les excluent (sinon les gants prennent leur teinte), la caméra de l'autre joueur aussi.
 const ALL_LAYERS := (1 << 12) | (1 << 13)

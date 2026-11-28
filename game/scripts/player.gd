@@ -228,6 +228,8 @@ func _ready() -> void:
 ## doigt par doigt. Repère du modèle : +X = vers les doigts, +Z = normale de la paume, pouce vers -Y.
 const FP_ARM := preload("res://assets/characters/fp_arm.glb")
 const FpArms = preload("res://scripts/fp_arms.gd")
+## Points d'attache des épaules (repère caméra) : en bas de l'écran, hors champ, un peu en arrière.
+const ARM_ANCHORS := [Vector3(0.32, -0.78, 0.12), Vector3(-0.36, -0.78, 0.08)]
 ## Nouveaux bras (voyageur riggé par Mixamo, fp_arms.gd) : en cours de mise au point, désactivés
 const USE_MIXAMO_ARMS := true
 var fp_arms: Node3D = null
@@ -346,11 +348,14 @@ func _update_arms_mx() -> void:
 		var hand: Vector3 = a["hand"]
 		var elbow: Vector3 = a["elbow"]
 		var grip := gt * hand
-		var back := (gt * elbow - grip).normalized()
+		# épaule ancrée sur la caméra (en bas, hors champ, un peu en arrière) : quoi que fasse l'arme
+		# (coup de hache, recul), le bras remonte toujours vers ce point et sa coupure reste invisible
+		var anchor: Vector3 = cam.global_transform * (ARM_ANCHORS[0] if a["side"] == 0 else ARM_ANCHORS[1])
+		var back := (anchor - grip).normalized()
 		var palm := (gt.basis * (a["palm"] as Vector3)).normalized()
 		# direction des doigts : donnée par l'arme (main d'appui, hache), sinon le prolongement de l'avant-bras
 		var fdir: Vector3 = a["fingers"]
-		var fingers := -back if fdir == Vector3.ZERO else (gt.basis * fdir).normalized()
+		var fingers := -(gt * elbow - grip).normalized() if fdir == Vector3.ZERO else (gt.basis * fdir).normalized()
 		var side := "Right" if a["side"] == 0 else "Left"
 		used[side] = true
 		# calage mesuré sur le modèle visible (refait si l'arme change de modèle : variante de Dieu)
@@ -413,7 +418,7 @@ func _build_arms() -> void:
 		var hr: Vector3 = d["hand_r"]
 		var hl: Vector3 = d["hand_l"]
 		var long_gun: bool = hl.z < hr.z - 0.15 and w != W.ZEUS
-		if w == W.PISTOL:
+		if w == W.PISTOL or w == W.ZEUS:
 			# deux mains : la droite sur la poignée, avant-bras droit vers l'arrière-bas
 			_add_arm(g, hr, hr + Vector3(0.06, -0.3, 0.45), 0, Vector3.LEFT, "pistol", Vector3(-0.1, -0.2, -1.0))
 			# la gauche par-dessous et sur le côté gauche, paume vers la droite, enveloppe la droite
@@ -421,7 +426,7 @@ func _build_arms() -> void:
 			continue
 		# main droite : poing autour de la poignée, doigts vers l'avant qui s'enroulent vers la gauche,
 		# paume contre le flanc droit ; avant-bras vers le bas à droite (presque hors champ)
-		_add_arm(g, hr, hr + Vector3(0.14, -0.3, 0.3), 0, Vector3.LEFT, "pistol", Vector3(-0.12, -0.15, -1.0))
+		_add_arm(g, hr, hr + Vector3(0.06, -0.3, 0.45), 0, Vector3.LEFT, "pistol", Vector3(-0.1, -0.2, -1.0))
 		if long_gun:
 			# main gauche sur le flanc gauche du garde-main : paume vers la droite et le haut, doigts
 			# qui remontent sur le dessus ; avant-bras long vers l'arrière, le bas et la gauche
@@ -1481,7 +1486,7 @@ func _spawn_bolt(a: Vector3, b: Vector3) -> void:
 ## Éclair de Zeus en main (modèle Blender, tools/blender/zeus.py) : marbre et or, éclair de cristal
 ## tenu par trois griffes, volutes de nuage.
 func _build_zeus() -> void:
-	var g := _gun_from_model(W.ZEUS, "res://assets/weapons/zeus.glb", HIP_POS + Vector3(0, 0.02, 0), -0.66, 0.85,
+	var g := _gun_from_model(W.ZEUS, "res://assets/weapons/zeus.glb", PISTOL_HIP + Vector3(0, 0.0, -0.02), PISTOL_ADS.z - 0.08, 0.6,
 		Color(0.6, 0.85, 1.0), Color(0.7, 0.85, 1.0), 6.0, 0.06)
 	gun_data[W.ZEUS]["glow"].light_energy = 0.6
 	gun_data[W.ZEUS]["glow"].light_color = Color(1.0, 0.97, 0.9)
@@ -1604,7 +1609,7 @@ func _shoot_sniper() -> void:
 ## Fusil de précision en main (modèle Blender, tools/blender/sniper.py) : crosse pleine en bois
 ## avec incrustation d'os en flèche, lunette à bagues de laiton.
 func _build_sniper() -> void:
-	_gun_from_model(W.SNIPER, "res://assets/weapons/sniper.glb", HIP_POS, -0.45, 0.82,
+	_gun_from_model(W.SNIPER, "res://assets/weapons/sniper.glb", HIP_POS + Vector3(0, -0.02, 0.04), -0.5, 1.2,
 		Color(0.3, 0.65, 1.0), Color(1.0, 0.85, 0.5), 5.0)
 
 
