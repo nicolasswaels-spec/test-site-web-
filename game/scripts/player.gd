@@ -43,10 +43,10 @@ const MAGIC_BUILD_COST := 1   # 1 bois / pierre magique = 1 pièce
 const MAX_HP := 100.0
 const MASK_SHOOT := 1 | 4 | 8 | 16 | 32
 
-const HIP_POS := Vector3(0.22, -0.19, -0.5)   # armes longues près de la caméra : la crosse sort de l'écran
+const HIP_POS := Vector3(0.17, -0.2, -0.52)   # armes longues près de la caméra : la crosse sort de l'écran
 const ADS_POS := Vector3(0.0, -0.105, -0.66)
 const AXE_POS := Vector3(0.34, -0.32 + 0.09, -0.55)   # remontée : la main et l avant-bras restent dans le champ
-const PISTOL_HIP := Vector3(0.15, -0.12, -0.34)
+const PISTOL_HIP := Vector3(0.06, -0.15, -0.38)   # au centre, tenu à deux mains
 const PISTOL_ADS := Vector3(0.0, -0.085, -0.36)
 
 var main
@@ -353,11 +353,23 @@ func _update_arms_mx() -> void:
 		var fingers := -back if fdir == Vector3.ZERO else (gt.basis * fdir).normalized()
 		var side := "Right" if a["side"] == 0 else "Left"
 		used[side] = true
-		fp_arms.solve(side, grip, fingers, palm, back, a["grip"])
+		# calage mesuré sur le modèle visible (refait si l'arme change de modèle : variante de Dieu)
+		var meshes: Array = []
+		for mi in n.find_children("*", "MeshInstance3D", true, false):
+			if (mi as MeshInstance3D).is_visible_in_tree() and not (mi as MeshInstance3D).mesh is QuadMesh:
+				meshes.append(mi)
+		var key := 0
+		for mi in meshes:
+			key ^= mi.get_instance_id()
+		if a.get("fit_key", -1) != key:
+			a["fit"] = fp_arms.fit(side, grip, fingers, palm, back, a["grip"], meshes)
+			a["fit_key"] = key
+		fp_arms.solve(side, grip, fingers, palm, back, a["grip"], a["fit"])
 	for side in ["Right", "Left"]:
 		if not used.has(side):
 			fp_arms.hide_arm(side)
 	fp_arms.visible = shown
+	fp_arms.flush()
 
 
 ## Plie les doigts : chaque phalange tourne autour de (direction de l'os × normale de la paume).
@@ -385,24 +397,37 @@ static func set_grip(skel: Skeleton3D, g: Dictionary) -> void:
 			skel.set_bone_pose_rotation(bi, skel.get_bone_rest(bi).basis.get_rotation_quaternion() * q)
 
 
+## Prises « à la façon des jeux de tir » (voir les références : CoD...) :
+## - arme longue : main droite sur la poignée, presque cachée en bas à droite ; avant-bras gauche
+##   long et visible qui traverse l'écran du bas gauche jusqu'au garde-main, main gauche sur le
+##   flanc gauche du garde-main (paume vers la droite et le haut, doigts qui remontent dessus) ;
+## - pistolet : tenu au centre à deux mains jointes, avant-bras droits vers le bas de l'écran ;
+## - canon de Zeus : d'une main, comme un pistolet ;
+## - hache : poing autour du manche, avant-bras presque horizontal.
+## Le calage fin (paume contre la surface, doigts qui se ferment jusqu'au contact) est mesuré sur
+## le modèle de l'arme (fp_arms.fit).
 func _build_arms() -> void:
-	# main droite sur la poignée (hand_r), main gauche sous le garde-main ou en soutien (hand_l)
 	for w in gun_data:
 		var d: Dictionary = gun_data[w]
 		var g: Node3D = d["node"]
 		var hr: Vector3 = d["hand_r"]
 		var hl: Vector3 = d["hand_l"]
-		# main droite : poignet derrière la poignée, articulations vers l'avant, paume contre la poignée
-		_add_arm(g, hr, hr + Vector3(0.08, -0.25, 0.35), 0, Vector3.LEFT, "pistol")
-		if hl.z < hr.z - 0.15:
-			# arme longue : main gauche sous le garde-main, doigts qui passent en travers, paume vers le haut
-			# main d'appui sous le garde-main : paume vers le haut, doigts en travers vers la droite,
-			# avant-bras qui part en bas à gauche, vers l'arrière
-			_add_arm(g, hl, hl + Vector3(-0.3, -0.32, 0.3), 1, Vector3.UP, "support", Vector3(1.0, 0.05, -0.45))
-		# armes courtes (pistolet...) : tenues d'une main
+		var long_gun: bool = hl.z < hr.z - 0.15 and w != W.ZEUS
+		if w == W.PISTOL:
+			# deux mains : la droite sur la poignée, avant-bras droit vers l'arrière-bas
+			_add_arm(g, hr, hr + Vector3(0.06, -0.3, 0.45), 0, Vector3.LEFT, "pistol", Vector3(-0.1, -0.2, -1.0))
+			# la gauche par-dessous et sur le côté gauche, paume vers la droite, enveloppe la droite
+			_add_arm(g, hr + Vector3(-0.035, -0.03, 0.0), hr + Vector3(-0.12, -0.32, 0.42), 1, Vector3(1, 0.25, 0).normalized(), "support", Vector3(0.15, -0.35, -1.0))
+			continue
+		# main droite : poing autour de la poignée, doigts vers l'avant qui s'enroulent vers la gauche,
+		# paume contre le flanc droit ; avant-bras vers le bas à droite (presque hors champ)
+		_add_arm(g, hr, hr + Vector3(0.14, -0.3, 0.3), 0, Vector3.LEFT, "pistol", Vector3(-0.12, -0.15, -1.0))
+		if long_gun:
+			# main gauche sur le flanc gauche du garde-main : paume vers la droite et le haut, doigts
+			# qui remontent sur le dessus ; avant-bras long vers l'arrière, le bas et la gauche
+			_add_arm(g, hl, hl + Vector3(-0.12, -0.24, 0.42), 1, Vector3(1.0, 0.55, 0.0).normalized(), "support", Vector3(0.25, 0.55, -0.8))
 	var h: Node3D = axe_pivot.get_child(0)
-	# hache : poing autour du manche, avant-bras presque horizontal vers l'arrière-droite
-	_add_arm(h, Vector3(0, -0.04, 0), Vector3(0.3, -0.16, 0.42), 0, Vector3(-1, 0, -0.3).normalized(), "fist", Vector3(-0.15, 0.55, -0.8))
+	_add_arm(h, Vector3(0, -0.04, 0), Vector3(0.3, -0.16, 0.42), 0, Vector3(-1, 0, -0.3).normalized(), "fist", Vector3(-0.2, 0.0, -1.0))
 
 
 func _apply_layers(n: Node, mask: int) -> void:

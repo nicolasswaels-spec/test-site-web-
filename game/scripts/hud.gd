@@ -403,15 +403,15 @@ func _ready() -> void:
 	# barre de vie de l'ennemi visé (au-dessus du viseur)
 	enemy_box = VBoxContainer.new()
 	enemy_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_place(enemy_box, 0.5, 0.5, 0.5, 0.5, -120, -86, 120, -30)
+	_place(enemy_box, 0.5, 0.5, 0.5, 0.5, -90, -64, 90, -30)
 	root.add_child(enemy_box)
-	enemy_name = _label(enemy_box, "", 15, Color(1, 0.8, 0.75))
+	enemy_name = _label(enemy_box, "", 12, Color(1, 0.8, 0.75))
 	# barre stylisée (même dessin que celle des murs)
 	enemy_bar = ColorRect.new()
-	enemy_bar.custom_minimum_size = Vector2(240, 22)
+	enemy_bar.custom_minimum_size = Vector2(150, 13)
 	enemy_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	enemy_bar_mat = HpBar.canvas_material()
-	enemy_bar_mat.set_shader_parameter("aspect", 240.0 / 22.0)
+	enemy_bar_mat.set_shader_parameter("aspect", 150.0 / 13.0)
 	enemy_bar.material = enemy_bar_mat
 	enemy_box.add_child(enemy_bar)
 	enemy_box.visible = false

@@ -180,14 +180,15 @@ func _ready() -> void:
 	bar_mat.render_priority = 10
 	bar = MeshInstance3D.new()
 	var qm := QuadMesh.new()
-	qm.size = Vector2(3.0, 0.4)
-	bar_mat.set_shader_parameter("aspect", 3.0 / 0.4)
+	qm.size = Vector2(2.4, 0.3)
+	bar_mat.set_shader_parameter("aspect", 2.4 / 0.3)
 	bar.mesh = qm
 	bar.material_override = bar_mat
 	bar.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	bar.top_level = true
 	add_child(bar)
-	bar.global_position = global_position + Vector3.UP * (2.75 if piece == WALL else 1.1)
+	# barre au milieu de la pièce visée (au centre du mur, juste au-dessus d'un sol ou d'une rampe)
+	bar.global_position = global_position + Vector3.UP * (0.12 if piece == WALL else 0.6)
 	bar.visible = false
 	repair_icon = Label3D.new()
 	repair_icon.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -202,7 +203,7 @@ func _ready() -> void:
 	repair_icon.outline_render_priority = 10
 	repair_icon.top_level = true
 	add_child(repair_icon)
-	repair_icon.global_position = global_position + Vector3.UP * (3.2 if piece == WALL else 1.6)
+	repair_icon.global_position = global_position + Vector3.UP * (0.55 if piece == WALL else 1.0)
 	repair_icon.visible = false
 
 	label = Label3D.new()
@@ -218,7 +219,7 @@ func _ready() -> void:
 	label.outline_render_priority = 9
 	label.top_level = true
 	add_child(label)
-	label.global_position = global_position + Vector3.UP * (2.35 if piece == WALL else 0.75)
+	label.global_position = global_position + Vector3.UP * (-0.22 if piece == WALL else 0.3)
 	label.visible = false
 
 	mat.set_shader_parameter("to_local", Projection(global_transform.affine_inverse()))
