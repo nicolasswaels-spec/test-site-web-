@@ -27,15 +27,43 @@ const CRYO_COSTS := [
 	{"wood": 4300, "stone": 2900, "coins": 50},
 	{"wood": 5200, "stone": 3600, "coins": 60},
 ]
+## Pistolet et fusil d'assaut : un seul coût par niveau, le même pour toutes les branches.
+const PISTOL_COSTS := [
+	{"wood": 5}, {"wood": 20}, {"wood": 60}, {"wood": 150},
+	{"wood": 100, "stone": 10}, {"wood": 200, "stone": 50}, {"wood": 350, "stone": 150},
+	{"wood": 800, "stone": 300, "coins": 24},
+]
+const RIFLE_COSTS := [
+	{"wood": 150}, {"wood": 300}, {"stone": 100}, {"stone": 200},
+	{"wood": 500, "stone": 300}, {"wood": 700, "stone": 400, "coins": 15},
+	{"wood": 1000, "stone": 600, "coins": 20, "big_bone": 1},
+	{"wood": 1500, "stone": 800, "coins": 30, "big_bone": 1},
+]
+## Bonus (en %) atteints à chaque niveau : progression graduelle puis exponentielle.
+const RATE_BONUS := [0, 2, 5, 8, 12, 17, 23, 30, 40]
+const DAMAGE_BONUS := [0, 3, 10, 20, 35, 55, 80, 120, 200]
+## Chargeur et rechargement dans la même branche (valeurs du pistolet, base 12 balles ; le fusil
+## suit les mêmes proportions) ; réduction du temps de rechargement en %.
+const MAG_PISTOL := [12, 14, 14, 16, 16, 18, 20, 22, 26]
+const RELOAD_CUT := [0, 0, 5, 5, 10, 12, 15, 25, 50]
+
+## Hache, 7 niveaux par branche (bois, payée en bois ; pierre, payée en pierre). Au départ : 1 par
+## coup, 10 quand l'arbre tombe (ou le rocher casse), pas de cibles.
+## Niv. 1 : ×2 · niv. 2 : cibles (+50 % sur le coup, +50 % par cible sur le gain final)
+## niv. 3 : ×2 · niv. 4 : cibles +100 % (et, branche bois, débloque la pierre) · niv. 5, 6 : ×2
+## niv. 7 : ×2 et cibles +200 %.
+const AXE_LEVELS := 7
+const AXE_COSTS := [60, 140, 350, 500, 1500, 4000, 8000]
+const AXE_MULT := [1, 2, 2, 4, 4, 8, 16, 32]
+const AXE_TARGET := [0.0, 0.0, 0.5, 0.5, 1.0, 1.0, 1.0, 2.0]
 ## Niveau de « récolte de bois » de la hache qui permet de récolter la pierre.
-const STONE_UNLOCK_LEVEL := 5
-const AXE_COSTS := [300, 550, 850, 1150, 1500, 1900, 2400, 3000]
+const STONE_UNLOCK_LEVEL := 4
 
 const ITEMS := {
 	"pistol": {"name": "PISTOLET", "branches": [
-		["rate", "Cadence de tir"], ["damage", "Dégâts par balle"], ["mag", "Chargeur"], ["reload", "Vitesse de rechargement"], ["defense", "Défense (arme en main)"]]},
+		["rate", "Cadence de tir"], ["damage", "Dégâts par balle"], ["mag", "Chargeur et rechargement"], ["defense", "Défense (arme en main)"]]},
 	"rifle": {"name": "FUSIL D'ASSAUT", "branches": [
-		["rate", "Cadence de tir"], ["damage", "Dégâts par balle"], ["mag", "Chargeur"], ["reload", "Vitesse de rechargement"], ["defense", "Défense (arme en main)"]]},
+		["rate", "Cadence de tir"], ["damage", "Dégâts par balle"], ["mag", "Chargeur et rechargement"], ["defense", "Défense (arme en main)"]]},
 	"axe": {"name": "HACHE", "branches": [
 		["wood", "Récolte de bois (payée en bois)"], ["stone", "Récolte de pierre (payée en pierre)"]]},
 	"cryo": {"name": "CANON CRYO", "branches": [
@@ -62,7 +90,7 @@ static func new_state() -> Dictionary:
 
 # ------------------------------------------------------------------ création d'arme (menu de la sphère, dès la 2e sphère)
 const CRAFTS := [
-	{"id": "cryo", "name": "CANON CRYOGÉNIQUE", "icon": "w_cryo", "cost": {"wood": 3300, "stone": 1700, "magic_wood": 8, "magic_stone": 8},
+	{"id": "cryo", "name": "CANON CRYOGÉNIQUE", "icon": "w_cryo", "cost": {"wood": 1500, "stone": 800, "magic_wood": 5, "magic_stone": 3},
 		"desc": "Rayon de glace continu : ralentit et rend vulnérable."},
 	{"id": "shock", "name": "ONDE DE CHOC", "icon": "w_shock", "cost": {"wood": 2000, "stone": 1000, "bone": 30},
 		"desc": "1 os par tir : cône large devant toi, 250 dégâts à tous les squelettes touchés."},
@@ -112,6 +140,8 @@ static func max_level(item: String, branch: String) -> int:
 		return SHOCK_LEVELS[branch]
 	if item == "zeus":
 		return 5
+	if item == "axe":
+		return AXE_LEVELS
 	return MAX_LEVEL
 
 
@@ -195,6 +225,10 @@ static func cost(item: String, branch: String, level: int) -> Dictionary:
 		return {branch: AXE_COSTS[level - 1]}   # "wood" ou "stone"
 	if item == "cryo":
 		return CRYO_COSTS[level - 1]
+	if item == "pistol":
+		return PISTOL_COSTS[level - 1].duplicate()
+	if item == "rifle":
+		return RIFLE_COSTS[level - 1].duplicate()
 	return GEAR_COSTS[level - 1]
 
 
@@ -224,19 +258,19 @@ static func cost_text(c: Dictionary) -> String:
 # ------------------------------------------------------------------ effets
 
 static func fire_interval_mult(lvl: int) -> float:
-	return 1.0 - 0.06 * lvl          # niveau 8 : tir ~2× plus rapide
+	return 1.0 / (1.0 + RATE_BONUS[clampi(lvl, 0, 8)] / 100.0)
 
 
 static func damage_mult(lvl: int) -> float:
-	return 1.0 + 0.12 * lvl          # niveau 8 : ×1,96
+	return 1.0 + DAMAGE_BONUS[clampi(lvl, 0, 8)] / 100.0
 
 
 static func mag_size(base: int, lvl: int) -> int:
-	return base + int(round(base * 0.15 * lvl))   # niveau 8 : ×2,2
+	return int(round(base * MAG_PISTOL[clampi(lvl, 0, 8)] / 12.0))
 
 
 static func reload_mult(lvl: int) -> float:
-	return 1.0 - 0.07 * lvl          # niveau 8 : rechargement 44 % plus court
+	return 1.0 - RELOAD_CUT[clampi(lvl, 0, 8)] / 100.0
 
 
 static func defense(lvl: int) -> float:
@@ -244,7 +278,13 @@ static func defense(lvl: int) -> float:
 
 
 static func harvest_mult(lvl: int) -> float:
-	return 1.0 + 0.375 * lvl         # niveau 8 : ×4 ressources par coup
+	return float(AXE_MULT[clampi(lvl, 0, AXE_LEVELS)])
+
+
+## Bonus d'une cible de récolte (0 = pas de cibles) : sur le coup qui la touche, et par cible
+## touchée sur le gain final.
+static func target_bonus(lvl: int) -> float:
+	return AXE_TARGET[clampi(lvl, 0, AXE_LEVELS)]
 
 
 static func wire_slow(lvl: int) -> float:
@@ -258,7 +298,7 @@ static func wire_dps(lvl: int) -> float:
 ## Canon cryo : statut de glace de 0 à 10, gagné en touchant la cible (0,7 par tic de 0,1 s :
 ## ~1,5 s de rayon continu pour atteindre 10). Les effets ci-dessous sont les valeurs à 10 statuts.
 const CRYO_STACKS_PER_TICK := 1.05   # statuts appliqués encore 1,5× plus vite
-const CRYO_BASE_DPS := 420.0         # 420 dégâts/s de base, 1600 au niveau 8 (hors vulnérabilité et variante de Dieu)
+const CRYO_BASE_DPS := 840.0         # 840 dégâts/s de base (doublés), 3200 au niveau 8 (hors vulnérabilité et variante de Dieu)
 
 
 ## Ralentissement à 10 statuts : 30 % → 40 %
@@ -268,7 +308,7 @@ static func cryo_max_slow(lvl: int) -> float:
 
 ## Dégâts du rayon : 420 / s → 1600 / s (avant vulnérabilité)
 static func cryo_damage_mult(lvl: int) -> float:
-	return 1.0 + (1600.0 / CRYO_BASE_DPS - 1.0) / 8.0 * lvl
+	return 1.0 + (3200.0 / CRYO_BASE_DPS - 1.0) / 8.0 * lvl
 
 
 ## Vulnérabilité à 10 statuts : +10 % → +40 %
@@ -323,15 +363,18 @@ static func effect_text(item: String, branch: String, lvl: int, base_mag := 12) 
 				return "%.0f PV/s" % wire_dps(lvl)
 			return "+%d %% de dégâts" % int(round((damage_mult(lvl) - 1.0) * 100.0))
 		"mag":
-			return "%d balles" % mag_size(base_mag, lvl)
+			var r: int = RELOAD_CUT[clampi(lvl, 0, 8)]
+			return "%d balles%s" % [mag_size(base_mag, lvl), (" · rechargement -%d %%" % r) if r > 0 else ""]
 		"defense":
 			return "-%d %% de dégâts subis" % int(round(defense(lvl) * 100.0))
 		"reload":
 			return "rechargement -%d %%" % int(round((1.0 - reload_mult(lvl)) * 100.0))
 		"wood", "stone":
-			var t := "×%.2f par coup" % harvest_mult(lvl)
+			var t := "×%d" % int(harvest_mult(lvl))
+			var tb := target_bonus(lvl)
+			t += (" · cibles +%d %%" % int(tb * 100.0)) if tb > 0.0 else " · pas de cibles"
 			if branch == "wood" and lvl == STONE_UNLOCK_LEVEL:
-				t += " + DÉBLOQUE LA PIERRE"
+				t += " · DÉBLOQUE LA PIERRE"
 			return t
 		"slow":
 			return "vitesse réduite à %d %%" % int(round(wire_slow(lvl) * 100.0))

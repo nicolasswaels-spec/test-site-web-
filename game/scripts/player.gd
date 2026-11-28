@@ -21,9 +21,9 @@ const MOUSE_SENS := 0.0025
 ## Caractéristiques des armes à feu (munitions illimitées, seul le chargeur compte)
 const GUNS := {
 	W.PISTOL: {"mag": 12, "interval": 0.2, "damage": 34.0, "reload": 1.2, "auto": false, "spread": 0.012, "kick": 0.02},
-	W.RIFLE: {"mag": 27, "interval": 0.111, "damage": 21.6, "reload": 1.6, "auto": true, "spread": 0.022, "kick": 0.011},
+	W.RIFLE: {"mag": 27, "interval": 0.333, "damage": 21.6, "reload": 1.6, "auto": true, "spread": 0.022, "kick": 0.011},
 	# rayon de glace continu : très faibles dégâts, ralentit (70 % de vitesse) et rend vulnérable (+10 %) pendant 3 s
-	W.CRYO: {"mag": 0, "interval": 0.1, "damage": 42.0, "reload": 0.0, "auto": true, "spread": 0.0, "kick": 0.0},
+	W.CRYO: {"mag": 0, "interval": 0.1, "damage": 84.0, "reload": 0.0, "auto": true, "spread": 0.0, "kick": 0.0},
 	W.ZEUS: {"mag": 0, "interval": 1.5, "damage": 1000.0, "reload": 0.0, "auto": false, "spread": 0.0, "kick": 0.0},
 	W.SNIPER: {"mag": 0, "interval": 1.6, "damage": 175.0, "reload": 0.0, "auto": false, "spread": 0.03, "kick": 0.09},
 	W.SHOCK: {"mag": 0, "interval": 4.0, "damage": 100.0, "reload": 0.0, "auto": false, "spread": 0.0, "kick": 0.0},
@@ -350,7 +350,7 @@ func _update_arms_mx() -> void:
 		var grip := gt * hand
 		# épaule ancrée sur la caméra (en bas, hors champ, un peu en arrière) : quoi que fasse l'arme
 		# (coup de hache, recul), le bras remonte toujours vers ce point et sa coupure reste invisible
-		var anchor: Vector3 = cam.global_transform * (ARM_ANCHORS[0] if a["side"] == 0 else ARM_ANCHORS[1])
+		var anchor: Vector3 = cam.global_transform * a.get("anchor", ARM_ANCHORS[0] if a["side"] == 0 else ARM_ANCHORS[1])
 		var back := (anchor - grip).normalized()
 		var palm := (gt.basis * (a["palm"] as Vector3)).normalized()
 		# direction des doigts : donnée par l'arme (main d'appui, hache), sinon le prolongement de l'avant-bras
@@ -433,6 +433,9 @@ func _build_arms() -> void:
 			_add_arm(g, hl, hl + Vector3(-0.12, -0.24, 0.42), 1, Vector3(1.0, 0.55, 0.0).normalized(), "support", Vector3(0.25, 0.55, -0.8))
 	var h: Node3D = axe_pivot.get_child(0)
 	_add_arm(h, Vector3(0, -0.04, 0), Vector3(0.3, -0.16, 0.42), 0, Vector3(-1, 0, -0.3).normalized(), "fist", Vector3(-0.2, 0.0, -1.0))
+	# hache : l'avant-bras arrive dans l'axe du poing (derrière la main, un peu plus bas), sinon le
+	# poignet se tord et la main pivote autour du manche
+	arm_rigs[-1]["anchor"] = Vector3(0.46, -0.52, 0.3)
 
 
 func _apply_layers(n: Node, mask: int) -> void:
@@ -862,7 +865,9 @@ func gun_lvl(w: int, branch: String) -> int:
 		return upgrades["sniper"].get(branch, 0)
 	if not GUN_KEYS.has(w):
 		return 0   # le canon cryogénique n'a pas (encore) d'arbre d'amélioration
-	return upgrades[GUN_KEYS[w]][branch]
+	if branch == "reload":
+		branch = "mag"     # chargeur et rechargement : une seule branche
+	return upgrades[GUN_KEYS[w]].get(branch, 0)
 
 
 ## Multiplicateur de la variante de Dieu de l'arme (×2 si débloquée, ×1 sinon).
@@ -1486,7 +1491,7 @@ func _spawn_bolt(a: Vector3, b: Vector3) -> void:
 ## Éclair de Zeus en main (modèle Blender, tools/blender/zeus.py) : marbre et or, éclair de cristal
 ## tenu par trois griffes, volutes de nuage.
 func _build_zeus() -> void:
-	var g := _gun_from_model(W.ZEUS, "res://assets/weapons/zeus.glb", PISTOL_HIP + Vector3(0, 0.0, -0.02), PISTOL_ADS.z - 0.08, 0.6,
+	var g := _gun_from_model(W.ZEUS, "res://assets/weapons/zeus.glb", PISTOL_HIP + Vector3(0.02, -0.02, -0.08), PISTOL_ADS.z - 0.2, 0.9,
 		Color(0.6, 0.85, 1.0), Color(0.7, 0.85, 1.0), 6.0, 0.06)
 	gun_data[W.ZEUS]["glow"].light_energy = 0.6
 	gun_data[W.ZEUS]["glow"].light_color = Color(1.0, 0.97, 0.9)
@@ -1905,9 +1910,10 @@ func _axe_impact() -> void:
 		c.harvest(self)
 		_shake(0.015)
 	elif c and c.is_in_group("rock"):
-		var got: int = c.mine(AXE_TREE_DAMAGE, r.position, can_mine_stone())
+		var slv: int = upgrades["axe"]["stone"]
+		var base_s: float = c.mine(AXE_TREE_DAMAGE, r.position, can_mine_stone(), Upg.target_bonus(slv))
 		var tgt_mult := 1.5 if (c.last_target_hit and has_skill("F5")) else 1.0
-		got = int(round(got * Upg.harvest_mult(upgrades["axe"]["stone"]) * harvest_bonus("stone") * tgt_mult))
+		var got := int(round(base_s * Upg.harvest_mult(slv) * harvest_bonus("stone") * tgt_mult))
 		if c.last_target_hit and got > 0:
 			add_stat("targets")
 		add_stat("harvested", got)
@@ -1926,9 +1932,10 @@ func _axe_impact() -> void:
 		main.spawn_impact(r.position, r.normal, Color(0.5, 0.5, 0.6), 10, 1.0)
 		_shake(0.02)
 	elif c and c.is_in_group("tree"):
-		var gained: int = c.chop(AXE_TREE_DAMAGE, r.position)
+		var wlv: int = upgrades["axe"]["wood"]
+		var base_w: float = c.chop(AXE_TREE_DAMAGE, r.position, Upg.target_bonus(wlv))
 		var tgt_mult := 1.5 if (c.last_target_hit and has_skill("F5")) else 1.0
-		gained = int(round(gained * Upg.harvest_mult(upgrades["axe"]["wood"]) * harvest_bonus("wood") * tgt_mult))
+		var gained := int(round(base_w * Upg.harvest_mult(wlv) * harvest_bonus("wood") * tgt_mult))
 		if c.last_target_hit and gained > 0:
 			add_stat("targets")
 		add_stat("harvested", gained)

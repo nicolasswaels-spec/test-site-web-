@@ -6,8 +6,8 @@ const Nature = preload("res://scripts/nature.gd")
 const Harvest = preload("res://scripts/harvest.gd")
 const Volcanic = preload("res://scripts/volcanic.gd")
 
-const WOOD_PER_HIT := 15
-const WOOD_FELL := 40          # bois du dernier coup, +80 % par cible touchée (jusqu'à ×3,4)
+const WOOD_PER_HIT := 1
+const WOOD_FELL := 10          # bois du dernier coup (+ bonus par cible touchée)
 
 var kind := 0
 var species := 0   # 0 sapin, 1 érable, 2 bouleau, 3 sapin calciné (zone volcanique)
@@ -61,10 +61,13 @@ func _ready() -> void:
 
 
 ## Appelé par la hache (avec le point d'impact). Renvoie le bois gagné.
-func chop(damage: float, hit_pos := Vector3.INF) -> int:
+## bonus : bonus des cibles de récolte (0 = cibles pas encore débloquées). Renvoie le bois de base
+## (avant le multiplicateur de la hache).
+func chop(damage: float, hit_pos := Vector3.INF, bonus := 0.0) -> float:
 	if fallen:
-		return 0
-	last_target_hit = harvest.register_hit(hit_pos)
+		return 0.0
+	harvest.bonus = bonus
+	last_target_hit = harvest.register_hit(hit_pos) if bonus > 0.0 else false
 	hp -= damage
 	Sfx.play_3d("chop", global_position + Vector3.UP, 2.0)
 	var tw := create_tween()
@@ -74,12 +77,12 @@ func chop(damage: float, hit_pos := Vector3.INF) -> int:
 	if main:
 		main.spawn_impact(global_position + Vector3.UP * 6.0, Vector3.DOWN, Color(0.15, 0.35, 0.35), 10, 1.0)
 	if hp <= 0.0:
-		var bonus := int(round(WOOD_FELL * harvest.final_mult())) * (MAGIC_MULT if magic else 1)
+		var gain: float = WOOD_FELL * harvest.final_mult() * (MAGIC_MULT if magic else 1)
 		harvest.clear()
 		_fall()
-		return bonus
+		return gain
 	# 1er coup : 3 cibles d'un coup, réparties autour du tronc (une vers le joueur, deux sur les côtés)
-	if harvest.needs_spots():
+	if bonus > 0.0 and harvest.needs_spots():
 		var base := randf() * TAU
 		if hit_pos != Vector3.INF:
 			var d := hit_pos - global_position
@@ -90,7 +93,7 @@ func chop(damage: float, hit_pos := Vector3.INF) -> int:
 			var a := base + deg_to_rad([0.0, -75.0, 75.0][k] + randf_range(-15.0, 15.0))
 			var n := Vector3(cos(a), 0.0, sin(a))
 			harvest.add_spot(self, global_position + n * (trunk_radius + 0.16) + Vector3.UP * heights[k], n)
-	return int(round(WOOD_PER_HIT * (harvest.HIT_BONUS if last_target_hit else 1.0))) * (MAGIC_MULT if magic else 1)
+	return WOOD_PER_HIT * (1.0 + bonus if last_target_hit else 1.0) * (MAGIC_MULT if magic else 1)
 
 
 ## Frappé par un squelette qui était bloqué : l'arbre finit par tomber (sans bois pour le joueur).

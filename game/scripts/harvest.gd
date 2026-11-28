@@ -1,14 +1,15 @@
 extends RefCounted
 ## Logique commune des cibles de récolte (arbres et rochers).
 ## Au 1er coup de hache, 3 cibles apparaissent en même temps sur la ressource.
-## Coup sur une cible : +100 % de ressources sur ce coup (la cible disparaît).
-## Ressource terminée : gain final +80 % par cible touchée (3 cibles = +240 %, soit ×3,4).
+## Coup sur une cible : +bonus sur ce coup (la cible disparaît) ; ressource terminée : +bonus par
+## cible touchée sur le gain final. Les cibles se débloquent avec la hache (niveau 2).
 
 const WeakSpot = preload("res://scripts/weak_spot.gd")
 const SPOT_COUNT := 3
 const SPOT_RADIUS := 0.26
-const HIT_BONUS := 2.0         # +100 % sur un coup qui touche une cible
-const FINAL_PER_HIT := 0.8     # +80 % sur le gain final par cible touchée
+## Bonus d'une cible (dépend du niveau de la hache) : sur le coup qui la touche, et par cible
+## touchée sur le gain final.
+var bonus := 0.5
 
 var spots: Array = []
 var hits := 0
@@ -44,7 +45,7 @@ func add_spot(parent: Node3D, pos: Vector3, normal: Vector3) -> void:
 
 
 func final_mult() -> float:
-	return 1.0 + FINAL_PER_HIT * hits
+	return 1.0 + bonus * hits
 
 
 func clear() -> void:

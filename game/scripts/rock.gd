@@ -6,8 +6,8 @@ const Volcanic = preload("res://scripts/volcanic.gd")
 const Harvest = preload("res://scripts/harvest.gd")
 const Mats = preload("res://scripts/mats.gd")
 
-const STONE_PER_HIT := 10
-const STONE_BREAK := 30       # pierre du dernier coup, multipliée par le bonus des cibles (+80 % par cible touchée, jusqu'à ×3,4)
+const STONE_PER_HIT := 1
+const STONE_BREAK := 10       # pierre du dernier coup (+ bonus par cible touchée)
 
 var variant := 1
 var rock_scale := 2.0
@@ -66,24 +66,25 @@ func _ready() -> void:
 
 
 ## Appelé par la hache. Renvoie la pierre gagnée (0 si la pierre est verrouillée).
-func mine(damage: float, hit_pos := Vector3.INF, can_mine := true) -> int:
+func mine(damage: float, hit_pos := Vector3.INF, can_mine := true, bonus := 0.0) -> float:
 	if broken:
-		return 0
+		return 0.0
 	Sfx.play_3d("thud", global_position + Vector3.UP, 2.0, 1.3)
 	var tw := create_tween()
 	tw.tween_property(visual, "scale", Vector3(1.05, 0.95, 1.05), 0.05)
 	tw.tween_property(visual, "scale", Vector3.ONE, 0.12)
 	if not can_mine:
-		return 0
-	last_target_hit = harvest.register_hit(hit_pos)
+		return 0.0
+	harvest.bonus = bonus
+	last_target_hit = harvest.register_hit(hit_pos) if bonus > 0.0 else false
 	hp -= damage
 	if hp <= 0.0:
-		var bonus := int(round(STONE_BREAK * harvest.final_mult())) * (MAGIC_MULT if magic else 1)
+		var gain: float = STONE_BREAK * harvest.final_mult() * (MAGIC_MULT if magic else 1)
 		harvest.clear()
 		_break()
-		return bonus
+		return gain
 	# 1er coup : 3 cibles d'un coup, posées sur la surface réelle du rocher (lancers de rayon)
-	if harvest.needs_spots():
+	if bonus > 0.0 and harvest.needs_spots():
 		var center := global_position + col_center
 		var base := randf() * TAU
 		if hit_pos != Vector3.INF:
@@ -98,7 +99,7 @@ func mine(damage: float, hit_pos := Vector3.INF, can_mine := true) -> int:
 				if not r.is_empty() and r.collider == self:
 					harvest.add_spot(self, r.position + r.normal * 0.05, r.normal)
 					break
-	return int(round(STONE_PER_HIT * (harvest.HIT_BONUS if last_target_hit else 1.0))) * (MAGIC_MULT if magic else 1)
+	return STONE_PER_HIT * (1.0 + bonus if last_target_hit else 1.0) * (MAGIC_MULT if magic else 1)
 
 
 ## Frappé par un squelette bloqué.
